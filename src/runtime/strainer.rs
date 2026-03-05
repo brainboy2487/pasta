@@ -1,0 +1,236 @@
+// src/runtime/strainer.rs
+//! Minimal "Pasta Strainer" garbage collector scaffold.
+//!
+//! This file provides a first, safe and easily extensible implementation
+//! of a GC surface for the Pasta runtime. It currently implements a very
+//! small mark-and-sweep style collector over opaque byte payloads. The
+//! goal is to provide the public API and tests so we can iterate toward
+//! full VM object graphs and per-meatball heaps.
+
+use std::collections::{HashMap, HashSet};
+
+// The GC will eventually store full interpreter values, so import the
+// definition here.  There is no circular dependency because the
+// interpreter submodules do not depend on `runtime` at the moment.
+use crate::interpreter::environment::Value;
+
+/// A handle to an allocated object inside the strainer heap.
+pub type GcRef = usize;
+
+#[derive(Debug)]
+struct GcObject {
+    id: GcRef,
+    /// The stored runtime value.  By keeping an owned `Value` we can
+    /// support arbitrary object graphs and easily implement traversal for
+    /// mark-and-sweep.  Prior iterations used a `Vec<u8>` placeholder, but
+    /// the new design is much more useful when the executor allocates
+    /// strings, lists, tensors, etc.
+    value: Value,
+    /// References to other `GcRef`s for graph traversal.
+    refs: Vec<GcRef>,
+    marked: bool,
+}
+
+/// The Strainer is a simple, single-threaded garbage collector instance.
+/// We store objects in a `HashMap<GcRef, GcObject>` for O(1) lookup by id.
+#[derive(Debug)]
+pub struct Strainer {
+    heap: HashMap<GcRef, GcObject>,
+    roots: HashSet<GcRef>,
+    next_id: GcRef,
+}
+
+impl Strainer {
+    /// Create a new, empty strainer.
+    pub fn new() -> Self {
+        Self {
+            heap: HashMap::new(),
+            roots: HashSet::new(),
+            next_id: 1,
+        }
+    }
+
+    /// Allocate a runtime `Value` in the heap and return its `GcRef`.
+    ///
+    /// The set of outgoing pointers is computed automatically by walking
+    /// the value and collecting any nested `Value::Heap` handles.  This
+    /// means callers need not manually maintain the reference lists for
+    /// ordinary values like strings and lists.
+    pub fn allocate(&mut self, value: Value) -> GcRef {
+        let refs = Self::collect_refs(&value);
+        self.allocate_with_refs(value, refs)
+    }
+
+    /// Allocate an object with an explicit list of outgoing pointers.  The
+    /// caller supplies both the `Value` and a corresponding vector of
+    /// `GcRef`s representing any heap references contained within that
+    /// value.  This is primarily used for building objects that do not map
+    /// directly onto a `Value` (e.g. future headers or raw memory blobs).
+    pub fn allocate_with_refs(&mut self, value: Value, refs: Vec<GcRef>) -> GcRef {
+        let id = self.next_id;
+        self.next_id += 1;
+        let obj = GcObject {
+            id,
+            value,
+            refs,
+            marked: false,
+        };
+        self.heap.insert(id, obj);
+        id
+    }
+
+    /// Return a reference to the stored `Value` if the object is present.
+    ///
+    /// This is the method the executor will use when it encounters a
+    /// `Value::Heap` handle and wants to read the underlying value.
+    pub fn get(&self, id: GcRef) -> Option<&Value> {
+        self.heap.get(&id).map(|o| &o.value)
+    }
+
+    /// Return refs for an object if present.
+    pub fn get_refs(&self, id: GcRef) -> Option<&[GcRef]> {
+        self.heap.get(&id).map(|o| o.refs.as_slice())
+    }
+
+    /// Register an object handle as a root so it will not be collected.
+    pub fn register_root(&mut self, id: GcRef) {
+        self.roots.insert(id);
+    }
+
+    /// Unregister a previously registered root id.
+    pub fn unregister_root(&mut self, id: GcRef) {
+        self.roots.remove(&id);
+    }
+
+    /// Perform a garbage collection pass using mark-and-sweep with graph
+    /// traversal following object `refs`. Returns the number of reclaimed
+    /// objects.
+    pub fn collect(&mut self) -> usize {
+        // Reset marks
+        for obj in self.heap.values_mut() {
+            obj.marked = false;
+        }
+
+        // Mark phase: DFS from each root
+        let mut stack: Vec<GcRef> = Vec::new();
+        for &root in &self.roots {
+            if let Some(obj) = self.heap.get_mut(&root) {
+                if !obj.marked {
+                    obj.marked = true;
+                    stack.push(root);
+                }
+            }
+        }
+
+        while let Some(id) = stack.pop() {
+            if let Some(children) = self.heap.get(&id).map(|o| o.refs.clone()) {
+                // `children` is cloned so we no longer hold an immutable borrow
+                // into `self.heap` while performing `get_mut` calls.
+                for child in children {
+                    if let Some(child_obj) = self.heap.get_mut(&child) {
+                        if !child_obj.marked {
+                            child_obj.marked = true;
+                            stack.push(child);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sweep: remove unmarked objects
+        let before = self.heap.len();
+        self.heap.retain(|_, obj| obj.marked);
+        let after = self.heap.len();
+        before - after
+    }
+
+    /// Current number of allocated (present) objects in the heap.
+    pub fn allocated_count(&self) -> usize {
+        self.heap.len()
+    }
+
+    /// Clear the set of registered roots.  This is primarily useful for
+    /// callers who wish to rebuild the root set from scratch, such as an
+    /// executor scanning its environment each time it performs a collection.
+    pub fn clear_roots(&mut self) {
+        self.roots.clear();
+    }
+
+    /// Helper which clears the roots, registers every `Value::Heap` found in
+    /// the provided slice, and then performs a collection.  The return value
+    /// is the number of objects reclaimed just like [`collect`].  By
+    /// combining root-scanning and collection in one call, clients can easily
+    /// integrate the strainer with external root sources.
+    pub fn collect_with_roots(&mut self, values: &[Value]) -> usize {
+        self.roots.clear();
+        for v in values {
+            if let Value::Heap(id) = v {
+                self.roots.insert(*id);
+            }
+        }
+        self.collect()
+    }
+}
+
+impl Strainer {
+    /// Walk a value and collect all contained `GcRef` handles.  This is
+    /// used by the public `allocate` helper to automatically populate the
+    /// `refs` vector for ordinary values.
+    fn collect_refs(v: &Value) -> Vec<GcRef> {
+        let mut out = Vec::new();
+        match v {
+            Value::Heap(id) => out.push(*id),
+            Value::List(items) => {
+                for item in items {
+                    out.extend(Self::collect_refs(item));
+                }
+            }
+            // other variants do not contain heap references at this time
+            _ => {}
+        }
+        out
+    }
+
+    /// Clear any existing roots and register heap handles found in the
+    /// supplied values.  This is a convenience used by the executor when
+    /// it wants to treat the current environment as the GC roots set.
+    pub fn register_roots_from_values(&mut self, vals: &[Value]) {
+        self.roots.clear();
+        for v in vals {
+            for id in Self::collect_refs(v) {
+                self.roots.insert(id);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn alloc_register_and_collect() {
+        let mut s = Strainer::new();
+        // Create three objects: A -> B, C (isolated)
+        let _a = s.allocate(Value::Number(1.0));
+        let b = s.allocate(Value::Number(2.0));
+        let c = s.allocate(Value::Number(3.0));
+
+        // Recreate A with a ref to B (simulate header+refs allocation)
+        // For simplicity, allocate a new object that references `b` and
+        // drop the original `a` handle (we won't use it).
+        let a_with_ref = s.allocate_with_refs(Value::Number(1.0), vec![b]);
+
+        assert_eq!(s.allocated_count(), 4);
+
+        // Register only `a_with_ref` as a root; `b` should be preserved by
+        // traversal, but `c` should be reclaimed.
+        s.register_root(a_with_ref);
+        let reclaimed = s.collect();
+        assert_eq!(reclaimed, 2); // original `a` and `c` reclaimed
+        assert!(s.get(a_with_ref).is_some());
+        assert!(s.get(b).is_some());
+        assert!(s.get(c).is_none());
+        assert_eq!(s.allocated_count(), 2);
+    }
+}

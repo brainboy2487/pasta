@@ -1,0 +1,42 @@
+//! pasta/src/interpreter/shell_os/mod.rs
+//!
+//! Integration adapter for the imported shell_OS code.
+//! - Re-exports the original shell_OS submodules.
+//! - Provides small, stable adapter functions the interpreter can call.
+//! - Keeps the original CLI loop unchanged; adapters are thin wrappers.
+
+pub mod cli;
+pub mod commands;
+pub mod vfs;
+pub mod ops_log;
+
+pub use cli::run_cli;
+
+use crate::interpreter::environment::{Environment, Value};
+use crate::interpreter::executor::Executor;
+
+/// Start an interactive shell session using a VFS booted from disk if available,
+/// otherwise an empty VFS. Blocks until the user exits the shell.
+///
+/// Returns `Value::None` on normal exit, or `Err(String)` on error.
+pub fn run_shell(
+    env: &mut Environment,
+    exe: &mut Executor,
+) -> Result<Value, String> {
+    // Try to boot an existing VFS image; fall back to an empty VFS.
+    let mut vfs = match vfs::Vfs::boot() {
+        Ok(v) => v,
+        Err(_) => vfs::Vfs::new_empty(),
+    };
+
+    // Verbosity can be derived from env/exe later; keep false for now.
+    let verbose = false;
+
+    cli::run_cli(&mut vfs, verbose).map(|_| Value::None)
+}
+
+/// Run the shell CLI using the provided VFS instance. Useful for tests or
+/// when the caller wants to control the VFS lifecycle.
+pub fn run_shell_with_vfs(vfs: &mut vfs::Vfs, verbose: bool) -> Result<Value, String> {
+    cli::run_cli(vfs, verbose).map(|_| Value::None)
+}

@@ -1,0 +1,20 @@
+// pasta/src/interpreter/mod.rs
+//! Interpreter module for PASTA
+//!
+//! Submodules:
+//! - `environment`
+//! - `executor`
+//! - `repl`
+//! - `shell` (legacy, small API)
+//! - `shell_os` (imported shell_OS module)
+
+pub mod environment;
+pub mod executor;
+pub mod errors;
+pub mod repl;
+pub mod ai_network;
+pub mod shell;     // existing lightweight shell API
+pub mod shell_os;  // imported shell_OS module (adapter + code)
+
+pub use executor::Executor;
+pub use environment::{Environment, ThreadMeta, Value};

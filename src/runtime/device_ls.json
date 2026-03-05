@@ -1,0 +1,52 @@
+{
+  "devices": [
+    {
+      "id": "intel_x86_64",
+      "name": "Intel/AMD x86_64 (generic)",
+      "arch": "x86_64",
+      "features": ["sse4", "avx2"],
+      "default_config": {
+        "use_asm": true,
+        "max_threads": 8,
+        "preferred_vector_width": 256
+      },
+      "notes": "Default x86_64 profile enabling asm paths and AVX2-aware defaults."
+    },
+    {
+      "id": "apple_arm64",
+      "name": "Apple Silicon aarch64",
+      "arch": "aarch64",
+      "features": ["neon"],
+      "default_config": {
+        "use_asm": false,
+        "max_threads": 8,
+        "preferred_vector_width": 128
+      },
+      "notes": "Apple M1/M2 family. Prefer compiler intrinsics over inline asm."
+    },
+    {
+      "id": "raspi_arm64",
+      "name": "Raspberry Pi aarch64",
+      "arch": "aarch64",
+      "features": ["neon"],
+      "default_config": {
+        "use_asm": false,
+        "max_threads": 4,
+        "preferred_vector_width": 128
+      },
+      "notes": "Lower core count and conservative defaults for SBCs."
+    },
+    {
+      "id": "wasm32",
+      "name": "WebAssembly (wasm32)",
+      "arch": "wasm32",
+      "features": [],
+      "default_config": {
+        "use_asm": false,
+        "max_threads": 1,
+        "preferred_vector_width": 128
+      },
+      "notes": "WASM environment; no inline asm and single-threaded by default."
+    }
+  ]
+}

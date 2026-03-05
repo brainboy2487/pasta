@@ -1,0 +1,58 @@
+// src/semantics/mod.rs
+//! Semantic analysis layer for PASTA.
+//!
+//! This module contains:
+//! - `resolver`: name resolution, type inference, symbol tables
+//! - `constraints`: LIMIT OVER constraint engine
+//! - `priority`: DO X OVER Y priority graph resolution
+//!
+//! The semantics stage sits between parsing and runtime planning. It validates
+//! AST structures, resolves identifiers, checks constraints, and produces
+//! semantic IR suitable for execution or optimization.
+
+pub mod resolver;
+pub mod constraints;
+pub mod priority;
+
+// Re‑exports for convenience
+pub use resolver::Resolver;
+pub use constraints::{
+    ConstraintEngine, ConstraintExpr, ConstraintDiagnostic, ExprSimple, Relation,
+    SolveResult, SolveStatus,
+};
+pub use priority::PriorityGraph;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn semantics_module_smoke_test() {
+        // Ensure core types can be constructed and basic APIs work.
+
+        let mut engine = ConstraintEngine::new();
+        engine.register_symbol("x", "scalar");
+        engine.register_symbol("y", "scalar");
+
+        let c = ConstraintExpr::new(
+            ExprSimple::Identifier("x".into()),
+            Some(Relation::Equals),
+            ExprSimple::Identifier("y".into()),
+            ExprSimple::Identifier("y".into()),
+        );
+
+        engine.add_constraint(c);
+
+        // Should validate successfully
+        let result = engine.validate_all();
+        assert!(result.is_ok());
+
+        // Priority graph smoke test
+        let mut pg = PriorityGraph::new();
+        pg.add_edge("A", "B");
+
+        // Resolver smoke test
+        let r = Resolver::new();
+        r.resolve(); // placeholder
+    }
+}
