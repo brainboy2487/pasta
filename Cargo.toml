@@ -1,0 +1,36 @@
+[package]
+name = "pasta"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <you@example.com>"]
+description = "PASTA language core runtime and tooling (Rust)"
+license = "MIT"
+repository = ""
+homepage = ""
+documentation = ""
+
+[dependencies]
+regex = "1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+anyhow = "1.0"
+
+# Optional image crate for headless canvas -> PNG export.
+# Enable with: cargo build --features image
+image = { version = "0.24", optional = true }
+chrono = "0.4.44"
+
+[features]
+# Keep default minimal. Enable optional modules explicitly when needed.
+default = []
+scheduler = []
+use_asm = []
+
+# Feature to enable image-backed canvas saving.
+# Use the dep: form for compatibility with older/newer Cargo versions.
+image = ["dep:image"]
+
+[dev-dependencies]
+pretty_assertions = "1.3"
+criterion = "0.4"
