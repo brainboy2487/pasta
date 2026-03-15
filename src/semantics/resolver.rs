@@ -16,29 +16,62 @@ use anyhow::{anyhow, Result};
 
 /// Represents the type or category of a symbol.
 ///
-/// This is intentionally simple for now.
-/// Later this can expand into:
-/// - numeric types
-/// - tensor types
-/// - thread types
-/// - model types
-/// - user-defined classes
+/// Covers runtime namespaces added by the stdlib expansion:
+/// sys.*, time.*, rand.*, math.*, fs.*, gc.*, debug.*,
+/// memory.*, net.*, ffi.*, thread.*, device.*, tensor.*
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolType {
+    /// A local or global variable binding.
     Variable,
+    /// A named DO thread.
     Thread,
+    /// A trained ML model handle.
     Model,
+    /// An object family class.
     Class,
+    /// A user-defined function.
     Function,
+    // ── stdlib namespaces ────────────────────────────────────────────
+    /// sys.env, sys.exit, sys.platform, …
+    SysBuiltin,
+    /// time.now, time.sleep, …
+    TimeBuiltin,
+    /// rand.int, rand.choice, …
+    RandBuiltin,
+    /// math.sin, math.cos, math.pi, …
+    MathBuiltin,
+    /// fs.read, fs.write, fs.exists, …
+    FsBuiltin,
+    /// gc.collect, gc.stats, …
+    GcBuiltin,
+    /// debug.print, debug.assert, …
+    DebugBuiltin,
+    /// memory.alloc, memory.free, …
+    MemoryBuiltin,
+    /// net.get, net.post, …  (stub)
+    NetBuiltin,
+    /// ffi.load, ffi.call, … (stub)
+    FfiBuiltin,
+    /// thread.spawn, thread.join, …
+    ThreadBuiltin,
+    /// device.arch, device.cores, …
+    DeviceBuiltin,
+    /// tensor.zeros, tensor.eye, …
+    TensorBuiltin,
+    /// Symbol kind could not be determined at analysis time.
     Unknown,
 }
 
 /// A single symbol entry in the resolver.
 #[derive(Debug, Clone)]
 pub struct Symbol {
+    /// The symbol's identifier string.
     pub name: String,
+    /// Resolved symbol kind.
     pub ty: SymbolType,
+    /// 1-based source line of the definition.
     pub line: usize,
+    /// 1-based source column of the definition.
     pub col: usize,
 }
 

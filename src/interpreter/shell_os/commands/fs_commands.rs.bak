@@ -1,4 +1,3 @@
-#![allow(missing_docs)]
 use super::Command;
 use crate::interpreter::shell_os::vfs::{Vfs, Node};
 use crate::interpreter::shell_os::ops_log::log_op;

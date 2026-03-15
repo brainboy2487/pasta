@@ -1,4 +1,3 @@
-#![allow(missing_docs)]
 //! ops_log.rs
 //! Robust, thread-safe append-only operations log for shell_os.
 //!

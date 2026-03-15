@@ -12,13 +12,15 @@
 use std::fmt;
 
 use crate::parser::parser::ParseError;
-use crate::parser::ast::Span;
+use crate::parser::Span;
 
 /// A single frame in a traceback; captures the location and an optional
 /// human‑readable description of what was being executed.
 #[derive(Debug, Clone)]
 pub struct TraceFrame {
+    /// Source location of this frame.
     pub span: Span,
+    /// Human-readable description of the operation being executed.
     pub context: String,
 }
 
@@ -40,11 +42,26 @@ impl fmt::Display for Traceback {
 /// More codes can be added as new language features appear.
 #[derive(Debug, Clone)]
 pub enum RuntimeErrorKind {
+    /// A variable was referenced before being defined.
     UndefinedVariable(String),
-    TypeMismatch { expected: String, found: String },
+    /// A value of an unexpected type was encountered.
+    TypeMismatch {
+        /// The type that was expected.
+        expected: String,
+        /// The type that was actually found.
+        found: String,
+    },
+    /// An integer or float division by zero was attempted.
     DivisionByZero,
-    IndexOutOfBounds { index: usize, len: usize },
-    SyntaxError, // used for dynamic syntax failures
+    /// A list or tensor index was outside the valid range.
+    IndexOutOfBounds {
+        /// The index that was accessed.
+        index: usize,
+        /// The length of the collection.
+        len: usize,
+    },
+    /// A dynamic syntax error produced at runtime (e.g. from eval).
+    SyntaxError,
     // ... hundreds more would go here
 }
 
@@ -52,13 +69,18 @@ pub enum RuntimeErrorKind {
 /// optional human message (typically generated from the kind).
 #[derive(Debug, Clone)]
 pub struct RuntimeError {
+    /// Structured error classification.
     pub kind: RuntimeErrorKind,
+    /// Source location where the error was detected.
     pub span: Span,
+    /// Human-readable error message derived from `kind`.
     pub message: String,
+    /// Call-stack frames captured at the point of the error.
     pub traceback: Traceback,
 }
 
 impl RuntimeError {
+    /// Construct a `RuntimeError` from a kind and span, auto-generating the message.
     pub fn new(kind: RuntimeErrorKind, span: Span) -> Self {
         let message = match &kind {
             RuntimeErrorKind::UndefinedVariable(name) => {
@@ -106,7 +128,9 @@ impl std::error::Error for RuntimeError {}
 /// types.
 #[derive(Debug, Clone)]
 pub enum PastaError {
+    /// A parse/lexer error encountered during compilation.
     Syntax(ParseError),
+    /// An error raised during program execution.
     Runtime(RuntimeError),
 }
 
@@ -123,18 +147,32 @@ impl std::error::Error for PastaError {}
 
 // A handful of predefined message templates; in a full system these might be
 // generated from a table, localised, or assigned numeric codes.
+/// Pre-defined error message string constants used by the lexer and parser.
+///
+/// Centralising strings here makes it easy to keep diagnostic output
+/// consistent and to add localisation later.
 pub mod messages {
+    /// Emitted when a binary operator is absent between two operands.
     pub const MISSING_OPERATOR: &str = "missing operator";
+    /// Emitted when a string literal is not closed before end-of-line.
     pub const UNTERMINATED_STRING: &str = "unterminated string literal";
+    /// Emitted when an unrecognised character sequence is encountered.
     pub const INVALID_TOKEN: &str = "invalid token";
+    /// Lint warning for variables that are assigned but never read.
     pub const UNUSED_VARIABLE: &str = "variable defined but never used";
+    /// Emitted when an operator is applied to an unsupported type.
     pub const TYPE_NOT_SUPPORTED: &str = "type not supported for operation";
     // parser-specific helpers (shown here for example; a real catalog would
     // include hundreds of strings keyed by error code).
+    /// Expected an identifier token immediately after the `DEF` keyword.
     pub const EXPECTED_IDENTIFIER_AFTER_DEF: &str = "expected identifier after DEF";
+    /// Expected the `DO` keyword (or `:`) after a function's parameter list.
     pub const EXPECTED_DO_AFTER_DEF: &str = "expected DO after function name";
+    /// Expected an indented body block after the `DEF` header.
     pub const EXPECTED_INDENT_AFTER_DEF: &str = "expected indented block after DEF";
+    /// Expected a dedent token to close the function body.
     pub const EXPECTED_DEDENT_AFTER_DEF: &str = "expected dedent after function body";
+    /// Expected the `END` keyword to explicitly close a function definition.
     pub const EXPECTED_END_AFTER_DEF: &str = "expected END to close function definition";
     // ...more templates would follow
 }

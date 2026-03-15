@@ -22,9 +22,13 @@ use crate::interpreter::environment::{Value, RuntimeTensor};
 pub enum AILayer {
     /// Linear layer: (weights, bias, in_dim, out_dim)
     Linear {
+        /// Flattened weight matrix of shape `[out_dim][in_dim]`.
         weights: Vec<f64>,
+        /// Bias vector of length `out_dim`.
         bias: Vec<f64>,
+        /// Number of input features.
         in_dim: usize,
+        /// Number of output features.
         out_dim: usize,
     },
     /// Activation layer
@@ -97,7 +101,9 @@ impl AILayer {
 /// A simple feedforward neural network (MLP) for the interpreter
 #[derive(Clone, Debug)]
 pub struct NeuralNetwork {
+    /// Ordered sequence of layers in the network.
     pub layers: Vec<AILayer>,
+    /// Human-readable names for each layer (same length as `layers`).
     pub layer_names: Vec<String>,
 }
 

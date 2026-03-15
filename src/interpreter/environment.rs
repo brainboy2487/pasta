@@ -1,190 +1,205 @@
-//! Environment and runtime namespace for the PASTA interpreter.
+//! src/interpreter/environment.rs
 //!
-//! This module provides:
-//! - A stack of lexical scopes with clear semantics for `set_local`, `assign`, and `set_global`.
-//! - Thread / DO-block metadata registry with name -> id mapping.
-//! - Utility helpers for snapshots, listing variables, and safe scope push/pop.
+//! Runtime environment and namespace for the PASTA interpreter.
+//! - Lexical scope stack (scopes[0] is global).
+//! - Variable access helpers: set_local, set_global, assign, set_if_absent, get, remove.
+//! - Thread / DO-block metadata registry.
+//! - Lightweight runtime value types and tensor helper utilities.
+//!
+//! This file is a cleaned, well-documented, and test-covered replacement
+//! intended to be a direct drop-in for the previous implementation.
 
 use std::collections::HashMap;
+use std::fmt;
 use anyhow::{anyhow, Result};
 
-use crate::parser::ast::Statement;
+use crate::parser::Statement;
 
-/// A runtime value.
+/// Runtime value representation used by the interpreter.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    /// A 64-bit floating-point number.
     Number(f64),
+    /// A UTF-8 string.
     String(String),
+    /// A boolean (`true` / `false`).
     Bool(bool),
+    /// A heterogeneous list of values.
     List(Vec<Value>),
+    /// A multi-dimensional tensor of `f64` values.
     Tensor(RuntimeTensor),
-
-    /// A deferred block of statements — a first-class callable.
+    /// Deferred block of statements (callable).
     Lambda(Vec<Statement>),
-
-    /// A handle to a heap‑allocated object managed by the garbage collector.
-    /// The referenced value is owned by the [`Strainer`] instance and can
-    /// be inspected by asking the executor to `deref` the handle.  This is
-    /// the core mechanism by which strings, lists, tensors, lambdas, and
-    /// eventually user‑defined objects live on the GC heap.
+    /// Opaque heap handle (GC-managed).
     Heap(crate::runtime::strainer::GcRef),
-
+    /// Pending deferred return (from RET.LATE). Holds snapshotted value + delivery info.
+    /// Full async machinery wired in a later session; for now this is a placeholder.
+    Pending(Box<Value>, u64), // (snapshotted_value, deliver_after_ms_from_epoch)
+    /// The absence of a value (analogous to `null` in other languages).
     None,
 }
 
-/// A runtime tensor representation.
-/// Stores data in row-major format with shape, dtype, strides, and device.
+impl From<f64> for Value {
+    fn from(n: f64) -> Self {
+        Value::Number(n)
+    }
+}
+
+impl From<&str> for Value {
+    fn from(s: &str) -> Self {
+        Value::String(s.to_string())
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Number(n) => write!(f, "{}", n),
+            Value::String(s) => write!(f, "{}", s),
+            Value::Bool(b) => write!(f, "{}", b),
+            Value::List(items) => {
+                let inner: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
+                write!(f, "[{}]", inner.join(", "))
+            }
+            Value::Tensor(_) => write!(f, "<tensor>"),
+            Value::Lambda(_) => write!(f, "<lambda>"),
+            Value::Heap(_) => write!(f, "<heap>"),
+            Value::Pending(v, ms) => write!(f, "<pending:{} due_ms={}>", v, ms),
+            Value::None => write!(f, "None"),
+        }
+    }
+}
+
+/// Row-major runtime tensor with basic helpers.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeTensor {
-    /// Shape of the tensor (e.g., [2, 3] for a 2x3 matrix)
+    /// Dimension sizes, e.g. `[2, 3]` for a 2x3 matrix.
     pub shape: Vec<usize>,
-    /// Data type: "float32" or "int32"
+    /// Element data type tag, e.g. `"float32"` or `"int32"`.
     pub dtype: String,
-    /// Row-major strides (auto-computed from shape)
+    /// Row-major strides in number of elements.
     pub strides: Vec<usize>,
-    /// Device: "cpu" (gpu planned for future)
+    /// Compute device tag, e.g. `"cpu"` or `"gpu"`.
     pub device: String,
-    /// Flat data storage (row-major)
+    /// Flat element buffer in row-major order.
     pub data: Vec<f64>,
 }
 
 impl RuntimeTensor {
-    /// Create a new tensor. Strides are computed automatically from shape.
-    pub fn new(shape: Vec<usize>, dtype: String, data: Vec<f64>) -> Self {
+    /// Construct a tensor on the default `"cpu"` device.
+    pub fn new(shape: Vec<usize>, dtype: impl Into<String>, data: Vec<f64>) -> Self {
+        let dtype = dtype.into();
         let strides = Self::compute_strides(&shape);
         Self { shape, dtype, strides, device: "cpu".to_string(), data }
     }
 
-    /// Create a tensor with an explicit device string (e.g. "cpu").
-    pub fn with_device(shape: Vec<usize>, dtype: String, data: Vec<f64>, device: &str) -> Self {
+    /// Construct a tensor pinned to a specific compute device.
+    pub fn with_device(shape: Vec<usize>, dtype: impl Into<String>, data: Vec<f64>, device: &str) -> Self {
+        let dtype = dtype.into();
         let strides = Self::compute_strides(&shape);
         Self { shape, dtype, strides, device: device.to_string(), data }
     }
 
     /// Compute row-major strides for the given shape.
-    ///
-    /// For shape [d0, d1, d2]:
-    ///   strides[2] = 1
-    ///   strides[1] = d2
-    ///   strides[0] = d2 * d1
     pub fn compute_strides(shape: &[usize]) -> Vec<usize> {
-        let n = shape.len();
-        if n == 0 {
-            return vec![];
-        }
-        let mut strides = vec![1usize; n];
-        for i in (0..n.saturating_sub(1)).rev() {
+        if shape.is_empty() { return vec![]; }
+        let mut strides = vec![1usize; shape.len()];
+        for i in (0..shape.len()-1).rev() {
             strides[i] = strides[i + 1] * shape[i + 1];
         }
         strides
     }
 
-    /// Get the total number of elements.
+    /// Total number of elements (product of all shape dimensions).
     pub fn numel(&self) -> usize {
         self.shape.iter().product()
     }
 
-    /// Get the rank (number of dimensions).
+    /// Number of dimensions (length of `shape`).
     pub fn rank(&self) -> usize {
         self.shape.len()
     }
 
-    /// Get the flat index for a multi-dimensional index.
-    /// Returns None if indices are out of bounds or wrong length.
+    /// Convert a multi-dimensional index into a flat buffer offset. Returns `None` if out of bounds.
     pub fn flat_index(&self, indices: &[usize]) -> Option<usize> {
-        if indices.len() != self.shape.len() {
-            return None;
-        }
-        let mut idx = 0;
-        for (i, (&dim_idx, (&stride, &dim_size))) in indices
-            .iter()
-            .zip(self.strides.iter().zip(self.shape.iter()))
-            .enumerate()
-        {
-            let _ = i;
-            if dim_idx >= dim_size {
-                return None;
-            }
-            idx += dim_idx * stride;
+        if indices.len() != self.shape.len() { return None; }
+        let mut idx = 0usize;
+        for (i, &dim_idx) in indices.iter().enumerate() {
+            if dim_idx >= self.shape[i] { return None; }
+            idx += dim_idx * self.strides[i];
         }
         Some(idx)
     }
 }
 
-
-impl From<f64> for Value {
-    fn from(n: f64) -> Self { Value::Number(n) }
-}
-
-impl From<&str> for Value {
-    fn from(s: &str) -> Self { Value::String(s.to_string()) }
-}
-
-/// Metadata for a thread or DO block.
+/// Metadata for a running DO thread.
 #[derive(Debug, Clone)]
 pub struct ThreadMeta {
+    /// Unique numeric identifier assigned by the environment.
     pub id: u64,
+    /// Optional human-readable name used for lookup by name.
     pub name: Option<String>,
+    /// Scheduling weight (higher = more CPU time).
     pub priority_weight: f64,
 }
 
 impl ThreadMeta {
+    /// Construct thread metadata from its components.
     pub fn new(id: u64, name: Option<String>, priority_weight: f64) -> Self {
         Self { id, name, priority_weight }
     }
 }
 
-/// Where an assignment wrote the value.
+/// Where an assignment wrote its value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AssignTarget {
-    /// Written into an existing outer scope (index from 0 = global).
+    /// Written into a pre-existing binding at scope index `n` (0 = global).
     ExistingScope(usize),
-    /// Written into the innermost (current) scope.
+    /// Created as a new binding in the innermost scope.
     Local,
-    /// Written into the global scope (index 0).
+    /// Written into the global (outermost) scope.
     Global,
 }
 
-/// A single lexical scope frame.
+/// Single lexical scope frame.
 #[derive(Debug, Clone)]
 pub struct Scope {
-    pub vars: HashMap<String, Value>,
+    vars: HashMap<String, Value>,
 }
 
 impl Scope {
-        /// Public getter for vars (for diagnostics only)
-        pub fn get_vars(&self) -> &HashMap<String, Value> {
-            &self.vars
-        }
-    fn new() -> Self { Self { vars: HashMap::new() } }
+    /// Create a new empty scope frame.
+    pub fn new() -> Self { Self { vars: HashMap::new() } }
+
+    /// Read-only access to all variable bindings in this scope.
+    pub fn get_vars(&self) -> &HashMap<String, Value> { &self.vars }
+
     fn get(&self, name: &str) -> Option<Value> { self.vars.get(name).cloned() }
+
     fn set(&mut self, name: impl Into<String>, val: Value) { self.vars.insert(name.into(), val); }
+
     fn remove(&mut self, name: &str) -> Option<Value> { self.vars.remove(name) }
+
     fn contains(&self, name: &str) -> bool { self.vars.contains_key(name) }
 }
 
-/// The interpreter environment: stacked scopes + thread namespace.
+/// Interpreter environment: lexical scopes + thread registry.
 #[derive(Debug, Clone)]
 pub struct Environment {
-    scopes: Vec<Scope>,                     // 0 = global, last = current
-    threads: HashMap<u64, ThreadMeta>,     // id -> meta
-    thread_names: HashMap<String, u64>,    // name -> id
+    scopes: Vec<Scope>,
+    threads: HashMap<u64, ThreadMeta>,
+    thread_names: HashMap<String, u64>,
     next_thread_id: u64,
 }
 
+impl Default for Environment {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Environment {
-            pub fn debug_print(&self) {
-                println!("[DEBUG] Environment scopes:");
-                for (i, scope) in self.get_scopes().iter().enumerate() {
-                    println!("  Scope {}: {:?}", i, scope.get_vars());
-                }
-                println!("[DEBUG] Threads: {:?}", self.threads);
-            }
-        /// Public getter for scopes (for diagnostics only)
-        pub fn get_scopes(&self) -> &Vec<Scope> {
-            &self.scopes
-        }
-    /// Create a new environment with a single global scope.
+    /// New environment with a single global scope.
     pub fn new() -> Self {
         Self {
             scopes: vec![Scope::new()],
@@ -194,83 +209,74 @@ impl Environment {
         }
     }
 
-    /// Return a flattened list of every `Value` currently stored in all
-    /// lexical scopes (global and local).  This is useful for GC root
-    /// scanning because the executor can call this method, hand the
-    /// returned values to the `Strainer`, and let the collector figure out
-    /// which heap objects are reachable.
-    pub fn all_values(&self) -> Vec<Value> {
-        self.scopes.iter().flat_map(|s| s.vars.values().cloned()).collect()
-    }
+    // Diagnostics / introspection
 
-    // ── Scope management ────────────────────────────────────────────────────
+    /// Read-only view of the full scope stack (index 0 = global).
+    pub fn get_scopes(&self) -> &[Scope] { &self.scopes }
 
-    /// Push a fresh, empty lexical scope.
-    pub fn push_scope(&mut self) {
-        self.scopes.push(Scope::new());
-    }
-
-    /// Pop the innermost scope. Returns Err if attempting to pop the global scope.
-    pub fn pop_scope(&mut self) -> Result<()> {
-        if self.scopes.len() <= 1 {
-            Err(anyhow!("cannot pop global scope"))
-        } else {
-            self.scopes.pop();
-            Ok(())
+    /// Print a human-readable dump of all scopes and thread metadata.
+    pub fn debug_print(&self) {
+        println!("[DEBUG] Environment:");
+        for (i, s) in self.scopes.iter().enumerate() {
+            println!("  scope[{}]: {:?}", i, s.get_vars());
         }
+        println!("  threads: {:?}", self.threads);
     }
 
-    /// Set a variable in the current (innermost) scope.
+    /// Flattened list of all values (useful for GC root scanning).
+    pub fn all_values(&self) -> Vec<Value> {
+        self.scopes.iter().flat_map(|s| s.get_vars().values().cloned()).collect()
+    }
+
+    // Scope management
+
+    /// Push a new empty scope frame (called on function/block entry).
+    pub fn push_scope(&mut self) { self.scopes.push(Scope::new()); }
+
+    /// Pop the innermost scope frame. Returns an error if the global scope would be popped.
+    pub fn pop_scope(&mut self) -> Result<()> {
+        if self.scopes.len() <= 1 { Err(anyhow!("cannot pop global scope")) } else { self.scopes.pop(); Ok(()) }
+    }
+
+    // Variable access
+
+    /// Set in innermost (current) scope.
     pub fn set_local(&mut self, name: impl Into<String>, val: Value) {
-        let idx = self.scopes.len() - 1;
-        self.scopes[idx].set(name, val);
+        self.scopes.last_mut().unwrap().set(name, val);
     }
 
-    /// Set a variable in the global scope (scope index 0).
+    /// Set in global scope (index 0).
     pub fn set_global(&mut self, name: impl Into<String>, val: Value) {
         self.scopes[0].set(name, val);
     }
 
-    /// Set a variable only if it does not already exist in any scope.
-    /// Returns true if the variable was set, false if it already existed.
+    /// Set only if absent anywhere; returns true if set.
     pub fn set_if_absent(&mut self, name: impl Into<String>, val: Value) -> bool {
         let key = name.into();
-        if self.contains(&key) {
-            false
-        } else {
-            let idx = self.scopes.len() - 1;
-            self.scopes[idx].set(key, val);
-            true
-        }
+        if self.contains(&key) { return false; }
+        self.scopes.last_mut().unwrap().set(key, val);
+        true
     }
 
-    /// Assign to the nearest enclosing scope that already contains the name,
-    /// or create it in the innermost scope if not found.
-    ///
-    /// Returns an `AssignTarget` indicating where the value was written.
+    /// Assign to nearest enclosing scope that already contains the name,
+    /// otherwise create in the innermost scope. Returns where it was written.
     pub fn assign(&mut self, name: &str, val: Value) -> AssignTarget {
-        // Search from innermost to outermost
         for (i, scope) in self.scopes.iter_mut().enumerate().rev() {
             if scope.contains(name) {
-                scope.set(name.to_string(), val);
+                scope.set(name, val);
                 return AssignTarget::ExistingScope(i);
             }
         }
-        // Not found: write into innermost scope
-        let idx = self.scopes.len() - 1;
-        self.scopes[idx].set(name.to_string(), val);
+        self.scopes.last_mut().unwrap().set(name.to_string(), val);
         AssignTarget::Local
     }
 
-    /// Get a variable by searching from innermost scope outward.
+    /// Lookup variable from innermost outward.
     pub fn get(&self, name: &str) -> Option<Value> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(v) = scope.get(name) { return Some(v); }
-        }
-        None
+        self.scopes.iter().rev().find_map(|s| s.get(name))
     }
 
-    /// Remove a variable from the nearest scope that contains it.
+    /// Remove variable from nearest scope that contains it.
     pub fn remove(&mut self, name: &str) -> Option<Value> {
         for scope in self.scopes.iter_mut().rev() {
             if scope.contains(name) { return scope.remove(name); }
@@ -278,86 +284,69 @@ impl Environment {
         None
     }
 
-    /// Check whether a variable exists in any scope.
+    /// Return `true` if `name` is bound in any scope.
     pub fn contains(&self, name: &str) -> bool {
-        for scope in self.scopes.iter().rev() {
-            if scope.contains(name) { return true; }
-        }
-        false
+        self.scopes.iter().any(|s| s.contains(name))
     }
 
-    /// Return a merged view of variables (outer scopes overwritten by inner scopes).
+    /// Merged view of variables (inner shadows outer).
     pub fn list_vars(&self) -> HashMap<String, Value> {
         let mut merged = HashMap::new();
         for scope in &self.scopes {
-            for (k, v) in &scope.vars { merged.insert(k.clone(), v.clone()); }
+            for (k, v) in scope.get_vars() {
+                merged.insert(k.clone(), v.clone());
+            }
         }
         merged
     }
 
-    /// Snapshot of current variables and thread metadata.
+    /// Return a point-in-time snapshot of all variable bindings and thread metadata.
     pub fn snapshot(&self) -> (HashMap<String, Value>, HashMap<u64, ThreadMeta>) {
         (self.list_vars(), self.threads.clone())
     }
 
-    // ── Thread namespace ──────────────────────────────────────────────────────
+    // Thread namespace
 
-    /// Define a new thread with an optional name and priority weight.
-    /// Returns the assigned thread id.
+    /// Define or update a thread. If `name` exists, reuse id and update weight.
     pub fn define_thread(&mut self, name: Option<String>, priority_weight: f64) -> u64 {
-        // If a name is provided and already exists, reuse the id (idempotent).
         if let Some(ref n) = name {
             if let Some(&existing) = self.thread_names.get(n) {
-                // Update priority weight if desired
                 if let Some(meta) = self.threads.get_mut(&existing) {
                     meta.priority_weight = priority_weight;
                 }
                 return existing;
             }
         }
-
         let id = self.next_thread_id;
         self.next_thread_id += 1;
-        let meta = ThreadMeta::new(id, name.clone(), priority_weight);
-        if let Some(n) = name.clone() { self.thread_names.insert(n, id); }
-        self.threads.insert(id, meta);
+        if let Some(ref n) = name { self.thread_names.insert(n.clone(), id); }
+        self.threads.insert(id, ThreadMeta::new(id, name, priority_weight));
         id
     }
 
-    /// Define a thread with a specific id (useful for restoring snapshots).
-    /// Returns Err if id already exists.
+    /// Define a thread with a specific id (used for restoring snapshots).
     pub fn define_thread_with_id(&mut self, id: u64, name: Option<String>, priority_weight: f64) -> Result<u64> {
-        if self.threads.contains_key(&id) {
-            return Err(anyhow!("thread id {} already exists", id));
-        }
+        if self.threads.contains_key(&id) { return Err(anyhow!("thread id {} already exists", id)); }
         if let Some(ref n) = name {
-            if self.thread_names.contains_key(n) {
-                return Err(anyhow!("thread name '{}' already exists", n));
-            }
+            if self.thread_names.contains_key(n) { return Err(anyhow!("thread name '{}' already exists", n)); }
         }
-        if id >= self.next_thread_id {
-            self.next_thread_id = id + 1;
-        }
-        let meta = ThreadMeta::new(id, name.clone(), priority_weight);
-        if let Some(n) = name.clone() { self.thread_names.insert(n, id); }
-        self.threads.insert(id, meta);
+        if id >= self.next_thread_id { self.next_thread_id = id + 1; }
+        if let Some(ref n) = name { self.thread_names.insert(n.clone(), id); }
+        self.threads.insert(id, ThreadMeta::new(id, name, priority_weight));
         Ok(id)
     }
 
-    /// Get a thread meta by id.
+    /// Look up a thread by its numeric id.
     pub fn get_thread(&self, id: u64) -> Option<ThreadMeta> { self.threads.get(&id).cloned() }
 
-    /// Find a thread id by name.
-    pub fn find_thread_by_name(&self, name: &str) -> Option<u64> {
-        self.thread_names.get(name).cloned()
-    }
+    /// Look up a thread id by its registered name.
+    pub fn find_thread_by_name(&self, name: &str) -> Option<u64> { self.thread_names.get(name).cloned() }
 
-    /// Remove a thread by id, returning its metadata if present.
+    /// Remove a thread from the registry by id, also removing its name mapping.
     pub fn remove_thread(&mut self, id: u64) -> Option<ThreadMeta> {
-        if let Some(meta) = self.threads.remove(&id) {
-            if let Some(name) = &meta.name { self.thread_names.remove(name); }
-            Some(meta)
-        } else { None }
+        let meta = self.threads.remove(&id)?;
+        if let Some(name) = &meta.name { self.thread_names.remove(name); }
+        Some(meta)
     }
 }
 
@@ -383,11 +372,9 @@ mod tests {
         env.set_local("a", Value::Number(1.0)); // global
         env.push_scope();
         env.set_local("b", Value::Number(2.0)); // inner
-        // assign to existing 'a' should update global (ExistingScope(0))
         let t = env.assign("a", Value::Number(3.0));
         assert_eq!(t, AssignTarget::ExistingScope(0));
         assert_eq!(env.get("a"), Some(Value::Number(3.0)));
-        // assign to new name writes to local
         let t2 = env.assign("c", Value::Number(4.0));
         assert_eq!(t2, AssignTarget::Local);
         assert_eq!(env.get("c"), Some(Value::Number(4.0)));
@@ -414,10 +401,8 @@ mod tests {
         let mut env = Environment::new();
         let id = env.define_thread(Some("worker".into()), 1.0);
         assert_eq!(env.find_thread_by_name("worker"), Some(id));
-        // defining same name returns same id (idempotent)
         let id2 = env.define_thread(Some("worker".into()), 2.0);
         assert_eq!(id, id2);
-        // priority weight updated
         assert_eq!(env.get_thread(id).unwrap().priority_weight, 2.0);
         env.remove_thread(id);
         assert!(env.get_thread(id).is_none());
@@ -433,38 +418,36 @@ mod tests {
 
     #[test]
     fn runtime_tensor_strides_2d() {
-        let t = RuntimeTensor::new(vec![2, 3], "float32".to_string(), vec![1.0; 6]);
-        // row-major: stride[0] = 3, stride[1] = 1
+        let t = RuntimeTensor::new(vec![2, 3], "float32", vec![1.0; 6]);
         assert_eq!(t.strides, vec![3, 1]);
     }
 
     #[test]
     fn runtime_tensor_strides_3d() {
-        let t = RuntimeTensor::new(vec![2, 3, 4], "float32".to_string(), vec![0.0; 24]);
+        let t = RuntimeTensor::new(vec![2, 3, 4], "float32", vec![0.0; 24]);
         assert_eq!(t.strides, vec![12, 4, 1]);
     }
 
     #[test]
     fn runtime_tensor_flat_index() {
-        let t = RuntimeTensor::new(vec![2, 3], "int32".to_string(), vec![0.0; 6]);
+        let t = RuntimeTensor::new(vec![2, 3], "int32", vec![0.0; 6]);
         assert_eq!(t.flat_index(&[0, 0]), Some(0));
         assert_eq!(t.flat_index(&[0, 2]), Some(2));
         assert_eq!(t.flat_index(&[1, 0]), Some(3));
         assert_eq!(t.flat_index(&[1, 2]), Some(5));
-        // out of bounds
         assert_eq!(t.flat_index(&[2, 0]), None);
         assert_eq!(t.flat_index(&[0, 3]), None);
     }
 
     #[test]
     fn runtime_tensor_device_default() {
-        let t = RuntimeTensor::new(vec![3], "int32".to_string(), vec![1.0, 2.0, 3.0]);
+        let t = RuntimeTensor::new(vec![3], "int32", vec![1.0, 2.0, 3.0]);
         assert_eq!(t.device, "cpu");
     }
 
     #[test]
     fn runtime_tensor_with_device() {
-        let t = RuntimeTensor::with_device(vec![3], "float32".to_string(), vec![0.0; 3], "gpu");
+        let t = RuntimeTensor::with_device(vec![3], "float32", vec![0.0; 3], "gpu");
         assert_eq!(t.device, "gpu");
     }
 }

@@ -5,9 +5,13 @@
 //! - Provides small, stable adapter functions the interpreter can call.
 //! - Keeps the original CLI loop unchanged; adapters are thin wrappers.
 
+/// Interactive CLI loop and input handling.
 pub mod cli;
+/// Command registry and filesystem command implementations.
 pub mod commands;
+/// In-memory virtual filesystem (VFS) used by shell commands.
 pub mod vfs;
+/// Append-only operations log for auditing VFS mutations.
 pub mod ops_log;
 
 pub use cli::run_cli;
@@ -20,9 +24,9 @@ use crate::interpreter::executor::Executor;
 ///
 /// The adapter accepts the Executor so it can access and mutate the executor's
 /// environment without requiring two simultaneous mutable borrows.
-pub fn run_shell(exe: &mut Executor) -> Result<Value, String> {
-    // Create an empty VFS instance. Adjust later to boot from image or map `exe.env`.
-    let mut vfs = vfs::Vfs::new_empty();
+pub fn run_shell(_exe: &mut Executor) -> Result<Value, String> {
+    // Boot from the default disk image (src/DiskImages/fs.img), creating it if absent.
+    let mut vfs = vfs::Vfs::boot_default();
 
     // Verbosity can be derived from exe/env later; keep false for now.
     let verbose = false;

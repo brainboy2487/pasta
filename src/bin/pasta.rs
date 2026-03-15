@@ -176,7 +176,9 @@ fn run_source(source: &str, show_tokens: bool, show_ast: bool, quiet: bool, verb
     // Parse
     let program = {
         let mut parser = Parser::new(tokens.clone());
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| parser.parse())) {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            parser.parse_with_diagnostics().0
+        })) {
             Ok(p) => p,
             Err(_) => {
                 eprintln!("Internal error: parser panicked.");
@@ -241,7 +243,7 @@ fn main() {
     let args = parse_args(&raw_args);
 
     // Set a global flag for verbose mode
-    use std::sync::atomic::{AtomicBool, Ordering};
+
     if args.verbose {
         pasta::VERBOSE_FLAG.store(true, std::sync::atomic::Ordering::Relaxed);
     }

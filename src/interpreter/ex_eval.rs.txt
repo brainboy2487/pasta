@@ -1,0 +1,615 @@
+// src/interpreter/ex_eval.rs
+//
+//! Statement and expression evaluation for the PASTA executor.
+//!
+//! All logic that was previously in the giant `impl Executor` block of
+//! `executor.rs` lives here, broken into two public entry-points:
+//!
+//!  * `eval_stmt` — dispatch a single `Statement` to its handler.
+//!  * `eval_expr` — recursively evaluate an `Expr` and return a `Value`.
+//!
+//! Both functions take `&mut Executor` so they can reach every field
+//! (environment, functions table, GC, diagnostics, traceback, etc.) without
+//! duplicating state.  The split is purely organisational — the borrow graph
+//! is unchanged from the monolithic file.
+
+use anyhow::{anyhow, Result};
+
+use crate::interpreter::executor::Executor;
+use crate::interpreter::environment::{Value, RuntimeTensor};
+use crate::interpreter::errors::{RuntimeError, RuntimeErrorKind};
+use crate::interpreter::ai_network;
+use crate::interpreter::ex_frame;
+use crate::parser::*;
+use crate::semantics::{Relation, ExprSimple, ConstraintExpr};
+
+// ── Internal formatting helper (mirrors the one in executor.rs) ───────────────
+
+#[inline]
+fn fmt_f64(n: f64) -> String {
+    if n.fract().abs() < f64::EPSILON {
+        format!("{}", n.round() as i64)
+    } else {
+        format!("{}", n)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public entry-points
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Dispatch a single AST statement, returning any yielded `Value`.
+///
+/// This is the primary statement execution loop, extracted verbatim from the
+/// original `Executor::execute_statement`.  All internal helpers that it
+/// calls (`eval_expr`, `call_builtin`, etc.) are defined later in this file
+/// or remain on `Executor` as public / pub(crate) methods.
+pub fn eval_stmt(exec: &mut Executor, stmt: &Statement) -> Result<Option<Value>> {
+    // Mirror the verbose-debug macro from executor.rs
+    if exec.verbose && crate::interpreter::executor::is_verbose_debug() {
+        println!("[DEBUG] Executing statement: {:?}", stmt);
+    }
+
+    let span = match stmt {
+        Statement::Assignment { span, .. }
+        | Statement::FunctionDef { span, .. }
+        | Statement::DoBlock { span, .. }
+        | Statement::WhileBlock { span, .. }
+        | Statement::ForIn { span, .. }
+        | Statement::PriorityOverride { span, .. }
+        | Statement::Constraint { span, .. }
+        | Statement::Print { span, .. }
+        | Statement::If { span, .. }
+        | Statement::End { span }
+        | Statement::ExprStmt { span, .. }
+        | Statement::ObjDecl { span, .. }
+        | Statement::SpawnBlock { span, .. }
+        | Statement::Other { span, .. } => span.clone(),
+
+        Statement::DefDoUntil(d)         => d.span.clone(),
+        Statement::RetNow { span, .. }   => span.clone(),
+        Statement::RetLate { span, .. }  => span.clone(),
+        Statement::AttemptBlock { span, .. } => span.clone(),
+    };
+
+    ex_frame::push_frame(&mut exec.traceback, span.clone(), "statement");
+
+    match stmt {
+        // ── Assignment ────────────────────────────────────────────────────────
+        Statement::Assignment { target, value, span: _ } => {
+            let v = eval_expr(exec, value)?;
+            exec.env.assign(&target.name, v);
+            Ok(None)
+        }
+
+        // ── Function definition ───────────────────────────────────────────────
+        Statement::FunctionDef { name, params, body, span: _ } => {
+            exec.functions.insert(name.name.clone(), (params.clone(), body.clone()));
+            if params.is_empty() {
+                exec.env.set_global(name.name.clone(), Value::Lambda(body.clone()));
+            }
+            Ok(None)
+        }
+
+        // ── Counted DO block ──────────────────────────────────────────────────
+        Statement::DoBlock { targets, alias, repeats, body, span } => {
+            let counts = exec.resolve_repeat_counts(targets.len(), repeats.as_ref(), span)?;
+
+            for (i, target_id) in targets.iter().enumerate() {
+                let repeat_count = counts[i];
+
+                let resolved_target_val = exec
+                    .env
+                    .get(&target_id.name)
+                    .map(|v| exec.deref(v));
+
+                // Lambda stored globally
+                let global_lambda: Option<Vec<Statement>> = match &resolved_target_val {
+                    Some(Value::Lambda(s)) => Some(s.clone()),
+                    _ => None,
+                };
+
+                if let Some(stmts) = global_lambda {
+                    for _ in 0..repeat_count {
+                        ex_frame::push_scope(&mut exec.env);
+                        if let Some(a) = alias {
+                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+                        }
+                        for s in stmts.iter() {
+                            exec.execute_statement(s)?;
+                            if exec.control_flow.is_some() { break; }
+                            let _ = exec.collect_garbage();
+                        }
+                        ex_frame::pop_scope(&mut exec.env, "DO lambda", &mut exec.diagnostics);
+                    }
+                    continue;
+                }
+
+                if let Some(Value::List(items)) = resolved_target_val.clone() {
+                    for _ in 0..repeat_count {
+                        for item in items.iter() {
+                            exec.execute_value_as_callable(item, alias, &target_id.name)?;
+                            let _ = exec.collect_garbage();
+                        }
+                    }
+                    continue;
+                }
+
+                let fn_lkp: Option<(Vec<crate::parser::Identifier>, Vec<Statement>)> =
+                    exec.functions.get(&target_id.name).cloned();
+                if let Some((func_params, func_body)) = fn_lkp {
+                    for _ in 0..repeat_count {
+                        ex_frame::push_scope(&mut exec.env);
+                        if let Some(a) = alias {
+                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+                        }
+                        let _ = func_params;
+                        for s in func_body.iter() {
+                            exec.execute_statement(s)?;
+                            if exec.control_flow.is_some() { break; }
+                            let _ = exec.collect_garbage();
+                        }
+                        ex_frame::pop_scope(&mut exec.env, "DO fn", &mut exec.diagnostics);
+                    }
+                    continue;
+                }
+
+                // Treat as logical thread name
+                let tid = exec.env.define_thread(Some(target_id.name.clone()), 1.0);
+                for _ in 0..repeat_count {
+                    ex_frame::push_scope(&mut exec.env);
+                    if let Some(a) = alias {
+                        ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+                    }
+                    ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+                    for s in body.iter() {
+                        exec.execute_statement(s)?;
+                        if exec.control_flow.is_some() { break; }
+                        let _ = exec.collect_garbage();
+                    }
+                    ex_frame::pop_scope(&mut exec.env, "DO thread body", &mut exec.diagnostics);
+                }
+                exec.env.remove_thread(tid);
+            }
+
+            Ok(None)
+        }
+
+        // ── WHILE loop ────────────────────────────────────────────────────────
+        Statement::WhileBlock { targets, alias, condition, body, span } => {
+            let limit = if exec.while_limit == 0 { usize::MAX } else { exec.while_limit };
+
+            if targets.is_empty() {
+                if body.is_empty() {
+                    ex_frame::pop_frame(&mut exec.traceback);
+                    return Ok(None);
+                }
+                let mut iterations: usize = 0;
+                loop {
+                    if iterations >= limit {
+                        ex_frame::pop_frame(&mut exec.traceback);
+                        return Err(exec.span_err(span, format!("WHILE loop exceeded iteration limit ({})", limit)));
+                    }
+                    let cond_val = eval_expr(exec, condition)?;
+                    if !exec.value_is_truthy(&cond_val) { break; }
+                    let scoped = alias.is_some();
+                    if scoped {
+                        ex_frame::push_scope(&mut exec.env);
+                        if let Some(a) = alias {
+                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(String::new()));
+                        }
+                    }
+                    for s in body.iter() {
+                        exec.execute_statement(s)?;
+                        if exec.control_flow.is_some() { break; }
+                        let _ = exec.collect_garbage();
+                    }
+                    if scoped {
+                        ex_frame::pop_scope(&mut exec.env, &format!("WHILE iter {}", iterations), &mut exec.diagnostics);
+                    }
+                    if exec.control_flow.is_some() { break; }
+                    iterations += 1;
+                }
+                ex_frame::pop_frame(&mut exec.traceback);
+                return Ok(None);
+            }
+
+            for target_id in targets.iter() {
+                let lambda_stmts: Option<Vec<Statement>> = exec
+                    .env
+                    .get(&target_id.name)
+                    .and_then(|v| if let Value::Lambda(s) = v { Some(s) } else { None })
+                    .or_else(|| exec.functions.get(&target_id.name).map(|r| r.1.clone()));
+
+                let tid = exec.env.define_thread(Some(target_id.name.clone()), 1.0);
+                let mut iterations: usize = 0;
+
+                if let Some(exec_body) = lambda_stmts {
+                    loop {
+                        if iterations >= limit {
+                            ex_frame::pop_frame(&mut exec.traceback);
+                            return Err(exec.span_err(span, format!("WHILE loop for '{}' exceeded iteration limit ({})", target_id.name, limit)));
+                        }
+                        if let Some(a) = alias {
+                            ex_frame::push_scope(&mut exec.env);
+                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+                            ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+                        }
+                        for s in exec_body.iter() {
+                            exec.execute_statement(s)?;
+                            if exec.control_flow.is_some() { break; }
+                            let _ = exec.collect_garbage();
+                        }
+                        if alias.is_some() {
+                            ex_frame::pop_scope(&mut exec.env, "WHILE lambda", &mut exec.diagnostics);
+                        }
+                        if exec.control_flow.is_some() { break; }
+                        iterations += 1;
+                        let cond_val = eval_expr(exec, condition)?;
+                        if !exec.value_is_truthy(&cond_val) { break; }
+                    }
+                } else {
+                    loop {
+                        if iterations >= limit {
+                            ex_frame::pop_frame(&mut exec.traceback);
+                            return Err(exec.span_err(span, format!("WHILE loop for '{}' exceeded iteration limit ({})", target_id.name, limit)));
+                        }
+                        let cond_val = eval_expr(exec, condition)?;
+                        if !exec.value_is_truthy(&cond_val) { break; }
+                        if let Some(a) = alias {
+                            ex_frame::push_scope(&mut exec.env);
+                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+                            ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+                        }
+                        for s in body.iter() {
+                            exec.execute_statement(s)?;
+                            if exec.control_flow.is_some() { break; }
+                            let _ = exec.collect_garbage();
+                        }
+                        if alias.is_some() {
+                            ex_frame::pop_scope(&mut exec.env, "WHILE body", &mut exec.diagnostics);
+                        }
+                        iterations += 1;
+                    }
+                }
+
+                exec.env.remove_thread(tid);
+            }
+
+            Ok(None)
+        }
+
+        // ── FOR x IN iterable ─────────────────────────────────────────────────
+        Statement::ForIn { var, iterable, body, span } => {
+            let iter_val_raw = eval_expr(exec, iterable)?;
+            let iter_val = exec.deref(iter_val_raw);
+            let elements: Vec<Value> = match iter_val {
+                Value::List(items) => items,
+                Value::String(s)   => s.chars().map(|c| Value::String(c.to_string())).collect(),
+                Value::Number(n)   => (0..n as i64).map(|i| Value::Number(i as f64)).collect(),
+                other => {
+                    ex_frame::pop_frame(&mut exec.traceback);
+                    return Err(exec.span_err(span, format!("FOR IN: cannot iterate over {}", match &other {
+                        Value::Bool(_)   => "bool",
+                        Value::None      => "none",
+                        Value::List(_)   => "list",
+                        Value::Lambda(_) => "lambda",
+                        _                => "unknown",
+                    })));
+                }
+            };
+
+            ex_frame::push_scope(&mut exec.env);
+            for element in elements {
+                ex_frame::set_local(&mut exec.env, var.name.clone(), element);
+                for s in body.iter() {
+                    exec.execute_statement(s)?;
+                    if exec.control_flow.is_some() { break; }
+                    let _ = exec.collect_garbage();
+                }
+                if exec.control_flow.is_some() { break; }
+            }
+            ex_frame::pop_scope(&mut exec.env, "FOR IN", &mut exec.diagnostics);
+
+            ex_frame::pop_frame(&mut exec.traceback);
+            Ok(None)
+        }
+
+        Statement::PriorityOverride { higher, lower, span: _ } => {
+            exec.priorities.add_edge(&higher.name, &lower.name);
+            Ok(None)
+        }
+
+        Statement::Constraint { left, relation, right, constraint, span: _ } => {
+            let left_s       = expr_to_simple(left);
+            let right_s      = expr_to_simple(right);
+            let constraint_s = expr_to_simple(constraint);
+            let rel_enum     = relation.as_ref().and_then(|rt| Relation::from_str(&rt.text));
+            exec.constraints.add_constraint(ConstraintExpr::new(left_s, rel_enum, right_s, constraint_s));
+            Ok(None)
+        }
+
+        Statement::Print { expr, span: _ } => {
+            let v = eval_expr(exec, expr)?;
+            exec.do_print(&v);
+            Ok(Some(v))
+        }
+
+        Statement::If { conditions, then_body, else_body, span: _ } => {
+            let any_true = conditions.iter().try_fold(false, |acc, cond| {
+                let val = eval_expr(exec, cond)?;
+                Ok::<bool, anyhow::Error>(acc || exec.value_is_truthy(&val))
+            })?;
+
+            let active_body = if any_true {
+                Some(then_body.as_slice())
+            } else {
+                else_body.as_deref()
+            };
+            if let Some(stmts) = active_body {
+                for stmt in stmts {
+                    exec.execute_statement(stmt)?;
+                    if exec.control_flow.is_some() { break; }
+                    let _ = exec.collect_garbage();
+                }
+            }
+            Ok(None)
+        }
+
+        Statement::End { .. } => Ok(None),
+
+        Statement::ExprStmt { expr, span: _ } => {
+            if !matches!(expr, Expr::Raw(_, _)) {
+                let v = eval_expr(exec, expr)?;
+                return Ok(Some(v));
+            }
+            Ok(None)
+        }
+
+        Statement::Other { kind, payload, span: _ } => {
+            exec.diagnostics.push(format!("Unhandled statement kind: {}", kind));
+            if let Some(p) = payload {
+                exec.diagnostics.push(format!("  payload: {}", p));
+            }
+            Ok(None)
+        }
+
+        // ── RET.NOW(): expr ───────────────────────────────────────────────────
+        Statement::RetNow { value, span: _ } => {
+            let v = eval_expr(exec, value)?;
+            let v_concrete = exec.deref(v);
+            exec.control_flow = Some(crate::interpreter::executor::ControlFlowSignal::Return(v_concrete));
+            ex_frame::pop_frame(&mut exec.traceback);
+            Ok(None)
+        }
+
+        // ── RET.LATE(condition): expr ─────────────────────────────────────────
+        Statement::RetLate { value, condition, span: _ } => {
+            use std::time::{SystemTime, UNIX_EPOCH};
+
+            let snapshot = eval_expr(exec, value)?;
+
+            let deliver_at_ms = match condition {
+                RetLateCondition::AfterMs(ms_expr) => {
+                    let ms_val = eval_expr(exec, ms_expr)?;
+                    let ms = match &ms_val {
+                        Value::Number(n) => *n as u64,
+                        _ => 0,
+                    };
+                    let now_ms = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0);
+                    now_ms + ms
+                }
+                RetLateCondition::WhenTrue(_trigger_expr) => 0u64,
+            };
+
+            let pending = Value::Pending(Box::new(snapshot), deliver_at_ms);
+            exec.env.set_local("__ret_late__".to_string(), pending);
+            ex_frame::pop_frame(&mut exec.traceback);
+            Ok(None)
+        }
+
+        // ── ATTEMPT(err_var): try_body ELSE: else_body END ────────────────────
+        Statement::AttemptBlock { err_var, try_body, else_body, span: _ } => {
+            let try_result: Result<(), anyhow::Error> = (|| {
+                for stmt in try_body {
+                    exec.execute_statement(stmt)?;
+                    if exec.control_flow.is_some() { break; }
+                    let _ = exec.collect_garbage();
+                }
+                Ok(())
+            })();
+
+            match try_result {
+                Ok(_) => {}
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    exec.env.set_local(err_var.name.clone(), Value::String(err_msg));
+                    for stmt in else_body {
+                        exec.execute_statement(stmt)?;
+                        if exec.control_flow.is_some() { break; }
+                        let _ = exec.collect_garbage();
+                    }
+                }
+            }
+            Ok(None)
+        }
+
+        Statement::ObjDecl { .. } | Statement::SpawnBlock { .. } | Statement::DefDoUntil(_) => {
+            Ok(None)
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Expression evaluation
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Recursively evaluate an AST expression and return the resulting `Value`.
+///
+/// This is the main expression evaluator, extracted verbatim from
+/// `Executor::eval_expr`.  All operator and builtin dispatch sub-functions
+/// called from here remain on `Executor` (they are `pub` there) so that the
+/// test suite and the old call sites in `executor.rs` continue to work.
+pub fn eval_expr(exec: &mut Executor, expr: &Expr) -> Result<Value> {
+    match expr {
+        Expr::Number(n, _)  => Ok(Value::Number(*n)),
+        Expr::String(s, _)  => Ok(Value::String(s.clone())),
+        Expr::Bool(b, _)    => Ok(Value::Bool(*b)),
+
+        Expr::Identifier(id) => {
+            exec.env.get(&id.name)
+                .ok_or_else(|| anyhow!("Undefined variable '{}'", id.name))
+        }
+
+        Expr::Binary { op, left, right, .. } => {
+            let lv = eval_expr(exec, left)?;
+            let rv = eval_expr(exec, right)?;
+            exec.eval_binary(op, lv, rv)
+        }
+
+        Expr::Call { callee, args, .. } => {
+            if let Expr::Identifier(id) = &**callee {
+                let name = id.name.to_lowercase();
+                let mut argvals = Vec::with_capacity(args.len());
+                for a in args {
+                    argvals.push(eval_expr(exec, a)?);
+                }
+
+                // 1. Named functions with params (DEF name(params): …)
+                let fn_lkp: Option<(Vec<crate::parser::Identifier>, Vec<Statement>)> =
+                    exec.functions.get(&id.name).or_else(|| exec.functions.get(&name)).cloned();
+
+                if let Some((func_params, func_body)) = fn_lkp {
+                    ex_frame::push_scope(&mut exec.env);
+                    for (i, param) in func_params.iter().enumerate() {
+                        let val = argvals.get(i).cloned().unwrap_or(Value::None);
+                        ex_frame::set_local(&mut exec.env, param.name.clone(), val);
+                    }
+                    let mut last = Value::None;
+                    for s in func_body.iter() {
+                        if let Some(v) = exec.execute_statement(s)? { last = v; }
+                        if let Some(crate::interpreter::executor::ControlFlowSignal::Return(ret_val)) = exec.control_flow.take() {
+                            let ret_concrete = exec.deref(ret_val);
+                            ex_frame::pop_scope(&mut exec.env, "RET.NOW in fn", &mut exec.diagnostics);
+                            return Ok(ret_concrete);
+                        }
+                        let _ = exec.collect_garbage();
+                    }
+                    let pending = exec.env.get("__ret_late__");
+                    if let Some(p) = pending { last = exec.deref(p); }
+                    ex_frame::pop_scope(&mut exec.env, "fn call", &mut exec.diagnostics);
+                    return Ok(last);
+                }
+
+                // 2. Lambda stored in environment
+                let maybe_lambda = exec.env.get(&id.name)
+                    .or_else(|| exec.env.get(&name))
+                    .map(|v| exec.deref(v));
+
+                if let Some(Value::Lambda(stmts)) = maybe_lambda {
+                    ex_frame::push_scope(&mut exec.env);
+                    for (i, val) in argvals.iter().enumerate() {
+                        ex_frame::set_local(&mut exec.env, format!("__arg_{}__", i), val.clone());
+                    }
+                    let mut last = Value::None;
+                    for s in stmts.iter() {
+                        if let Some(v) = exec.execute_statement(s)? { last = v; }
+                        if let Some(crate::interpreter::executor::ControlFlowSignal::Return(ret_val)) = exec.control_flow.take() {
+                            let ret_concrete = exec.deref(ret_val);
+                            ex_frame::pop_scope(&mut exec.env, "RET.NOW in lambda", &mut exec.diagnostics);
+                            return Ok(ret_concrete);
+                        }
+                    }
+                    ex_frame::pop_scope(&mut exec.env, "lambda call", &mut exec.diagnostics);
+                    return Ok(last);
+                }
+
+                // 3. Fall through to builtins
+                exec.call_builtin(&name, argvals)
+            } else {
+                Err(anyhow!("Call to non-identifier callee not supported"))
+            }
+        }
+
+        Expr::List { items, .. } => {
+            let mut vals = Vec::with_capacity(items.len());
+            for it in items {
+                vals.push(eval_expr(exec, it)?);
+            }
+            let id = exec.gc.allocate(Value::List(vals));
+            Ok(Value::Heap(id))
+        }
+
+        Expr::Lambda(stmts, _) => {
+            let id = exec.gc.allocate(Value::Lambda(stmts.clone()));
+            Ok(Value::Heap(id))
+        }
+
+        Expr::Raw(_, _) => Ok(Value::None),
+
+        Expr::TensorBuilder { expr, .. } => exec.build_tensor(expr),
+
+        Expr::Index { base, indices, .. } => {
+            let base_raw = eval_expr(exec, base)?;
+            let base_val = exec.deref(base_raw);
+            if indices.is_empty() {
+                return Err(anyhow!("Index expression requires at least one index"));
+            }
+            let idx_val = eval_expr(exec, &indices[0])?;
+            let idx = match idx_val {
+                Value::Number(n) => n as isize,
+                other => return Err(anyhow!("Index must be a number, got {:?}", other)),
+            };
+            match base_val {
+                Value::List(items) => {
+                    let len = items.len() as isize;
+                    let i = if idx < 0 { len + idx } else { idx };
+                    if i < 0 || i >= len {
+                        return Err(anyhow!("Index {} out of range (len {})", idx, len));
+                    }
+                    Ok(exec.deref(items[i as usize].clone()))
+                }
+                Value::String(s) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let len = chars.len() as isize;
+                    let i = if idx < 0 { len + idx } else { idx };
+                    if i < 0 || i >= len {
+                        return Err(anyhow!("String index {} out of range (len {})", idx, len));
+                    }
+                    Ok(Value::String(chars[i as usize].to_string()))
+                }
+                other => Err(anyhow!("Cannot index into {:?}", other)),
+            }
+        }
+
+        Expr::ConstructorCall { .. } => Err(anyhow!("constructor calls not implemented")),
+        Expr::Combine { .. }         => Err(anyhow!("combine operator not implemented")),
+        Expr::Reassign { .. }        => Err(anyhow!("reassign operator not implemented")),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Private helpers used only inside this module
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Convert a parser `Expr` to a `semantics::ExprSimple` for the constraint engine.
+///
+/// Mirrors the private `Executor::expr_to_simple`.  Kept here so that the
+/// `Statement::Constraint` arm above can call it without going through Executor.
+fn expr_to_simple(e: &Expr) -> ExprSimple {
+    match e {
+        Expr::Identifier(id)    => ExprSimple::Identifier(id.name.clone()),
+        Expr::Number(n, _)      => ExprSimple::Number(*n),
+        Expr::String(s, _)      => ExprSimple::Raw(s.clone()),
+        Expr::Bool(b, _)        => ExprSimple::Raw(b.to_string()),
+        Expr::Binary { left, right, .. } => {
+            let l = match &**left  { Expr::Identifier(id) => id.name.clone(), Expr::Number(n, _) => n.to_string(), o => format!("{:?}", o) };
+            let r = match &**right { Expr::Identifier(id) => id.name.clone(), Expr::Number(n, _) => n.to_string(), o => format!("{:?}", o) };
+            ExprSimple::Raw(format!("{} ? {}", l, r))
+        }
+        other => ExprSimple::Raw(format!("{:?}", other)),
+    }
+}

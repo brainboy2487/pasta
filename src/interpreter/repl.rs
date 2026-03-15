@@ -1,16 +1,17 @@
 //! src/interpreter/repl.rs
 //!
-//! Robust interactive REPL for the PASTA interpreter.
-//! Drop‑in replacement: calls `executor.enter_shell()` as a method.
+//! Interactive REPL for the PASTA interpreter.
+//! Drop-in replacement: clearer structure, robust input accumulation, and
+//! integrated meta commands (including :shell which calls Executor::enter_shell).
 
 use std::io::{self, Write};
 use anyhow::{anyhow, Result};
 
 use crate::lexer::lexer::Lexer;
-use crate::lexer::TokenType;
 use crate::parser::parser::Parser;
 use crate::interpreter::executor::Executor;
 use crate::interpreter::environment::Value;
+use crate::lexer::TokenType;
 
 /// Run the interactive REPL loop. Returns only on EOF or `exit`.
 pub fn run_repl() -> Result<()> {
@@ -100,16 +101,13 @@ fn print_banner() {
 }
 
 fn read_line(prompt: &str) -> Result<Option<String>> {
-    print!("{}", prompt);
-    io::stdout().flush().map_err(|e| anyhow!("flush: {}", e))?;
-
-    let mut line = String::new();
-    let n = io::stdin().read_line(&mut line)?;
-    if n == 0 {
-        Ok(None)
-    } else {
-        Ok(Some(line))
+    let result = crate::readline::read_line_with_history(prompt)
+        .map_err(|e| anyhow!("readline: {}", e))?;
+    if let Some(ref line) = result {
+        crate::readline::history_push(line);
     }
+    // Preserve trailing newline behaviour expected by indent tracking
+    Ok(result.map(|s| s + "\n"))
 }
 
 /// Compute the current indentation depth for the given source fragment.
@@ -143,7 +141,7 @@ fn run_block(executor: &mut Executor, src: &str) {
     };
 
     // ── Parse ─────────────────────────────────────────────────────────────────
-    let (program, parse_diags) = {
+    let (program, parse_diags): (_, Vec<crate::parser::parser::ParseError>) = {
         let mut parser = Parser::new(tokens);
         parser.parse_with_diagnostics()
     };
@@ -165,7 +163,7 @@ fn run_block(executor: &mut Executor, src: &str) {
 
     // ── Drain executor diagnostics ────────────────────────────────────────────
     let drained: Vec<String> = executor.diagnostics.drain(..).collect();
-    for d in drained {
+    for d in &drained {
         if !d.starts_with("Auto-configured device:") {
             eprintln!("note: {}", d);
         }
@@ -197,7 +195,7 @@ fn handle_meta(cmd: &str, executor: &mut Executor) -> Result<()> {
                 println!("(no variables)");
             } else {
                 let mut pairs: Vec<(&String, &Value)> = vars.iter().collect();
-                pairs.sort_by_key(|(k, _)| k.as_str());
+                pairs.sort_by_key(|(k, _): &(&String, &Value)| k.as_str());
                 for (k, v) in pairs {
                     println!("  {} = {}", k, fmt_value(v));
                 }
@@ -254,7 +252,7 @@ fn handle_meta(cmd: &str, executor: &mut Executor) -> Result<()> {
 
         // New meta command: enter integrated shell
         ":shell" => {
-            // Call the shell via the Executor method; ensure Executor defines `pub fn enter_shell(&mut self)`.
+            // Call the shell via the Executor method; ensure Executor defines `pub fn enter_shell(&mut self) -> Result<()>`.
             match executor.enter_shell() {
                 Ok(_) => println!("Exited shell."),
                 Err(e) => eprintln!("shell error: {}", e),
@@ -296,6 +294,10 @@ fn fmt_value(v: &Value) -> String {
 /// Print all available PASTA keywords and commands organized by category.
 fn print_keywords() {
     println!("\nPASTA Keywords & Commands:");
-    // (content unchanged)
-    println!("  :shell             enter the integrated shell");
+    println!("  Control: DO, WHILE, FOR, IF, OTHERWISE, TRY, END");
+    println!("  Definitions: DEF, CLASS, GROUP, LEARN, BUILD, TENSOR");
+    println!("  Object-family: OBJ, MUT, FIELD, CONSTRUCTOR");
+    println!("  Execution: PRINT, SET, PAUSE, UNPAUSE, RESTART, WAIT");
+    println!("  Operators: + - * / @ == != < > <= >= ≈ ≠ ≡ and or not");
+    println!("  REPL meta: :help :env :threads :keywords :reset :diag :clear :shell");
 }

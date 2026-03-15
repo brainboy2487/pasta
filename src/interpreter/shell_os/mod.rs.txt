@@ -5,33 +5,33 @@
 //! - Provides small, stable adapter functions the interpreter can call.
 //! - Keeps the original CLI loop unchanged; adapters are thin wrappers.
 
+/// Interactive CLI loop and input handling.
 pub mod cli;
+/// Command registry and filesystem command implementations.
 pub mod commands;
+/// In-memory virtual filesystem (VFS) used by shell commands.
 pub mod vfs;
+/// Append-only operations log for auditing VFS mutations.
 pub mod ops_log;
 
 pub use cli::run_cli;
 
-use crate::interpreter::environment::{Environment, Value};
+use crate::interpreter::environment::Value;
 use crate::interpreter::executor::Executor;
 
 /// Start an interactive shell session using a VFS booted from disk if available,
 /// otherwise an empty VFS. Blocks until the user exits the shell.
 ///
-/// Returns `Value::None` on normal exit, or `Err(String)` on error.
-pub fn run_shell(
-    env: &mut Environment,
-    exe: &mut Executor,
-) -> Result<Value, String> {
-    // Try to boot an existing VFS image; fall back to an empty VFS.
-    let mut vfs = match vfs::Vfs::new_empty() {
-        Ok(v) => v,
-        Err(_) => vfs::Vfs::new_empty(),
-    };
+/// The adapter accepts the Executor so it can access and mutate the executor's
+/// environment without requiring two simultaneous mutable borrows.
+pub fn run_shell(_exe: &mut Executor) -> Result<Value, String> {
+    // Create an empty VFS instance. Adjust later to boot from image or map `exe.env`.
+    let mut vfs = vfs::Vfs::new_empty();
 
-    // Verbosity can be derived from env/exe later; keep false for now.
+    // Verbosity can be derived from exe/env later; keep false for now.
     let verbose = false;
 
+    // Run the CLI loop; map its unit result into a Pasta Value.
     cli::run_cli(&mut vfs, verbose).map(|_| Value::None)
 }
 

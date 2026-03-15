@@ -328,8 +328,10 @@ impl Executor {
             match stmt {
                 Statement::FunctionDef { name, params, body, .. } => {
                     self.functions.insert(name.name.clone(), (params.clone(), body.clone()));
-                self.env.set_global(name.name.clone(), Value::Lambda(body.clone()));
-                self.register_functions_recursive(body);
+                    if params.is_empty() {
+                        self.env.set_global(name.name.clone(), Value::Lambda(body.clone()));
+                    }
+                    self.register_functions_recursive(body);
                 }
                 Statement::DoBlock    { body, .. } => self.register_functions_recursive(body),
                 Statement::WhileBlock { body, .. } => self.register_functions_recursive(body),
@@ -350,7 +352,9 @@ impl Executor {
         for stmt in &program.statements {
             if let Statement::FunctionDef { name, params, body, span: _ } = stmt {
                 self.functions.insert(name.name.clone(), (params.clone(), body.clone()));
-                self.env.set_global(name.name.clone(), Value::Lambda(body.clone()));
+                if params.is_empty() {
+                    self.env.set_global(name.name.clone(), Value::Lambda(body.clone()));
+                }
             }
         }
 

@@ -22,6 +22,7 @@ use crate::interpreter::environment::Value;
 /// and other shell-related state
 #[derive(Debug, Clone)]
 pub struct Shell {
+    /// The current working directory for this shell session.
     pub cwd: PathBuf,
 }
 
@@ -45,9 +46,8 @@ impl Shell {
             self.cwd.parent().ok_or_else(|| anyhow!("Cannot go above root"))?.to_path_buf()
         } else if path == "." {
             self.cwd.clone()
-        } else if path.starts_with('~') {
+        } else if let Some(rest) = path.strip_prefix('~') {
             let home = dirs_home()?;
-            let rest = &path[1..];
             home.join(rest.trim_start_matches('/'))
         } else if Path::new(path).is_absolute() {
             PathBuf::from(path)
@@ -96,11 +96,9 @@ impl Shell {
         }
 
         let mut entries = Vec::new();
-        for entry in fs::read_dir(&dir_path)? {
-            if let Ok(entry) = entry {
-                if let Ok(file_name) = entry.file_name().into_string() {
-                    entries.push(Value::String(file_name));
-                }
+        for entry in fs::read_dir(&dir_path)?.flatten() {
+            if let Ok(file_name) = entry.file_name().into_string() {
+                entries.push(Value::String(file_name));
             }
         }
 
@@ -145,15 +143,13 @@ impl Shell {
             return Ok(results);
         }
 
-        for entry in fs::read_dir(&dir_path)? {
-            if let Ok(entry) = entry {
-                let metadata = entry.metadata()?;
-                let size = metadata.len();
-                let is_dir = metadata.is_dir();
-                let file_type = if is_dir { "dir" } else { "file" };
-                if let Ok(name) = entry.file_name().into_string() {
-                    results.push(Value::String(format!("{} {} {}", name, size, file_type)));
-                }
+        for entry in fs::read_dir(&dir_path)?.flatten() {
+            let metadata = entry.metadata()?;
+            let size = metadata.len();
+            let is_dir = metadata.is_dir();
+            let file_type = if is_dir { "dir" } else { "file" };
+            if let Ok(name) = entry.file_name().into_string() {
+                results.push(Value::String(format!("{} {} {}", name, size, file_type)));
             }
         }
 
@@ -494,7 +490,6 @@ impl Shell {
                 let path = parts.next().unwrap_or("");
                 let bytes = self.cat(path)?;
                 String::from_utf8(bytes).map_err(|e| anyhow!("invalid utf8: {}", e))
-                    .map(|s| s)
             }
             "touch" => {
                 let path = parts.next().unwrap_or("");

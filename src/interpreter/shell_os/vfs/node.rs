@@ -5,19 +5,23 @@ use std::collections::HashMap;
 /// Either a directory with children or a file with raw bytes.
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Node {
+    /// A regular file containing raw byte data.
     File(FileData),
+    /// A directory containing named child nodes.
     Dir(DirData),
 }
 
 /// File contents stored as raw bytes.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct FileData {
+    /// Raw byte content of the file.
     pub data: Vec<u8>,
 }
 
 /// Directory contents stored as a map of name -> Node.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DirData {
+    /// Map of child name to child `Node`.
     pub children: HashMap<String, Node>,
 }
 

@@ -1,3 +1,4 @@
+/// CLI input loop and line-dispatch implementation.
 pub mod cli;
 
 pub use cli::{run_cli, confirm};

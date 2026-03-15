@@ -89,7 +89,7 @@ impl PriorityGraph {
         let mut indegree: HashMap<String, usize> =
             self.nodes.iter().map(|n| (n.clone(), 0)).collect();
 
-        for (_src, targets) in &self.edges {
+        for targets in self.edges.values() {
             for t in targets {
                 if let Some(entry) = indegree.get_mut(t) {
                     *entry += 1;
