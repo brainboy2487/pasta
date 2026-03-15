@@ -1,24 +1,21 @@
-//! PASTA — an embeddable scripting language runtime.
-//!
-//! This crate exposes the lexer, parser, interpreter ([`Executor`]),
-//! semantics engine, and runtime utilities.
 #![warn(missing_docs)]
 use std::sync::atomic::AtomicBool;
 /// Global verbose flags for diagnostics
 #[no_mangle]
 pub static VERBOSE_FLAG: AtomicBool = AtomicBool::new(false);
 #[no_mangle]
-/// Global debug-verbosity flag; enables detailed interpreter traces when `true`.
 pub static VERBOSE_DEBUG: AtomicBool = AtomicBool::new(false);
 // pasta/src/lib.rs
 /// PASTA — small language runtime library
 
 pub mod lexer;
-pub mod readline;
 pub mod parser;
 pub mod semantics;
 pub mod interpreter;
 pub mod runtime;
+
+#[cfg(feature = "typing")]
+pub mod typing;
 
 #[cfg(feature = "scheduler")]
 pub mod scheduler;
@@ -27,12 +24,11 @@ pub mod scheduler;
 pub use scheduler::Scheduler;
 
 #[cfg(not(feature = "scheduler"))]
-/// Stub scheduler used when the `scheduler` feature is disabled.
 #[derive(Debug, Clone)]
 pub struct Scheduler;
 
 pub use interpreter::{Executor, Environment, Value, ThreadMeta};
-pub use parser::Parser;
+pub use parser::ast::{Program, Statement, Expr, Identifier, Span, BinaryOp, RelationToken};
 
 pub use runtime::{auto_configure, detect_host_arch};
 pub use runtime::asm::{AsmRuntime, AsmBlock};

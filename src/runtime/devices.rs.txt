@@ -27,20 +27,14 @@ pub use crate::interpreter::environment::Value;
 
 const DEVICE_JSON: &str = include_str!("device_ls.json");
 
-/// A single device profile entry loaded from `device_ls.json`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DeviceEntry {
-    /// Unique device identifier (e.g. `"intel_x86_64"`).
     pub id: String,
-    /// Human-readable device name.
     pub name: String,
-    /// Target architecture string (e.g. `"x86_64"`, `"aarch64"`).
     pub arch: String,
-    /// Optional capability flags for this device.
     pub features: Vec<String>,
     /// Note: default_config stores JSON values (serde_json::Value)
     pub default_config: HashMap<String, JsonValue>,
-    /// Optional free-text notes about the device.
     pub notes: Option<String>,
 }
 

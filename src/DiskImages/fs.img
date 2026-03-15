@@ -1,0 +1,17 @@
+{
+  "Dir": {
+    "children": {
+      "test": {
+        "Dir": {
+          "children": {
+            "test2": {
+              "Dir": {
+                "children": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

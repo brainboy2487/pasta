@@ -74,7 +74,7 @@ impl Rng {
         // Use system time nanoseconds as base
         let t = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
+            .map(|d| d.as_nanos() as u128)
             .unwrap_or(0u128);
 
         // Mix with address of a stack variable for some ASLR-derived entropy

@@ -2,6 +2,9 @@
 //! Alias table and normalization for PASTA lexer.
 //!
 //! Case-insensitive alias mapping with optional JSON override.
+//! - Canonical names are stored uppercase (e.g., "DO").
+//! - Aliases are stored lowercase for case-insensitive lookup.
+//! - Includes explicit aliases for OBJ and SPAWN used by the grammar.
 
 use std::collections::HashMap;
 use std::fs;
@@ -35,12 +38,14 @@ impl AliasTable {
             };
         }
 
+        // Core control keywords and common synonyms
         add_aliases!("DEF", ["def", "define", "function", "func"]);
-        add_aliases!("DO", ["do", "run", "start", "spawn", "begin"]);
+        add_aliases!("DO", ["do", "run", "start", "begin"]);
         add_aliases!("AND", ["and"]);
         add_aliases!("OR", ["or"]);
         add_aliases!("NOT", ["not", "negate"]);
         add_aliases!("FOR", ["for", "times", "repeat", "using", "with"]);
+        add_aliases!("IN",  ["in"]);
         add_aliases!("AS", ["as", "named", "called"]);
         add_aliases!("OVER", ["over", "above", "before"]);
         add_aliases!("LIMIT", ["limit", "bounded_by", "under"]);
@@ -62,6 +67,14 @@ impl AliasTable {
         add_aliases!("WHILE", ["while"]);
         add_aliases!("TRUE", ["true", "True", "TRUE"]);
         add_aliases!("FALSE", ["false", "False", "FALSE"]);
+
+        // Grammar-specific explicit tokens used by parser/lexer
+        add_aliases!("OBJ", ["obj"]);
+        add_aliases!("SPAWN", ["spawn"]);
+        add_aliases!("MUT", ["mut"]); // keep MUT available as canonical if needed
+        // import is lexed as Identifier and dispatched through call_builtin;
+        // the alias entry lets a future ImportStatement token be added cleanly.
+        add_aliases!("IMPORT", ["import", "use", "require", "include"]);
 
         AliasTable { map }
     }
@@ -140,6 +153,12 @@ impl AliasTable {
     pub fn entries(&self) -> impl Iterator<Item = (&String, &String)> {
         self.map.iter()
     }
+
+    /// Convenience: check whether a canonical token exists in the table.
+    pub fn contains_canonical(&self, canonical: &str) -> bool {
+        let up = canonical.to_uppercase();
+        self.map.values().any(|v| v == &up)
+    }
 }
 
 #[cfg(test)]
@@ -159,6 +178,16 @@ mod tests {
         // print aliases present
         assert_eq!(a.normalize("print", false).as_deref(), Some("PRINT"));
         assert_eq!(a.normalize("Echo", false).as_deref(), Some("PRINT"));
+    }
+
+    #[test]
+    fn obj_and_spawn_aliases_present() {
+        let a = AliasTable::with_defaults();
+        assert_eq!(a.normalize("obj", false).as_deref(), Some("OBJ"));
+        assert_eq!(a.normalize("spawn", false).as_deref(), Some("SPAWN"));
+        // canonical containment helper
+        assert!(a.contains_canonical("OBJ"));
+        assert!(a.contains_canonical("SPAWN"));
     }
 
     #[test]

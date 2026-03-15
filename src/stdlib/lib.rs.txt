@@ -14,7 +14,6 @@ pub static VERBOSE_DEBUG: AtomicBool = AtomicBool::new(false);
 /// PASTA — small language runtime library
 
 pub mod lexer;
-pub mod readline;
 pub mod parser;
 pub mod semantics;
 pub mod interpreter;

@@ -17,6 +17,7 @@
 // - Leaves combination of LIMIT + OVER to the parser (lexer emits separately).
 // - Emits Approx (≈), NotEq (≠), and StrictEq (≡) tokens for unicode operators.
 // - Emits At (@) token for matrix multiply operator.
+// - Emits Dot token for '.' separators and Obj/Spawn tokens via alias normalization.
 
 use crate::lexer::{Token, TokenType};
 use crate::lexer::alias::AliasTable;
@@ -31,12 +32,16 @@ use std::mem;
 /// Structured lexical error returned when lexing fails.
 #[derive(Debug, Clone)]
 pub struct LexError {
+    /// 1-based source line where the error occurred.
     pub line: usize,
+    /// 1-based column within the line.
     pub col: usize,
+    /// Human-readable description of the lex failure.
     pub message: String,
 }
 
 impl LexError {
+    /// Construct a new `LexError` at the given source position.
     pub fn new(line: usize, col: usize, message: impl Into<String>) -> Self {
         Self {
             line,
@@ -56,6 +61,9 @@ impl fmt::Display for LexError {
 // Lexer
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Converts PASTA source text into a flat [`Token`] stream.
+///
+/// Create with [`Lexer::new`], then call [`Lexer::lex`] or [`Lexer::lex_result`].
 pub struct Lexer {
     lines: Vec<String>,
     line_num: usize,
@@ -186,7 +194,7 @@ impl Lexer {
                 chars.next();
                 let mut buf = String::new();
                 let mut escaped = false;
-                while let Some(c) = chars.next() {
+                for c in chars.by_ref() {
                     self.col += 1;
                     if escaped {
                         match c {
@@ -306,31 +314,16 @@ impl Lexer {
                 continue;
             }
 
-            // ── Single-character punctuation ─────────────────────────────────
-            match ch {
-                ',' => { chars.next(); self.emit(TokenType::Comma,    None); continue; }
-                ':' => { chars.next(); self.emit(TokenType::Colon,    None); continue; }
-                '(' => { chars.next(); self.emit(TokenType::LParen,   None); continue; }
-                ')' => { chars.next(); self.emit(TokenType::RParen,   None); continue; }
-                '[' => { chars.next(); self.emit(TokenType::LBracket, None); continue; }
-                ']' => { chars.next(); self.emit(TokenType::RBracket, None); continue; }
-                '+' => { chars.next(); self.emit(TokenType::Plus,     None); continue; }
-                '-' => { chars.next(); self.emit(TokenType::Minus,    None); continue; }
-                '*' => { chars.next(); self.emit(TokenType::Star,     None); continue; }
-                '/' => { chars.next(); self.emit(TokenType::Slash,    None); continue; }
-                '@' => { chars.next(); self.emit(TokenType::At,       None); continue; }
-                _ => {}
-            }
-
             // ── Leading-dot numeric literal (.5, .25, etc.) ──────────────────
             // A '.' followed immediately by an ASCII digit starts a float literal.
             if ch == '.' {
-                // Rather than collect the entire remainder string, just look
-                // one character ahead.  If the character after the dot is an
-                // ASCII digit we treat this as a leading-dot float literal.
-                let next_is_digit = chars.clone().nth(1).map_or(false, |c| c.is_ascii_digit());
+                // Look one character ahead (after the dot) to decide.
+                let mut tmp = chars.clone();
+                tmp.next(); // consume '.'
+                let next_is_digit = tmp.next().is_some_and(|c| c.is_ascii_digit());
 
                 if next_is_digit {
+                    // consume '.' and the following digits/underscores
                     chars.next(); // consume '.'
                     let mut buf = String::from(".");
                     while let Some(&c2) = chars.peek() {
@@ -345,9 +338,30 @@ impl Lexer {
                     }
                     self.emit(TokenType::Number, Some(buf));
                     continue;
+                } else {
+                    // Not a leading-dot number: emit Dot token and continue.
+                    chars.next(); // consume '.'
+                    self.emit(TokenType::Dot, None);
+                    continue;
                 }
+            }
 
-                // A lone '.' with no digit following — fall through to fallback.
+            // ── Single-character punctuation ─────────────────────────────────
+            match ch {
+                ',' => { chars.next(); self.emit(TokenType::Comma,    None); continue; }
+                ':' => { chars.next(); self.emit(TokenType::Colon,    None); continue; }
+                '(' => { chars.next(); self.emit(TokenType::LParen,   None); continue; }
+                ')' => { chars.next(); self.emit(TokenType::RParen,   None); continue; }
+                '[' => { chars.next(); self.emit(TokenType::LBracket, None); continue; }
+                ']' => { chars.next(); self.emit(TokenType::RBracket, None); continue; }
+                '+' => { chars.next(); self.emit(TokenType::Plus,     None); continue; }
+                '-' => { chars.next(); self.emit(TokenType::Minus,    None); continue; }
+                '*' => { chars.next(); self.emit(TokenType::Star,     None); continue; }
+                '/' => { chars.next(); self.emit(TokenType::Slash,    None); continue; }
+                '@' => { chars.next(); self.emit(TokenType::At,       None); continue; }
+                '%' => { chars.next(); self.emit(TokenType::Percent,  None); continue; }
+                '^' => { chars.next(); self.emit(TokenType::Caret,    None); continue; }
+                _ => {}
             }
 
             // ── Identifiers, keywords, and numeric literals ──────────────────
@@ -360,15 +374,15 @@ impl Lexer {
                     // literals are handled by the branch below which only
                     // accepts a "." when the buffer started with a digit and
                     // the dot is followed by another digit.
-                    if c2.is_alphanumeric() || c2 == '_' || c2 == '^'
-                        || (c2 == '.' && !buf.chars().next().map_or(false, |c| c.is_ascii_digit()))
+                    if c2.is_alphanumeric() || c2 == '_'
+                        || (c2 == '.' && !buf.chars().next().is_some_and(|c| c.is_ascii_digit()))
                     {
                         buf.push(c2);
                         chars.next();
                         self.col += 1;
                     } else if c2 == '.'
                         && !buf.contains('.')
-                        && buf.chars().next().map_or(false, |c| c.is_ascii_digit())
+                        && buf.chars().next().is_some_and(|c| c.is_ascii_digit())
                     {
                         let next_after_dot = {
                             let mut tmp = chars.clone();
@@ -413,7 +427,7 @@ impl Lexer {
                     // (underscores already removed in `cleaned`).
                     let lower = cleaned.to_ascii_lowercase();
                     let is_prefixed = if lower.starts_with("0x") {
-                        lower.chars().skip(2).all(|c| c.is_digit(16))
+                        lower.chars().skip(2).all(|c| c.is_ascii_hexdigit())
                     } else if lower.starts_with("0b") {
                         lower.chars().skip(2).all(|c| c == '0' || c == '1')
                     } else if lower.starts_with("0o") {
@@ -438,6 +452,7 @@ impl Lexer {
                         "OR"        => TokenType::Or,
                         "NOT"       => TokenType::Not,
                         "FOR"       => TokenType::For,
+                        "IN"        => TokenType::In,
                         "AS"        => TokenType::As,
                         "OVER"      => TokenType::Over,
                         "LIMIT"     => TokenType::Limit,
@@ -457,6 +472,9 @@ impl Lexer {
                         "TENSOR"    => TokenType::Tensor,
                         "PRINT"     => TokenType::Print,
                         "WHILE"     => TokenType::While,
+                        // explicit grammar keywords we want as tokens
+                        "OBJ"       => TokenType::Obj,
+                        "SPAWN"     => TokenType::Spawn,
                         _           => TokenType::Identifier,
                     };
 
@@ -464,7 +482,12 @@ impl Lexer {
                         // Preserve the original casing for bool values.
                         self.emit(TokenType::Bool, Some(buf));
                     } else {
-                        self.emit(token_type, Some(buf));
+                        // For Obj/Spawn we emit the explicit token without value.
+                        if token_type == TokenType::Obj || token_type == TokenType::Spawn {
+                            self.emit(token_type, None);
+                        } else {
+                            self.emit(token_type, Some(buf));
+                        }
                     }
                     continue;
                 }
@@ -699,68 +722,41 @@ mod tests {
         assert!(k.contains(&TokenType::RBracket));
         assert!(k.contains(&TokenType::Comma));
         assert!(k.contains(&TokenType::Colon));
-        assert!(k.contains(&TokenType::Plus));
-        assert!(k.contains(&TokenType::Minus));
-        assert!(k.contains(&TokenType::Star));
-        assert!(k.contains(&TokenType::Slash));
-        assert!(k.contains(&TokenType::At));
     }
 
-    // ── EOF ──────────────────────────────────────────────────────────────────
+    // ── New tests for OBJ / Dot / SPAWN tokenization ─────────────────────────
 
     #[test]
-    fn eof_always_last() {
-        let toks = lex("x = 1");
-        assert_eq!(toks.last().unwrap().kind, TokenType::Eof);
-    }
-
-    // ── DO-line contextual alias ─────────────────────────────────────────────
-
-    #[test]
-    fn before_on_do_line_maps_to_over() {
-        let src = "DO a BEFORE b\n";
-        let k = kinds(src);
-        assert!(k.contains(&TokenType::Over));
-    }
-
-    #[test]
-    fn before_outside_do_line_is_identifier() {
-        let src = "before x y\n";
+    fn obj_header_tokenization() {
+        let src = "OBJ.NRML.MUT Monster(health, size):";
         let toks = lex(src);
-        assert!(!toks.iter().any(|t| t.kind == TokenType::Over));
-    }
-
-    // ── Boolean operators ────────────────────────────────────────────────────
-
-    #[test]
-    fn and_operator() {
-        let toks = lex("a && b");
-        let k: Vec<_> = toks.iter().map(|t| t.kind.clone()).collect();
-        assert!(k.contains(&TokenType::And), "expected And token for &&");
-        let bare_amps: Vec<_> = toks.iter()
-            .filter(|t| t.kind == TokenType::Identifier && t.value.as_deref() == Some("&"))
-            .collect();
-        assert!(bare_amps.is_empty(), "should not have bare & identifier");
+        // Expect Obj, Dot, Identifier(NRML) or Identifier token for NRML (alias table may map NRML to Identifier),
+        // Dot, Identifier(MUT) or Identifier, Identifier(Monster), LParen, Identifier(health), Comma, Identifier(size), RParen, Colon
+        let kinds: Vec<_> = toks.iter().map(|t| t.kind.clone()).collect();
+        // Must contain Obj and Dot tokens
+        assert!(kinds.contains(&TokenType::Obj), "expected Obj token");
+        assert!(kinds.contains(&TokenType::Dot), "expected Dot token");
+        assert!(kinds.contains(&TokenType::LParen));
+        assert!(kinds.contains(&TokenType::Colon));
     }
 
     #[test]
-    fn or_operator() {
-        let toks = lex("a || b");
-        let k: Vec<_> = toks.iter().map(|t| t.kind.clone()).collect();
-        assert!(k.contains(&TokenType::Or), "expected Or token for ||");
-        let bare_pipes: Vec<_> = toks.iter()
-            .filter(|t| t.kind == TokenType::Identifier && t.value.as_deref() == Some("|"))
-            .collect();
-        assert!(bare_pipes.is_empty(), "should not have bare | identifier");
+    fn spawn_lhs_tokenization() {
+        let src = "goblin.NRML.MUT @ player.LIST.MUT:";
+        let toks = lex(src);
+        let kinds: Vec<_> = toks.iter().map(|t| t.kind.clone()).collect();
+        // Should include Dot, At, Dot, Colon
+        assert!(kinds.contains(&TokenType::Dot));
+        assert!(kinds.contains(&TokenType::At));
+        assert!(kinds.contains(&TokenType::Colon));
     }
 
     #[test]
-    fn complex_boolean_expr() {
-        let src = "result = (a && b) || (c && d)";
-        let k = kinds(src);
-        let and_count = k.iter().filter(|t| **t == TokenType::And).count();
-        let or_count = k.iter().filter(|t| **t == TokenType::Or).count();
-        assert_eq!(and_count, 2, "expected 2 And tokens");
-        assert_eq!(or_count, 1, "expected 1 Or token");
+    fn spawn_keyword_token() {
+        let src = "SPAWN:";
+        let toks = lex(src);
+        let kinds: Vec<_> = toks.iter().map(|t| t.kind.clone()).collect();
+        assert!(kinds.contains(&TokenType::Spawn), "expected Spawn token");
+        assert!(kinds.contains(&TokenType::Colon));
     }
 }

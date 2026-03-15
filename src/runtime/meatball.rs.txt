@@ -35,7 +35,6 @@ pub type MeatballID = u64;
 /// extended later for control messages, interrupts, etc.
 #[derive(Debug, Clone)]
 pub enum Message {
-    /// A Pasta runtime `Value` passed between meatballs.
     Value(Value),
 }
 
@@ -51,7 +50,6 @@ pub struct MeatballConfig {
 /// A handle to a running meatball. Allows sending messages and joining the
 /// underlying thread.
 pub struct MeatballHandle {
-    /// Unique identifier for this meatball instance.
     pub id: MeatballID,
     sender: Sender<Message>,
     /// Receiver for messages produced by the meatball.
@@ -93,13 +91,10 @@ impl MeatballHandle {
 /// queues. Clients rarely manipulate this struct directly; they typically
 /// interact via a `MeatballHandle` returned by `Saucepan::spawn`.
 pub struct Meatball {
-    /// Unique identifier for this meatball instance.
     pub id: MeatballID,
-    /// The interpreter instance owned by this meatball.
     pub executor: Executor,
     inbox: Receiver<Message>,
     outbox: Sender<Message>,
-#[allow(dead_code)]
     config: MeatballConfig,
 }
 
@@ -160,9 +155,9 @@ impl Saucepan {
         let outbox = meatball.outbox.clone();
         let handle_thread = thread::spawn(move || {
             // Execute the user-supplied function.
-            
+            let res = f(&mut meatball.executor, meatball.inbox, outbox);
             // TODO: optionally perform cleanup, logging, etc.
-            f(&mut meatball.executor, meatball.inbox, outbox)
+            res
         });
 
         let handle = MeatballHandle {

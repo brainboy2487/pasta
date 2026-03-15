@@ -14,6 +14,7 @@
 pub mod tokens;
 pub mod alias;
 pub mod unicode;
+/// Core lexer implementation (see [`lexer::Lexer`]).
 pub mod lexer;
 
 pub use lexer::Lexer;

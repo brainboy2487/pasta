@@ -19,7 +19,6 @@ pub type GcRef = usize;
 
 #[derive(Debug)]
 struct GcObject {
-#[allow(dead_code)]
     id: GcRef,
     /// The stored runtime value.  By keeping an owned `Value` we can
     /// support arbitrary object graphs and easily implement traversal for

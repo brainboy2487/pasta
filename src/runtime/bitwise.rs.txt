@@ -58,7 +58,7 @@ pub fn not_u64(a: u64) -> u64 {
 #[inline]
 pub fn shl_u64(a: u64, shift: u32) -> u64 {
     // Mask shift to 0..63 to match CPU behavior for x86_64.
-    let s = shift & 0x3F;
+    let s = (shift & 0x3F) as u32;
     #[cfg(all(feature = "use_asm", target_arch = "x86_64"))]
     {
         // Use `sal` instruction via inline asm for demonstration.
@@ -82,7 +82,7 @@ pub fn shl_u64(a: u64, shift: u32) -> u64 {
 /// Logical right shift for u64 by `shift` bits (zero-fill).
 #[inline]
 pub fn shr_u64(a: u64, shift: u32) -> u64 {
-    let s = shift & 0x3F;
+    let s = (shift & 0x3F) as u32;
     #[cfg(all(feature = "use_asm", target_arch = "x86_64"))]
     {
         let mut out = a;
@@ -105,7 +105,7 @@ pub fn shr_u64(a: u64, shift: u32) -> u64 {
 /// Rotate left for u64 by `rot` bits.
 #[inline]
 pub fn rol_u64(a: u64, rot: u32) -> u64 {
-    let r = rot & 0x3F;
+    let r = (rot & 0x3F) as u32;
     #[cfg(all(feature = "use_asm", target_arch = "x86_64"))]
     {
         let mut out = a;
@@ -128,7 +128,7 @@ pub fn rol_u64(a: u64, rot: u32) -> u64 {
 /// Rotate right for u64 by `rot` bits.
 #[inline]
 pub fn ror_u64(a: u64, rot: u32) -> u64 {
-    let r = rot & 0x3F;
+    let r = (rot & 0x3F) as u32;
     #[cfg(all(feature = "use_asm", target_arch = "x86_64"))]
     {
         let mut out = a;
@@ -152,34 +152,29 @@ pub fn ror_u64(a: u64, rot: u32) -> u64 {
 // 32-bit variants
 // ---------------------------
 
-/// Bitwise AND for u32.
 #[inline]
 pub fn and_u32(a: u32, b: u32) -> u32 {
     a & b
 }
 
-/// Bitwise OR for u32.
 #[inline]
 pub fn or_u32(a: u32, b: u32) -> u32 {
     a | b
 }
 
-/// Bitwise XOR for u32.
 #[inline]
 pub fn xor_u32(a: u32, b: u32) -> u32 {
     a ^ b
 }
 
-/// Bitwise NOT for u32.
 #[inline]
 pub fn not_u32(a: u32) -> u32 {
     !a
 }
 
-/// Logical left shift for u32 by `shift` bits (shift masked to 0..31).
 #[inline]
 pub fn shl_u32(a: u32, shift: u32) -> u32 {
-    let s = shift & 0x1F;
+    let s = (shift & 0x1F) as u32;
     #[cfg(all(feature = "use_asm", target_arch = "x86_64"))]
     {
         let mut out = a as u32;
@@ -199,10 +194,9 @@ pub fn shl_u32(a: u32, shift: u32) -> u32 {
     }
 }
 
-/// Logical right shift for u32 by `shift` bits (zero-fill).
 #[inline]
 pub fn shr_u32(a: u32, shift: u32) -> u32 {
-    let s = shift & 0x1F;
+    let s = (shift & 0x1F) as u32;
     #[cfg(all(feature = "use_asm", target_arch = "x86_64"))]
     {
         let mut out = a as u32;
@@ -222,10 +216,9 @@ pub fn shr_u32(a: u32, shift: u32) -> u32 {
     }
 }
 
-/// Rotate left for u32 by `rot` bits.
 #[inline]
 pub fn rol_u32(a: u32, rot: u32) -> u32 {
-    let r = rot & 0x1F;
+    let r = (rot & 0x1F) as u32;
     #[cfg(all(feature = "use_asm", target_arch = "x86_64"))]
     {
         let mut out = a as u32;
@@ -245,10 +238,9 @@ pub fn rol_u32(a: u32, rot: u32) -> u32 {
     }
 }
 
-/// Rotate right for u32 by `rot` bits.
 #[inline]
 pub fn ror_u32(a: u32, rot: u32) -> u32 {
-    let r = rot & 0x1F;
+    let r = (rot & 0x1F) as u32;
     #[cfg(all(feature = "use_asm", target_arch = "x86_64"))]
     {
         let mut out = a as u32;

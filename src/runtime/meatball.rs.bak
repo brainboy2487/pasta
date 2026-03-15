@@ -99,7 +99,6 @@ pub struct Meatball {
     pub executor: Executor,
     inbox: Receiver<Message>,
     outbox: Sender<Message>,
-#[allow(dead_code)]
     config: MeatballConfig,
 }
 
