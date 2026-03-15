@@ -1,0 +1,11 @@
+{
+  "Dir": {
+    "children": {
+      "test": {
+        "Dir": {
+          "children": {}
+        }
+      }
+    }
+  }
+}

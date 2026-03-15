@@ -1,0 +1,164 @@
+# ============================================
+#  BASIC ASSIGNMENT AND PRINT
+# ============================================
+
+x = 1
+y = 2
+z = x + y * 3
+print z          # expect 7
+
+# ============================================
+#  LISTS AND INDEXING
+# ============================================
+
+lst = [10, 20, 30]
+print lst[0]     # expect 10
+print lst[2]     # expect 30
+
+# ============================================
+#  SIMPLE FUNCTION AND DO CALL
+# ============================================
+
+DEF hello:
+    print "hello"
+END
+
+DO hello         # expect "hello"
+
+# ============================================
+#  FUNCTION RETURNED AS LAMBDA
+# ============================================
+
+DEF greet:
+    print "greet"
+END
+
+g = DO greet
+DO g             # expect "greet"
+
+# ============================================
+#  NESTED FUNCTIONS AND GLOBAL MUTATION
+# ============================================
+
+counter = 0
+
+DEF inc:
+    counter = counter + 1
+    print counter
+END
+
+DEF run_inc_three:
+    DO inc
+    DO inc
+    DO inc
+END
+
+DO run_inc_three   # expect 1,2,3
+
+# ============================================
+#  WHILE LOOP BASIC
+# ============================================
+
+i = 0
+DEF loop1:
+    WHILE i < 3:
+        print i
+        i = i + 1
+END
+
+DO loop1           # expect 0,1,2
+
+# ============================================
+#  NESTED WHILE LOOPS
+# ============================================
+
+a = 0
+DEF nested:
+    WHILE a < 2:
+        print a
+        b = 0
+        WHILE b < 2:
+            print b
+            b = b + 1
+        a = a + 1
+END
+
+DO nested          # expect 0,0,1,1,0,1
+
+# ============================================
+#  PRINT-WHILE ONE-LINER
+# ============================================
+
+j = 0
+print j WHILE j < 3   # expect 0,1,2
+
+# ============================================
+#  DO WITH MULTIPLE TARGETS, ALIAS, REPEATS
+# ============================================
+
+DEF A:
+    print "A"
+END
+
+DEF B:
+    print "B"
+END
+
+DEF C:
+    print "C"
+END
+
+DO A, B, C AS name FOR 2, 1, 3:
+    print name
+END
+# expect:
+# A,A,B,C,C,C
+
+# ============================================
+#  DO-WHILE FORM
+# ============================================
+
+k = 0
+DO WHILE k < 3:
+    print k
+    k = k + 1
+END
+# expect 0,1,2
+
+# ============================================
+#  WHILE INSIDE A LAMBDA RETURNED BY DO
+# ============================================
+
+m = 0
+DEF make_loop:
+    WHILE m < 4:
+        print m
+        m = m + 1
+END
+
+L = DO make_loop
+DO L               # expect 0,1,2,3
+
+# ============================================
+#  COMPLEX EXPRESSION PRECEDENCE
+# ============================================
+
+print 1 + 2 * 3       # expect 7
+print (1 + 2) * 3     # expect 9
+
+# ============================================
+#  EMPTY BODY WHILE (should not crash)
+# ============================================
+
+t = 0
+DEF empty:
+    WHILE t < 2:
+    END
+END
+
+DO empty             # expect no output, no crash
+
+# ============================================
+#  END OF TEST SUITE
+# ============================================
+print "TEST_SUITE_DONE"

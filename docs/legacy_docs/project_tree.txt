@@ -1,0 +1,242 @@
+pasta/
+├── .fix_backups_1772673904/
+│   └── home/
+│       └── travis/
+│           └── pasta/
+│               └── src/
+│                   └── interpreter/
+│                       ├── shell_os/
+│                       │   ├── commands/
+│                       │   │   └── mod.rs
+│                       │   ├── vfs/
+│                       │   │   ├── fs.rs
+│                       │   │   ├── fs.rs.txt
+│                       │   │   ├── path.rs
+│                       │   │   └── path.rs.txt
+│                       │   └── mod.rs
+│                       ├── executor.rs
+│                       └── repl.rs
+├── .repo_cleanup_backup_20260305_021922/
+│   ├── logs/
+│   │   └── error_log.txt
+│   ├── meatballs/
+│   │   ├── api/
+│   │   │   ├── meatball_api.rs.bak
+│   │   │   └── mod.rs.bak
+│   │   └── kernel/
+│   │       └── linux-6.19.5.tar.xz
+│   └── src/
+│       └── interpreter/
+│           ├── shell_os/
+│           │   ├── commands/
+│           │   │   └── mod.rs.bak
+│           │   ├── vfs/
+│           │   │   ├── fs.rs.bak
+│           │   │   ├── fs.rs.txt.bak
+│           │   │   ├── path.rs.bak
+│           │   │   └── path.rs.txt.bak
+│           │   ├── main.rs.bak
+│           │   └── mod.rs.bak
+│           ├── executor.rs.bak
+│           └── repl.rs.bak
+├── .repo_fix_bak_1773190554/
+│   ├── environment.rs.bak
+│   ├── errors.rs.bak
+│   ├── executor.rs.bak
+│   ├── executor.rs.is_truthy.bak
+│   ├── operands.rs.is_truthy.bak
+│   └── parser.rs.bak
+├── .typing_backup_1773039913/
+│   ├── bool.rs
+│   ├── float.rs
+│   ├── int.rs
+│   ├── mod.rs
+│   ├── operands.rs
+│   ├── string.rs
+│   ├── tensor_type.rs
+│   └── types.rs
+├── .typing_backup_1773040542/
+│   ├── bool.rs
+│   ├── float.rs
+│   ├── int.rs
+│   ├── mod.rs
+│   ├── operands.rs
+│   ├── string.rs
+│   ├── tensor_type.rs
+│   └── types.rs
+├── .typing_backup_1773040836/
+│   ├── bool.rs
+│   ├── float.rs
+│   ├── int.rs
+│   ├── mod.rs
+│   ├── operands.rs
+│   ├── README.txt
+│   ├── string.rs
+│   ├── tensor_type.rs
+│   └── types.rs
+├── DiskImages/
+│   └── fs.img
+├── docs/
+│   ├── meatball_readme.txt
+│   ├── README1.txt
+│   ├── README2.txt
+│   ├── shell_readme.txt
+│   └── typing_readme.txt
+├── examples/
+├── src/
+│   ├── ai/
+│   │   ├── autograd.rs
+│   │   ├── datasets.rs
+│   │   ├── generate.rs
+│   │   ├── learn.rs
+│   │   ├── mod.rs
+│   │   ├── models.rs
+│   │   ├── tensor.rs
+│   │   └── tokenizer.rs
+│   ├── bin/
+│   │   └── pasta.rs
+│   ├── interpreter/
+│   │   ├── shell_os/
+│   │   │   ├── cli/
+│   │   │   │   ├── cli.rs
+│   │   │   │   └── mod.rs
+│   │   │   ├── commands/
+│   │   │   │   ├── fs_commands.rs
+│   │   │   │   └── mod.rs
+│   │   │   ├── vfs/
+│   │   │   │   ├── fs.rs
+│   │   │   │   ├── mod.rs
+│   │   │   │   ├── node.rs
+│   │   │   │   └── path.rs
+│   │   │   ├── main.rs
+│   │   │   └── mod.rs
+│   │   ├── ai_network.rs
+│   │   ├── environment.rs
+│   │   ├── errors.rs
+│   │   ├── executor.rs
+│   │   ├── mod.rs
+│   │   ├── repl.rs
+│   │   └── shell.rs
+│   ├── kernel/
+│   ├── lexer/
+│   │   ├── alias.rs
+│   │   ├── lexer.rs
+│   │   ├── mod.rs
+│   │   ├── tokens.rs
+│   │   └── unicode.rs
+│   ├── meatballs/
+│   │   ├── agent/
+│   │   │   ├── agent.rs
+│   │   │   └── Cargo.toml
+│   │   ├── api/
+│   │   │   ├── meatball_api.rs
+│   │   │   └── mod.rs
+│   │   ├── backends/
+│   │   ├── cli/
+│   │   │   └── cli.rs
+│   │   ├── docs/
+│   │   ├── kernel/
+│   │   ├── phase0/
+│   │   │   ├── mra_schema.json
+│   │   │   └── objective.md.txt
+│   │   ├── runtime/
+│   │   │   └── runtime.rs
+│   │   └── tests/
+│   ├── parser/
+│   │   ├── ast.rs
+│   │   ├── grammar.rs
+│   │   ├── mod.rs
+│   │   └── parser.rs
+│   ├── pasta_async/
+│   │   ├── src/
+│   │   │   ├── api.rs
+│   │   │   ├── io.rs
+│   │   │   ├── lib.rs
+│   │   │   ├── runtime.rs
+│   │   │   ├── serialize.rs
+│   │   │   ├── sync.rs
+│   │   │   └── testing.rs
+│   │   └── Cargo.toml
+│   ├── runtime/
+│   │   ├── asm.rs
+│   │   ├── bitwise.rs
+│   │   ├── bitwise.rs.txt
+│   │   ├── device_ls.json
+│   │   ├── devices.rs
+│   │   ├── devices.rs.txt
+│   │   ├── meatball.rs
+│   │   ├── meatball.rs.txt
+│   │   ├── mod.rs
+│   │   ├── mod.rs.txt
+│   │   ├── rng.rs
+│   │   ├── rng.rs.txt
+│   │   ├── scheduler.rs
+│   │   ├── scheduler.rs.txt
+│   │   ├── strainer.rs
+│   │   ├── threading.rs
+│   │   └── threading.rs.txt
+│   ├── saucey/
+│   │   └── saucey.rs
+│   ├── semantics/
+│   │   ├── constraints.rs
+│   │   ├── mod.rs
+│   │   ├── priority.rs
+│   │   └── resolver.rs
+│   ├── stdlib/
+│   │   ├── debug.ph
+│   │   ├── device.ph
+│   │   ├── ffi.ph
+│   │   ├── fs.ph
+│   │   ├── gc.ph
+│   │   ├── lib.rs
+│   │   ├── math.ph
+│   │   ├── memory.ph
+│   │   ├── net.ph
+│   │   ├── pasta_G.ph
+│   │   ├── rand.ph
+│   │   ├── stdio.ph
+│   │   ├── stdlib.pa
+│   │   ├── sys.ph
+│   │   ├── tensor.ph
+│   │   ├── thread.ph
+│   │   └── time.ph
+│   ├── typing/
+│   │   ├── bool.rs
+│   │   ├── bool_coerce.rs
+│   │   ├── float.rs
+│   │   ├── int.rs
+│   │   ├── lib.rs
+│   │   ├── mod.rs
+│   │   ├── operands.rs
+│   │   ├── string.rs
+│   │   ├── string_coerce.rs
+│   │   ├── tensor_type.rs
+│   │   ├── types.rs
+│   │   └── util.rs
+│   ├── utils/
+│   │   ├── errors.rs
+│   │   ├── helpers.rs
+│   │   ├── logging.rs
+│   │   └── mod.rs
+│   └── .typing_scan_report.txt
+├── tests/
+│   ├── 01_arithmetic_bindings.ps
+│   ├── 01_basic_print.ps
+│   ├── 01_string_probe.ps
+│   ├── 04_basic_while.ps
+│   ├── 05_nested_while.ps
+│   ├── 06_functions_and_lambdas.ps
+│   ├── 07_do_multi_alias_repeat.ps
+│   ├── 08_test_RET.ps
+│   ├── 09_big_test.ps
+│   ├── 10_small_test_30.ps
+│   ├── rewrite_test.ps
+│   ├── test_advanced.ps
+│   └── test_suite.ps
+├── tools/
+│   └── output_dir_tree.py
+├── .repo_cleanup_log.txt
+├── .typing_scan_report.txt
+├── Cargo.lock
+├── Cargo.toml
+└── output_dir_tree.py

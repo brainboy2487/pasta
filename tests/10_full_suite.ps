@@ -1,0 +1,979 @@
+# ================================================================
+# 10_full_suite.ps — PASTA Full Feature Test Suite
+# 50 sections covering all language features.
+# Expected outputs marked with  # =>
+# ================================================================
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 1: Literals and basic print
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 1: Literals ==="
+
+PRINT 42                         # => 42
+PRINT 3.14                       # => 3.14
+PRINT true                       # => true
+PRINT false                      # => false
+PRINT "pasta"                    # => pasta
+PRINT 0                          # => 0
+PRINT -1                         # => -1
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 2: Arithmetic operators
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 2: Arithmetic ==="
+
+PRINT 2 + 3                      # => 5
+PRINT 10 - 4                     # => 6
+PRINT 3 * 7                      # => 21
+PRINT 15 / 4                     # => 3.75
+PRINT 17 % 5                     # => 2
+PRINT 2 ^ 8                      # => 256
+PRINT 1 + 2 * 3                  # => 7
+PRINT (1 + 2) * 3                # => 9
+PRINT 100 / 10 / 2               # => 5
+PRINT 2 ^ 3 ^ 2                  # => 512
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 3: Variable assignment and rebinding
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 3: Variables ==="
+
+a = 5
+b = 10
+PRINT a                          # => 5
+PRINT b                          # => 10
+PRINT a + b                      # => 15
+a = a * 2
+PRINT a                          # => 10
+b = b - 3
+PRINT b                          # => 7
+PRINT a + b                      # => 17
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 4: String operations
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 4: Strings ==="
+
+s = "hello"
+PRINT len(s)                     # => 5
+PRINT upper(s)                   # => HELLO
+PRINT lower("WORLD")             # => world
+PRINT concat(s, " world")        # => hello world
+PRINT s[0]                       # => h
+PRINT s[-1]                      # => o
+PRINT trim("  hi  ")             # => hi
+PRINT starts_with("pasta", "pas") # => true
+PRINT ends_with("pasta", "sta")  # => true
+PRINT replace("hello", "l", "r") # => herro
+parts = split("a,b,c", ",")
+PRINT list_first(parts)          # => a
+PRINT list_last(parts)           # => c
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 5: Boolean logic
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 5: Boolean Logic ==="
+
+PRINT true && true               # => true
+PRINT true && false              # => false
+PRINT false || true              # => true
+PRINT false || false             # => false
+PRINT NOT true                   # => false
+PRINT NOT false                  # => true
+PRINT (1 < 2) && (3 < 4)        # => true
+PRINT (1 > 2) || (3 < 4)        # => true
+PRINT NOT (1 == 2)               # => true
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 6: Comparison operators
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 6: Comparisons ==="
+
+PRINT 1 == 1                     # => true
+PRINT 1 == 2                     # => false
+PRINT 1 != 2                     # => true
+PRINT 5 > 3                      # => true
+PRINT 5 < 3                      # => false
+PRINT 5 >= 5                     # => true
+PRINT 5 <= 4                     # => false
+PRINT "abc" == "abc"             # => true
+PRINT "abc" != "def"             # => true
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 7: IF / OTHERWISE
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 7: IF/OTHERWISE ==="
+
+x = 10
+IF x > 5:
+    PRINT "big"
+OTHERWISE:
+    PRINT "small"
+END
+# => big
+
+IF x == 10:
+    PRINT "ten"
+END
+# => ten
+
+IF x < 0:
+    PRINT "negative"
+OTHERWISE:
+    IF x == 0:
+        PRINT "zero"
+    OTHERWISE:
+        PRINT "positive"
+    END
+END
+# => positive
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 8: WHILE loops
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 8: WHILE ==="
+
+i = 0
+DO WHILE i < 5:
+    PRINT i
+    i = i + 1
+END
+# => 0 1 2 3 4
+
+total = 0
+n = 1
+WHILE n <= 10:
+    total = total + n
+    n = n + 1
+END
+PRINT total                      # => 55
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 9: Nested WHILE
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 9: Nested WHILE ==="
+
+outer = 1
+DO WHILE outer <= 3:
+    inner = 1
+    DO WHILE inner <= 3:
+        IF outer == inner:
+            PRINT outer
+        END
+        inner = inner + 1
+    END
+    outer = outer + 1
+END
+# => 1 2 3
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 10: FOR IN — list iteration
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 10: FOR IN list ==="
+
+FOR x IN [10, 20, 30, 40, 50]:
+    PRINT x
+END
+# => 10 20 30 40 50
+
+sum = 0
+FOR v IN [1, 2, 3, 4, 5]:
+    sum = sum + v
+END
+PRINT sum                        # => 15
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 11: FOR IN — range()
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 11: FOR IN range ==="
+
+FOR i IN range(5):
+    PRINT i
+END
+# => 0 1 2 3 4
+
+FOR i IN range(3, 8):
+    PRINT i
+END
+# => 3 4 5 6 7
+
+FOR i IN range(0, 10, 3):
+    PRINT i
+END
+# => 0 3 6 9
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 12: FOR IN — string iteration
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 12: FOR IN string ==="
+
+FOR ch IN "hello":
+    PRINT ch
+END
+# => h e l l o
+
+count = 0
+FOR ch IN "banana":
+    IF ch == "a":
+        count = count + 1
+    END
+END
+PRINT count                      # => 3
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 13: FOR IN — nested
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 13: FOR nested ==="
+
+result = 0
+FOR i IN range(1, 4):
+    FOR j IN range(1, 4):
+        result = result + i * j
+    END
+END
+PRINT result                     # => 36  (1+2+3)*(1+2+3) = 36
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 14: Lists — construction and indexing
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 14: Lists ==="
+
+lst = [5, 10, 15, 20, 25]
+PRINT lst[0]                     # => 5
+PRINT lst[2]                     # => 15
+PRINT lst[4]                     # => 25
+PRINT lst[-1]                    # => 25
+PRINT lst[-2]                    # => 20
+PRINT len(lst)                   # => 5
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 15: List builtins
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 15: List builtins ==="
+
+data = [3, 1, 4, 1, 5, 9, 2, 6]
+PRINT list_sum(data)             # => 31
+PRINT list_average(data)         # => 3.875
+PRINT list_first(data)           # => 3
+PRINT list_last(data)            # => 6
+PRINT list_reverse(data)         # => [6, 2, 9, 5, 1, 4, 1, 3]
+PRINT list_take(data, 3)         # => [3, 1, 4]
+PRINT list_drop(data, 5)         # => [9, 2, 6]
+PRINT list_slice(data, 2, 5)     # => [4, 1, 5]
+PRINT list_concat([1, 2], [3, 4]) # => [1, 2, 3, 4]
+PRINT list_flatten([[1, 2], [3, [4, 5]]]) # => [1, 2, 3, 4, 5]
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 16: Math builtins
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 16: Math ==="
+
+PRINT abs(-42)                   # => 42
+PRINT abs(7)                     # => 7
+PRINT sqrt(144)                  # => 12
+PRINT pow(3, 4)                  # => 81
+PRINT floor(3.9)                 # => 3
+PRINT ceil(3.1)                  # => 4
+PRINT round(2.5)                 # => 3
+PRINT min(7, 3)                  # => 3
+PRINT max(7, 3)                  # => 7
+PRINT clamp(15, 0, 10)           # => 10
+PRINT clamp(-5, 0, 10)           # => 0
+PRINT sign(-99)                  # => -1
+PRINT sign(0)                    # => 0
+PRINT sign(42)                   # => 1
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 17: Type conversion
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 17: Type conversion ==="
+
+PRINT int(3.9)                   # => 3
+PRINT int(-2.7)                  # => -2
+PRINT float("3.14")              # => 3.14
+PRINT num("100")                 # => 100
+PRINT str(42)                    # => 42
+PRINT bool(1)                    # => true
+PRINT bool(0)                    # => false
+PRINT type(42)                   # => number
+PRINT type("hi")                 # => string
+PRINT type(true)                 # => bool
+PRINT type([1, 2])               # => list
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 18: DEF — basic functions
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 18: DEF basic ==="
+
+DEF greet:
+    PRINT "hello from greet"
+END
+DO greet
+# => hello from greet
+
+DEF add(a, b):
+    RET.NOW(): a + b
+END
+PRINT add(3, 4)                  # => 7
+PRINT add(10, 25)                # => 35
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 19: DEF — local scope isolation
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 19: Scope isolation ==="
+
+x = 100
+
+DEF scoped_fn:
+    x = 999
+    PRINT x
+END
+DO scoped_fn
+# => 999
+PRINT x                          # => 100 (global unchanged)
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 20: DEF — global mutation
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 20: Global mutation ==="
+
+counter = 0
+DEF tick:
+    counter = counter + 1
+END
+DO tick
+DO tick
+DO tick
+PRINT counter                    # => 3
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 21: RET.NOW — basic returns
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 21: RET.NOW basic ==="
+
+DEF double(n):
+    RET.NOW(): n * 2
+END
+PRINT double(5)                  # => 10
+PRINT double(21)                 # => 42
+
+DEF negate(n):
+    RET.NOW(): 0 - n
+END
+PRINT negate(7)                  # => -7
+PRINT negate(-3)                 # => 3
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 22: RET.NOW — early return with IF
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 22: RET.NOW early exit ==="
+
+DEF abs_val(n):
+    IF n < 0:
+        RET.NOW(): 0 - n
+    END
+    RET.NOW(): n
+END
+PRINT abs_val(-5)                # => 5
+PRINT abs_val(8)                 # => 8
+PRINT abs_val(0)                 # => 0
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 23: RET.NOW — recursion
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 23: Recursion ==="
+
+DEF fact(n):
+    IF n <= 1:
+        RET.NOW(): 1
+    END
+    RET.NOW(): n * fact(n - 1)
+END
+PRINT fact(1)                    # => 1
+PRINT fact(5)                    # => 120
+PRINT fact(10)                   # => 3628800
+
+DEF fib(n):
+    IF n <= 1:
+        RET.NOW(): n
+    END
+    RET.NOW(): fib(n - 1) + fib(n - 2)
+END
+PRINT fib(0)                     # => 0
+PRINT fib(7)                     # => 13
+PRINT fib(10)                    # => 55
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 24: RET.NOW — inside WHILE (accumulator)
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 24: RET.NOW + WHILE ==="
+
+DEF sum_to(n):
+    i = 1
+    acc = 0
+    WHILE i <= n:
+        acc = acc + i
+        i = i + 1
+    END
+    RET.NOW(): acc
+END
+PRINT sum_to(5)                  # => 15
+PRINT sum_to(10)                 # => 55
+PRINT sum_to(100)                # => 5050
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 25: RET.NOW — inside FOR IN
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 25: RET.NOW + FOR ==="
+
+DEF list_sum_fn(lst):
+    total = 0
+    FOR v IN lst:
+        total = total + v
+    END
+    RET.NOW(): total
+END
+PRINT list_sum_fn([1, 2, 3, 4, 5])   # => 15
+PRINT list_sum_fn([10, 20, 30])       # => 60
+
+DEF count_even(lst):
+    c = 0
+    FOR v IN lst:
+        IF v % 2 == 0:
+            c = c + 1
+        END
+    END
+    RET.NOW(): c
+END
+PRINT count_even([1, 2, 3, 4, 5, 6]) # => 3
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 26: RET.NOW — cross-function calls
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 26: Cross-function ==="
+
+DEF square(n):
+    RET.NOW(): n * n
+END
+DEF hyp(a, b):
+    RET.NOW(): sqrt(square(a) + square(b))
+END
+PRINT hyp(3, 4)                  # => 5
+PRINT hyp(5, 12)                 # => 13
+
+DEF clamp_val(x, lo, hi):
+    IF x < lo: RET.NOW(): lo END
+    IF x > hi: RET.NOW(): hi END
+    RET.NOW(): x
+END
+PRINT clamp_val(5, 1, 10)        # => 5
+PRINT clamp_val(-3, 1, 10)       # => 1
+PRINT clamp_val(15, 1, 10)       # => 10
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 27: Lambdas
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 27: Lambdas ==="
+
+triple = lambda x: x * 3
+PRINT triple(4)                  # => 12
+PRINT triple(10)                 # => 30
+
+add_ten = lambda n: n + 10
+PRINT add_ten(5)                 # => 15
+PRINT add_ten(add_ten(0))        # => 20
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 28: DO multi-target and repeat
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 28: DO multi-target ==="
+
+DEF ping:
+    PRINT "ping"
+END
+DEF pong:
+    PRINT "pong"
+END
+DO ping, pong
+# => ping pong
+
+DO ping FOR 3
+# => ping ping ping
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 29: Nested functions
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 29: Nested functions ==="
+
+DEF outer_fn(x):
+    DEF inner_fn(y):
+        RET.NOW(): y * y
+    END
+    RET.NOW(): inner_fn(x) + inner_fn(x + 1)
+END
+PRINT outer_fn(3)                # => 9 + 16 = 25
+PRINT outer_fn(4)                # => 16 + 25 = 41
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 30: FOR IN + accumulator patterns
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 30: FOR accumulator ==="
+
+DEF max_in(lst):
+    best = lst[0]
+    FOR v IN lst:
+        IF v > best:
+            best = v
+        END
+    END
+    RET.NOW(): best
+END
+PRINT max_in([3, 1, 4, 1, 5, 9, 2, 6])  # => 9
+PRINT max_in([100, 50, 200, 75])          # => 200
+
+DEF min_in(lst):
+    best = lst[0]
+    FOR v IN lst:
+        IF v < best:
+            best = v
+        END
+    END
+    RET.NOW(): best
+END
+PRINT min_in([3, 1, 4, 1, 5, 9])         # => 1
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 31: String + FOR combo
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 31: String + FOR ==="
+
+DEF count_char(s, ch):
+    c = 0
+    FOR letter IN s:
+        IF letter == ch:
+            c = c + 1
+        END
+    END
+    RET.NOW(): c
+END
+PRINT count_char("mississippi", "s")  # => 4
+PRINT count_char("mississippi", "i")  # => 4
+PRINT count_char("hello", "l")        # => 2
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 32: range() standalone
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 32: range() ==="
+
+PRINT range(4)                   # => [0, 1, 2, 3]
+PRINT range(2, 6)                # => [2, 3, 4, 5]
+PRINT range(0, 10, 2)            # => [0, 2, 4, 6, 8]
+PRINT range(10, 0, -3)           # => [10, 7, 4, 1]
+PRINT len(range(100))            # => 100
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 33: Modulo and divisibility
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 33: Modulo ==="
+
+DEF is_even(n):
+    RET.NOW(): n % 2 == 0
+END
+DEF is_odd(n):
+    RET.NOW(): n % 2 != 0
+END
+PRINT is_even(4)                 # => true
+PRINT is_even(7)                 # => false
+PRINT is_odd(9)                  # => true
+PRINT is_odd(6)                  # => false
+
+evens = 0
+FOR i IN range(1, 21):
+    IF is_even(i):
+        evens = evens + 1
+    END
+END
+PRINT evens                      # => 10
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 34: Recursive list building
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 34: Recursive + range ==="
+
+DEF power_of_two(n):
+    IF n == 0:
+        RET.NOW(): 1
+    END
+    RET.NOW(): 2 * power_of_two(n - 1)
+END
+FOR i IN range(8):
+    PRINT power_of_two(i)
+END
+# => 1 2 4 8 16 32 64 128
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 35: WHILE with break-like pattern via RET.NOW
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 35: WHILE + RET.NOW search ==="
+
+DEF find_first(lst, target):
+    i = 0
+    WHILE i < len(lst):
+        IF lst[i] == target:
+            RET.NOW(): i
+        END
+        i = i + 1
+    END
+    RET.NOW(): -1
+END
+PRINT find_first([10, 20, 30, 40], 30)  # => 2
+PRINT find_first([10, 20, 30, 40], 99)  # => -1
+PRINT find_first([5, 5, 5], 5)          # => 0
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 36: Collatz sequence
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 36: Collatz ==="
+
+DEF collatz(n):
+    steps = 0
+    WHILE n != 1:
+        IF n % 2 == 0:
+            n = n / 2
+        OTHERWISE:
+            n = n * 3 + 1
+        END
+        steps = steps + 1
+    END
+    RET.NOW(): steps
+END
+PRINT collatz(6)                 # => 8
+PRINT collatz(27)                # => 111
+PRINT collatz(1)                 # => 0
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 37: Fibonacci iterative
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 37: Fibonacci iterative ==="
+
+DEF fib_iter(n):
+    IF n <= 1:
+        RET.NOW(): n
+    END
+    a = 0
+    b = 1
+    i = 2
+    WHILE i <= n:
+        temp = a + b
+        a = b
+        b = temp
+        i = i + 1
+    END
+    RET.NOW(): b
+END
+PRINT fib_iter(0)                # => 0
+PRINT fib_iter(1)                # => 1
+PRINT fib_iter(10)               # => 55
+PRINT fib_iter(20)               # => 6765
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 38: GCD and LCM
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 38: GCD/LCM ==="
+
+DEF gcd(a, b):
+    WHILE b != 0:
+        temp = b
+        b = a % b
+        a = temp
+    END
+    RET.NOW(): a
+END
+DEF lcm(a, b):
+    RET.NOW(): a * b / gcd(a, b)
+END
+PRINT gcd(48, 18)                # => 6
+PRINT gcd(100, 75)               # => 25
+PRINT lcm(4, 6)                  # => 12
+PRINT lcm(12, 18)                # => 36
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 39: Exponentiation via recursion
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 39: Exponentiation ==="
+
+DEF exp_rec(base, exp):
+    IF exp == 0:
+        RET.NOW(): 1
+    END
+    RET.NOW(): base * exp_rec(base, exp - 1)
+END
+PRINT exp_rec(2, 10)             # => 1024
+PRINT exp_rec(3, 5)              # => 243
+PRINT exp_rec(10, 3)             # => 1000
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 40: String reversal via FOR
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 40: String reversal ==="
+
+DEF reverse_str(s):
+    result = ""
+    i = len(s) - 1
+    WHILE i >= 0:
+        result = concat(result, s[i])
+        i = i - 1
+    END
+    RET.NOW(): result
+END
+PRINT reverse_str("hello")       # => olleh
+PRINT reverse_str("pasta")       # => atsap
+PRINT reverse_str("abcd")        # => dcba
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 41: Palindrome check
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 41: Palindrome ==="
+
+DEF is_palindrome(s):
+    RET.NOW(): s == reverse_str(s)
+END
+PRINT is_palindrome("racecar")   # => true
+PRINT is_palindrome("hello")     # => false
+PRINT is_palindrome("madam")     # => true
+PRINT is_palindrome("pasta")     # => false
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 42: List max/min via range indexing
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 42: Index-based iteration ==="
+
+DEF list_contains(lst, val):
+    FOR item IN lst:
+        IF item == val:
+            RET.NOW(): true
+        END
+    END
+    RET.NOW(): false
+END
+PRINT list_contains([1, 2, 3, 4], 3)   # => true
+PRINT list_contains([1, 2, 3, 4], 9)   # => false
+PRINT list_contains(["a", "b", "c"], "b") # => true
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 43: Multiplication table
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 43: Multiplication table ==="
+
+row_sums = 0
+FOR i IN range(1, 4):
+    row_total = 0
+    FOR j IN range(1, 4):
+        row_total = row_total + i * j
+    END
+    row_sums = row_sums + row_total
+END
+PRINT row_sums                   # => 36
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 44: FizzBuzz
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 44: FizzBuzz (1-15) ==="
+
+FOR i IN range(1, 16):
+    IF i % 15 == 0:
+        PRINT "FizzBuzz"
+    OTHERWISE:
+        IF i % 3 == 0:
+            PRINT "Fizz"
+        OTHERWISE:
+            IF i % 5 == 0:
+                PRINT "Buzz"
+            OTHERWISE:
+                PRINT i
+            END
+        END
+    END
+END
+# => 1 2 Fizz 4 Buzz Fizz 7 8 Fizz Buzz 11 Fizz 13 14 FizzBuzz
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 45: Prime sieve (counting primes)
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 45: Primes ==="
+
+DEF is_prime(n):
+    IF n < 2:
+        RET.NOW(): false
+    END
+    i = 2
+    WHILE i * i <= n:
+        IF n % i == 0:
+            RET.NOW(): false
+        END
+        i = i + 1
+    END
+    RET.NOW(): true
+END
+
+prime_count = 0
+FOR n IN range(2, 50):
+    IF is_prime(n):
+        prime_count = prime_count + 1
+    END
+END
+PRINT prime_count                # => 15  (primes < 50)
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 46: Higher-order patterns (functions as values)
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 46: Functions as values ==="
+
+DEF apply_twice(f, x):
+    RET.NOW(): f(f(x))
+END
+
+DEF inc(n):
+    RET.NOW(): n + 1
+END
+PRINT apply_twice(inc, 5)        # => 7
+PRINT apply_twice(double, 3)     # => 12  (double defined in section 21)
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 47: RET.LATE — deferred returns
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 47: RET.LATE ==="
+
+DEF deferred(x):
+    snap = x * 10
+    RET.LATE(0): snap
+    PRINT "body ran after RET.LATE"
+END
+h = deferred(7)
+PRINT type(h)                    # => pending
+PRINT resolve(h)                 # => 70
+# => body ran after RET.LATE
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 48: ATTEMPT — error handling
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 48: ATTEMPT ==="
+
+ATTEMPT(err):
+    x = 1 + 1
+    PRINT x
+ELSE:
+    PRINT "error caught"
+END
+# => 2
+
+result = 0
+ATTEMPT(e):
+    result = 42
+ELSE:
+    result = -1
+END
+PRINT result                     # => 42
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 49: Priority graph
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 49: Priority ==="
+
+critical OVER normal
+normal OVER background
+background OVER idle
+PRINT "priority graph set"       # => priority graph set
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 50: Full pipeline — all features combined
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 50: Full pipeline ==="
+
+DEF digit_sum(n):
+    s = str(int(abs(n)))
+    total = 0
+    FOR ch IN s:
+        total = total + num(ch)
+    END
+    RET.NOW(): total
+END
+PRINT digit_sum(123)             # => 6
+PRINT digit_sum(9999)            # => 36
+PRINT digit_sum(0)               # => 0
+
+DEF nth_prime(n):
+    count = 0
+    candidate = 1
+    WHILE count < n:
+        candidate = candidate + 1
+        IF is_prime(candidate):
+            count = count + 1
+        END
+    END
+    RET.NOW(): candidate
+END
+PRINT nth_prime(1)               # => 2
+PRINT nth_prime(5)               # => 11
+PRINT nth_prime(10)              # => 29
+
+# Sum of squares of primes under 20
+total = 0
+FOR n IN range(2, 20):
+    IF is_prime(n):
+        total = total + square(n)
+    END
+END
+PRINT total                      # => 4+9+25+49+121+169+289 = 666 (2²+3²+5²+7²+11²+13²+17²)
+
+PRINT "=== ALL 50 TESTS COMPLETE ==="

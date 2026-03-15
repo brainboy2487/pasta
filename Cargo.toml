@@ -1,13 +1,17 @@
 [package]
 name = "pasta"
-version = "0.1.0"
+version = "1.0.3"
 edition = "2021"
-authors = ["Your Name <you@example.com>"]
+authors = ["Travis Garrison <brainboy2487@gmail.com>"]
 description = "PASTA language core runtime and tooling (Rust)"
 license = "MIT"
 repository = ""
 homepage = ""
 documentation = ""
+
+[lib]
+# Ensure the library crate is built from src/lib.rs and available to binaries.
+path = "src/lib.rs"
 
 [dependencies]
 regex = "1"
@@ -15,11 +19,17 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 log = "0.4"
 anyhow = "1.0"
-
-# Optional image crate for headless canvas -> PNG export.
-# Enable with: cargo build --features image
-image = { version = "0.24", optional = true }
+libc = "0.2"
 chrono = "0.4.44"
+once_cell = "1.18"
+image = { version = "0.24", optional = true }
+
+# New dependencies useful for the module loader
+walkdir = "2.3"          # directory traversal for fuzzy search
+strsim = "0.10"          # string similarity (Levenshtein / Jaro-Winkler)
+notify = { version = "6.1", optional = true }  # file change notifications (reload_on_change)
+path-clean = "0.1"       # small helper for path normalization (optional)
+anymap = "0.12"          # flexible map for module metadata (optional)
 
 [features]
 # Keep default minimal. Enable optional modules explicitly when needed.
@@ -27,10 +37,30 @@ default = []
 scheduler = []
 use_asm = []
 
-# Feature to enable image-backed canvas saving.
-# Use the dep: form for compatibility with older/newer Cargo versions.
-image = ["dep:image"]
+# Feature to enable image-backed canvas saving (maps to the optional `image` dep).
+canvas_png = ["image"]
+
+# Feature to enable module loader dev helpers (file watching).
+modloader_dev = ["notify"]
+
+# Typing feature flag (marker).
+typing = []
 
 [dev-dependencies]
 pretty_assertions = "1.3"
 criterion = "0.4"
+
+# Test helpers for module loader unit/integration tests
+tempfile = "3.6"
+assert_cmd = "2.0"
+
+[workspace]
+members = [
+  "src/pasta_async"
+]
+
+# Explicit binary target so its crate name does not collide with the library crate.
+# The binary source file remains src/bin/pasta.rs but the binary crate name is pasta-cli.
+[[bin]]
+name = "pasta"
+path = "src/bin/pasta.rs"

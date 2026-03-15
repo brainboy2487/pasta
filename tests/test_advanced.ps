@@ -1,0 +1,266 @@
+# =============================================================================
+# PASTA advanced test suite
+# Run: ./target/release/pasta tests/test_advanced.ps
+# Each section prints a label then expected values.
+# =============================================================================
+
+# ── SECTION 1: Math builtins (new) ───────────────────────────────────────────
+PRINT "--- MATH ---"
+
+PRINT abs(-7)           # 7
+PRINT abs(3)            # 3
+PRINT sqrt(9)           # 3
+PRINT pow(2, 10)        # 1024
+PRINT floor(3.9)        # 3
+PRINT ceil(3.1)         # 4
+PRINT round(2.5)        # 3
+PRINT min(10, 3)        # 3
+PRINT max(10, 3)        # 10
+PRINT clamp(15, 0, 10)  # 10
+PRINT clamp(-5, 0, 10)  # 0
+PRINT sign(-99)         # -1
+PRINT sign(0)           # 0
+PRINT sign(42)          # 1
+
+# ── SECTION 2: Conversion builtins (new) ─────────────────────────────────────
+PRINT "--- CONVERSION ---"
+
+PRINT int(3.9)          # 3
+PRINT int(-2.7)         # -2
+PRINT num("42")         # 42
+PRINT float("3.14")     # 3.14
+PRINT bool(1)           # true
+PRINT bool(0)           # false
+PRINT str(100)          # 100
+
+# ── SECTION 3: len alias (new) ───────────────────────────────────────────────
+PRINT "--- LEN ---"
+
+s = "hello"
+lst = [10, 20, 30, 40]
+PRINT len(s)            # 5
+PRINT len(lst)          # 4
+PRINT length(s)         # 5  (original still works)
+
+# ── SECTION 4: concat alias (new) ────────────────────────────────────────────
+PRINT "--- CONCAT ---"
+
+a = "foo"
+b = "bar"
+PRINT concat(a, b)          # foobar
+PRINT string_concat(a, b)   # foobar  (original still works)
+
+# ── SECTION 5: List indexing ──────────────────────────────────────────────────
+PRINT "--- INDEX ---"
+
+nums = [100, 200, 300, 400, 500]
+PRINT nums[0]           # 100
+PRINT nums[2]           # 300
+PRINT nums[4]           # 500
+PRINT nums[-1]          # 500  negative index
+PRINT nums[-2]          # 400
+
+word = "pasta"
+PRINT word[0]           # p
+PRINT word[4]           # a
+PRINT word[-1]          # a
+
+# ── SECTION 6: IF / OTHERWISE ────────────────────────────────────────────────
+PRINT "--- IF ---"
+
+x = 10
+if x > 5:
+    PRINT "big"
+else:
+    PRINT "small"
+# expect: big
+
+y = 2
+if y > 5:
+    PRINT "big"
+else:
+    PRINT "small"
+# expect: small
+
+# nested IF
+z = 15
+if z > 20:
+    PRINT "very big"
+else:
+    if z > 10:
+        PRINT "medium"
+    else:
+        PRINT "tiny"
+# expect: medium
+
+# ── SECTION 7: WHILE with conditionals ───────────────────────────────────────
+PRINT "--- WHILE + IF ---"
+
+i = 0
+DO WHILE i < 6:
+    if i == 3:
+        PRINT "three"
+    else:
+        PRINT i
+    i = i + 1
+END
+# expect: 0 1 2 three 4 5
+
+# ── SECTION 8: list_* builtins ───────────────────────────────────────────────
+PRINT "--- LIST OPS ---"
+
+data = [3, 1, 4, 1, 5, 9, 2, 6]
+
+PRINT list_first(data)              # 3
+PRINT list_last(data)               # 6
+PRINT list_sum(data)                # 31
+PRINT list_average(data)            # 3.875
+PRINT list_reverse(data)            # prints reversed list
+
+front = list_take(data, 3)
+PRINT front                         # [3, 1, 4]
+
+rest = list_drop(data, 5)
+PRINT rest                          # [9, 2, 6]
+
+sliced = list_slice(data, 1, 4)
+PRINT sliced                        # [1, 4, 1]
+
+a1 = [1, 2, 3]
+a2 = [4, 5, 6]
+merged = list_concat(a1, a2)
+PRINT merged                        # [1, 2, 3, 4, 5, 6]
+
+nested = [[1, 2], [3, 4], [5]]
+flat = list_flatten(nested)
+PRINT flat                          # [1, 2, 3, 4, 5]
+
+# ── SECTION 9: string builtins ───────────────────────────────────────────────
+PRINT "--- STRING OPS ---"
+
+t = "  Hello World  "
+PRINT upper(t)                      # (trimmed) upper
+PRINT lower(t)                      # lower
+PRINT trim(t)                       # Hello World
+PRINT starts_with("pasta", "pas")   # true
+PRINT ends_with("pasta", "sta")     # true
+PRINT replace("hello world", "world", "pasta")  # hello pasta
+
+parts = split("a,b,c,d", ",")
+PRINT list_first(parts)             # a
+PRINT list_last(parts)              # d
+
+# ── SECTION 10: Functions using globals ──────────────────────────────────────
+PRINT "--- FUNCTIONS ---"
+
+total = 0
+
+DEF add_five:
+    total = total + 5
+END
+
+DO add_five
+DO add_five
+DO add_five
+PRINT total             # 15
+
+# Function returning via global
+result = 0
+
+DEF square_seven:
+    result = 7 * 7
+END
+
+DO square_seven
+PRINT result            # 49
+
+# ── SECTION 11: Lambda stored and called ─────────────────────────────────────
+PRINT "--- LAMBDA ---"
+
+double = lambda x: x * 2
+PRINT double(6)         # 12
+PRINT double(21)        # 42
+
+adder = lambda a: a + 100
+PRINT adder(5)          # 105
+PRINT adder(0)          # 100
+
+# ── SECTION 12: DO FOR repeats ───────────────────────────────────────────────
+PRINT "--- DO FOR ---"
+
+n = 0
+DO tick FOR 5:
+    n = n + 1
+END
+PRINT n                 # 5
+
+# Multiple targets
+hits = 0
+DO a, b FOR 3:
+    hits = hits + 1
+END
+PRINT hits              # 6  (3 repeats × 2 targets)
+
+# ── SECTION 13: DO AS alias ──────────────────────────────────────────────────
+PRINT "--- DO AS ---"
+
+DO worker AS w FOR 3:
+    PRINT w
+END
+# expect: worker worker worker
+
+# ── SECTION 14: Nested WHILE ─────────────────────────────────────────────────
+PRINT "--- NESTED WHILE ---"
+
+outer = 0
+DO WHILE outer < 3:
+    inner = 0
+    DO WHILE inner < 2:
+        PRINT outer
+        inner = inner + 1
+    END
+    outer = outer + 1
+END
+# expect: 0 0 1 1 2 2
+
+# ── SECTION 15: Boolean logic ────────────────────────────────────────────────
+PRINT "--- BOOL LOGIC ---"
+
+PRINT (1 < 2 && 3 < 4)     # true
+PRINT (1 > 2 || 3 < 4)     # true
+PRINT (1 > 2 || 3 > 4)     # false
+PRINT NOT true              # false
+PRINT NOT false             # true
+
+# Combined with IF
+flag = true
+if flag && 10 > 5:
+    PRINT "both true"
+# expect: both true
+
+# ── SECTION 16: Priority graph ───────────────────────────────────────────────
+PRINT "--- PRIORITY ---"
+
+critical OVER normal
+normal OVER background
+PRINT "priorities set"     # priorities set
+
+# ── SECTION 17: Arithmetic edge cases ────────────────────────────────────────
+PRINT "--- ARITHMETIC ---"
+
+PRINT 2 + 3 * 4            # 14
+PRINT (2 + 3) * 4          # 20
+PRINT 10 / 4               # 2.5
+PRINT 17 - 3 - 2           # 12
+PRINT abs(pow(2, 8) - 256) # 0
+
+# ── SECTION 18: String index ─────────────────────────────────────────────────
+PRINT "--- STRING INDEX ---"
+
+lang = "pastalang"
+PRINT lang[0]              # p
+PRINT lang[5]              # l
+PRINT lang[-1]             # g
+
+# ── DONE ─────────────────────────────────────────────────────────────────────
+PRINT "--- ADVANCED_DONE ---"

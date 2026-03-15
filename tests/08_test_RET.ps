@@ -1,0 +1,199 @@
+# ============================================================
+# 08_test_RET.ps  —  RET.NOW() / RET.LATE() feature tests
+# ============================================================
+
+PRINT "=== 1. Basic RET.NOW() ==="
+DEF always_42():
+    RET.NOW(): 42
+    PRINT "FAIL: should not reach here"
+END
+result = always_42()
+PRINT result
+# expected: 42
+
+PRINT "=== 2. RET.NOW() with arithmetic ==="
+DEF double(x):
+    RET.NOW(): x * 2
+END
+PRINT double(7)
+PRINT double(21)
+# expected: 14
+# expected: 42
+
+PRINT "=== 3. RET.NOW() stops body execution ==="
+DEF early_exit():
+    RET.NOW(): 99
+    x = 1 / 0
+    PRINT "FAIL: this line must not execute"
+END
+PRINT early_exit()
+# expected: 99
+
+PRINT "=== 4. RET.NOW() inside IF branch ==="
+DEF classify(n):
+    IF n < 0:
+        RET.NOW(): "negative"
+    END
+    IF n == 0:
+        RET.NOW(): "zero"
+    END
+    RET.NOW(): "positive"
+END
+PRINT classify(-5)
+PRINT classify(0)
+PRINT classify(3)
+# expected: negative
+# expected: zero
+# expected: positive
+
+PRINT "=== 5. RET.NOW() OTHERWISE branch ==="
+DEF abs_val(x):
+    IF x < 0:
+        RET.NOW(): x * -1
+    OTHERWISE:
+        RET.NOW(): x
+    END
+END
+PRINT abs_val(-10)
+PRINT abs_val(7)
+PRINT abs_val(0)
+# expected: 10
+# expected: 7
+# expected: 0
+
+PRINT "=== 6. RET.NOW() with string return ==="
+DEF greet(name):
+    RET.NOW(): "Hello " name
+END
+PRINT greet("Travis")
+PRINT greet("World")
+# expected: Hello Travis
+# expected: Hello World
+
+PRINT "=== 7. Recursive RET.NOW() — factorial ==="
+DEF factorial(n):
+    IF n <= 1:
+        RET.NOW(): 1
+    END
+    RET.NOW(): n * factorial(n - 1)
+END
+PRINT factorial(1)
+PRINT factorial(5)
+PRINT factorial(10)
+# expected: 1
+# expected: 120
+# expected: 3628800
+
+PRINT "=== 8. Recursive RET.NOW() — fibonacci ==="
+DEF fib(n):
+    IF n <= 1:
+        RET.NOW(): n
+    END
+    RET.NOW(): fib(n - 1) + fib(n - 2)
+END
+PRINT fib(0)
+PRINT fib(1)
+PRINT fib(7)
+PRINT fib(10)
+# expected: 0
+# expected: 1
+# expected: 13
+# expected: 55
+
+PRINT "=== 9. RET.NOW() return value used in expression ==="
+DEF square(x):
+    RET.NOW(): x * x
+END
+PRINT square(3) + square(4)
+# expected: 25
+
+DEF add(a, b):
+    RET.NOW(): a + b
+END
+PRINT add(10, add(3, 4))
+# expected: 17
+
+PRINT "=== 10. RET.NOW() return stored and reused ==="
+DEF clamp(x, lo, hi):
+    IF x < lo:
+        RET.NOW(): lo
+    END
+    IF x > hi:
+        RET.NOW(): hi
+    END
+    RET.NOW(): x
+END
+a = clamp(5, 1, 10)
+b = clamp(-3, 1, 10)
+c = clamp(15, 1, 10)
+PRINT a
+PRINT b
+PRINT c
+# expected: 5
+# expected: 1
+# expected: 10
+
+PRINT "=== 11. RET.NOW() with boolean return ==="
+DEF is_even(n):
+    IF n % 2 == 0:
+        RET.NOW(): true
+    END
+    RET.NOW(): false
+END
+PRINT is_even(4)
+PRINT is_even(7)
+# expected: true
+# expected: false
+
+PRINT "=== 12. RET.NOW() with list return ==="
+DEF make_pair(a, b):
+    RET.NOW(): [a, b]
+END
+pair = make_pair(10, 20)
+PRINT pair
+PRINT pair[0]
+PRINT pair[1]
+# expected: [10, 20]
+# expected: 10
+# expected: 20
+
+PRINT "=== 13. Multiple functions calling each other ==="
+DEF min_val(a, b):
+    IF a < b:
+        RET.NOW(): a
+    END
+    RET.NOW(): b
+END
+DEF max_val(a, b):
+    IF a > b:
+        RET.NOW(): a
+    END
+    RET.NOW(): b
+END
+DEF range_size(lo, hi):
+    RET.NOW(): max_val(lo, hi) - min_val(lo, hi)
+END
+PRINT min_val(3, 7)
+PRINT max_val(3, 7)
+PRINT range_size(2, 9)
+PRINT range_size(9, 2)
+# expected: 3
+# expected: 7
+# expected: 7
+# expected: 7
+
+PRINT "=== 14. RET.LATE() — deferred return ==="
+DEF delayed(x):
+    snapshot = x * 10
+    RET.LATE(500): snapshot
+    PRINT "body continued after RET.LATE"
+END
+handle = delayed(5)
+PRINT type(handle)
+result = resolve(handle)
+PRINT result
+# expected: body continued after RET.LATE
+# expected: pending
+# expected: 50
+
+PRINT "=== ALL TESTS COMPLETE ==="
