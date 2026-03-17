@@ -1,0 +1,32 @@
+# examples/mandelbrot_gui.pasta
+# Mandelbrot GUI example (requires builtins wired and X11 backend).
+DEF iterate_point(x0, y0, max_iter)
+    x = 0; y = 0; i = 0
+    WHILE x*x + y*y <= 4 AND i < max_iter:
+        xt = x*x - y*y + x0
+        y = 2*x*y + y0
+        x = xt
+        i = i + 1
+    END
+    RETURN i
+END
+
+DEF mandelbrot(width, height, max_iter)
+    win = WINDOW("Mandelbrot", width, height)
+    canvas = CANVAS(width, height)
+    FOR py IN 0..height-1:
+        FOR px IN 0..width-1:
+            x0 = (px / width) * 3.5 - 2.5
+            y0 = (py / height) * 2.0 - 1.0
+            iter = iterate_point(x0, y0, max_iter)
+            color = (iter * 255) / max_iter
+            PIXEL(canvas, px, py, color, 0, 255 - color)
+        END
+    END
+    BLIT(win, canvas)
+    WHILE WINDOW_OPEN(win): END
+    CLOSE(win)
+END
+
+DO mandelbrot(200, 150, 200)
+END

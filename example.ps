@@ -1,0 +1,37 @@
+
+DEF MAND_GEN:
+
+    width = 800
+    height = 600
+    max_iter = 1000
+
+    FOR py IN range(0, height):
+        FOR px IN range(0, width):
+            x0 = (px / width) * 3.5 - 2.5
+            y0 = (py / height) * 2.0 - 1.0
+
+            x = 0
+            y = 0
+            iter = 0
+
+            WHILE x*x + y*y <= 4 AND iter < max_iter:
+                xt = x*x - y*y + x0
+                y = 2*x*y + y0
+                x = xt
+                iter = iter + 1
+            END
+
+             PRINT "{px},{py},{iter}"
+        END
+    END
+END
+
+
+RUN_GEN = DO MAND_GEN
+
+DO RUN_GEN
+#optional DO block ARGS
+END
+
+#optional DO with conditions.
+#DO RUN_GEN WHILE x > y
