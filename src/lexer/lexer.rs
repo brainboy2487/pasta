@@ -314,6 +314,19 @@ impl Lexer {
                 continue;
             }
 
+            // Range operator '..' — detect before leading-dot numeric logic
+            if ch == '.' {
+                let mut tmp = chars.clone();
+                tmp.next();
+                if tmp.peek() == Some(&'.') {
+                    chars.next();
+                    chars.next();
+                    self.col += 2;
+                    self.emit(TokenType::DotDot, None);
+                    continue;
+                }
+            }
+
             // ── Leading-dot numeric literal (.5, .25, etc.) ──────────────────
             // A '.' followed immediately by an ASCII digit starts a float literal.
             if ch == '.' {
@@ -349,18 +362,104 @@ impl Lexer {
             // ── Single-character punctuation ─────────────────────────────────
             match ch {
                 ',' => { chars.next(); self.emit(TokenType::Comma,    None); continue; }
-                ':' => { chars.next(); self.emit(TokenType::Colon,    None); continue; }
+                ':' => {
+                    chars.next();
+                    if chars.peek() == Some(&':') {
+                        chars.next(); self.emit(TokenType::ColonColon, None);
+                    } else {
+                        self.emit(TokenType::Colon, None);
+                    }
+                    continue;
+                }
                 '(' => { chars.next(); self.emit(TokenType::LParen,   None); continue; }
                 ')' => { chars.next(); self.emit(TokenType::RParen,   None); continue; }
                 '[' => { chars.next(); self.emit(TokenType::LBracket, None); continue; }
                 ']' => { chars.next(); self.emit(TokenType::RBracket, None); continue; }
-                '+' => { chars.next(); self.emit(TokenType::Plus,     None); continue; }
-                '-' => { chars.next(); self.emit(TokenType::Minus,    None); continue; }
-                '*' => { chars.next(); self.emit(TokenType::Star,     None); continue; }
-                '/' => { chars.next(); self.emit(TokenType::Slash,    None); continue; }
+                '{' => { chars.next(); self.emit(TokenType::LBrace,   None); continue; }
+                '}' => { chars.next(); self.emit(TokenType::RBrace,   None); continue; }
+                ';' => { chars.next(); self.emit(TokenType::Semicolon,None); continue; }
+                '~' => { chars.next(); self.emit(TokenType::Tilde,    None); continue; }
+                '?' => { chars.next(); self.emit(TokenType::Question,  None); continue; }
+                '+' => {
+                    chars.next();
+                    if chars.peek() == Some(&'=') {
+                        chars.next(); self.emit(TokenType::PlusEq,  None);
+                    } else {
+                        self.emit(TokenType::Plus, None);
+                    }
+                    continue;
+                }
+                '-' => {
+                    chars.next();
+                    if chars.peek() == Some(&'=') {
+                        chars.next(); self.emit(TokenType::MinusEq, None);
+                    } else if chars.peek() == Some(&'>') {
+                        chars.next(); self.emit(TokenType::Arrow,   None);
+                    } else {
+                        self.emit(TokenType::Minus, None);
+                    }
+                    continue;
+                }
+                '*' => {
+                    chars.next();
+                    if chars.peek() == Some(&'*') {
+                        chars.next(); self.emit(TokenType::StarStar, None);
+                    } else if chars.peek() == Some(&'=') {
+                        chars.next(); self.emit(TokenType::StarEq,   None);
+                    } else {
+                        self.emit(TokenType::Star, None);
+                    }
+                    continue;
+                }
+                '/' => {
+                    chars.next();
+                    if chars.peek() == Some(&'/') {
+                        chars.next(); self.emit(TokenType::FloorDiv, None);
+                    } else if chars.peek() == Some(&'=') {
+                        chars.next(); self.emit(TokenType::SlashEq,  None);
+                    } else {
+                        self.emit(TokenType::Slash, None);
+                    }
+                    continue;
+                }
+                '%' => {
+                    chars.next();
+                    if chars.peek() == Some(&'=') {
+                        chars.next(); self.emit(TokenType::PercentEq, None);
+                    } else {
+                        self.emit(TokenType::Percent, None);
+                    }
+                    continue;
+                }
+                '=' => {
+                    chars.next();
+                    if chars.peek() == Some(&'>') {
+                        chars.next(); self.emit(TokenType::FatArrow, None);
+                    } else {
+                        // fall through — '=' and '==' handled above this block
+                        self.emit(TokenType::Eq, None);
+                    }
+                    continue;
+                }
+                '|' => {
+                    chars.next();
+                    if chars.peek() == Some(&'>') {
+                        chars.next(); self.emit(TokenType::PipeArrow, None);
+                    } else {
+                        // bare '|' — bitwise or (|| handled above)
+                        self.emit(TokenType::Pipe, None);
+                    }
+                    continue;
+                }
+                '&' => {
+                    chars.next();
+                    // bare '&' — bitwise and (&& handled above)
+                    self.emit(TokenType::Ampersand, None);
+                    continue;
+                }
                 '@' => { chars.next(); self.emit(TokenType::At,       None); continue; }
-                '%' => { chars.next(); self.emit(TokenType::Percent,  None); continue; }
                 '^' => { chars.next(); self.emit(TokenType::Caret,    None); continue; }
+                '\\' => { chars.next(); self.emit(TokenType::Backslash,None); continue; }
                 _ => {}
             }
 
@@ -453,6 +552,7 @@ impl Lexer {
                         "NOT"       => TokenType::Not,
                         "FOR"       => TokenType::For,
                         "IN"        => TokenType::In,
+                            "STEP"      => TokenType::Step,
                         "AS"        => TokenType::As,
                         "OVER"      => TokenType::Over,
                         "LIMIT"     => TokenType::Limit,
@@ -475,6 +575,25 @@ impl Lexer {
                         // explicit grammar keywords we want as tokens
                         "OBJ"       => TokenType::Obj,
                         "SPAWN"     => TokenType::Spawn,
+                        "UNLESS"    => TokenType::Unless,
+                        "UNTIL"     => TokenType::Until,
+                        "PASS"      => TokenType::Pass,
+                        "ASSERT"    => TokenType::Assert,
+                        "TYPEOF"    => TokenType::Typeof,
+                        "YIELD"     => TokenType::Yield,
+                        "RETURN"    => TokenType::Return,
+                        "MATCH"     => TokenType::Match,
+                        "WHEN"      => TokenType::When,
+                        "WITH"      => TokenType::With,
+                        "FROM"      => TokenType::From,
+                        "CONST"     => TokenType::Const,
+                        "EXPORT"    => TokenType::Export,
+                        "AWAIT"     => TokenType::Await,
+                        "DRAW"      => TokenType::Draw,
+                        "COLOR"     => TokenType::Color,
+                        "FRAME"     => TokenType::Frame,
+                        "STEP"      => TokenType::Step,
+
                         _           => TokenType::Identifier,
                     };
 

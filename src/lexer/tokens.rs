@@ -13,6 +13,9 @@ pub enum TokenType {
     Number,
     /// Double-quoted string literal. Value held in `Token::value` (unescaped).
     String,
+    StringFragment,
+    InterpStart,
+    InterpEnd,
     /// Boolean literal (`true` / `false`). Value held in `Token::value`.
     Bool,
 
@@ -31,6 +34,8 @@ pub enum TokenType {
     For,
     /// `IN` keyword — used in FOR x IN iterable loops.
     In,
+    /// `STEP` — optional step clause in FOR loops.
+    Step,
     /// `OVER` — used in `PRIORITY` and `LIMIT OVER` constraints.
     Over,
     /// `LIMIT` — begins a constraint-limit expression.
@@ -119,6 +124,8 @@ pub enum TokenType {
     // ── Punctuation ──────────────────────────────────────────────────────────
     /// `.`
     Dot,
+    /// `..` (range operator)
+    DotDot,
     /// `,`
     Comma,
     /// `:`
@@ -131,6 +138,102 @@ pub enum TokenType {
     LBracket,
     /// `]`
     RBracket,
+
+    /// `{`
+    LBrace,
+    /// `}`
+    RBrace,
+    /// `;`
+    Semicolon,
+    /// `&` (bitwise and)
+    Ampersand,
+    /// `|` (bitwise or)
+    Pipe,
+    /// `~` (bitwise not)
+    Tilde,
+    /// `<<` (left shift)
+    LShift,
+    /// `>>` (right shift)
+    RShift,
+    /// `**` (power, alternate to caret)
+    StarStar,
+    /// `+=`
+    PlusEq,
+    /// `-=`
+    MinusEq,
+    /// `*=`
+    StarEq,
+    /// `/=`
+    SlashEq,
+    /// `%=`
+    PercentEq,
+    /// `->` (return type arrow)
+    Arrow,
+    /// `=>` (fat arrow / match arm)
+    FatArrow,
+    /// `?` (optional / ternary)
+    Question,
+    /// `::` (namespace separator)
+    ColonColon,
+    /// `//` (floor division)
+    FloorDiv,
+    /// `|>` (forward pipe)
+    PipeArrow,
+    /// `\\` (line continuation)
+    Backslash,
+    /// `UNLESS`
+    Unless,
+    /// `UNTIL`
+    Until,
+    /// `PASS`
+    Pass,
+    /// `ASSERT`
+    Assert,
+    /// `TYPEOF`
+    Typeof,
+    /// `YIELD`
+    Yield,
+    /// `RETURN`
+    Return,
+    /// `MATCH`
+    Match,
+    /// `WHEN`
+    When,
+    /// `WITH`
+    With,
+    /// `FROM`
+    From,
+    /// `CONST`
+    Const,
+    /// `EXPORT`
+    Export,
+    /// `AWAIT`
+    Await,
+    /// `DRAW`
+    Draw,
+    /// `COLOR`
+    Color,
+    /// `FRAME`
+    Frame,
+    /// `|>` (forward pipe)
+    /// `\` (line continuation)
+    /// `::` (namespace separator)
+    /// `?` (optional / ternary)
+    /// `//` (floor division)
+    /// `+=`
+    /// `-=`
+    /// `*=`
+    /// `/=`
+    /// `%=`
+    /// `->`
+    /// `=>`
+    /// `**`
+    /// `~`
+    /// `&`
+    /// `|`
+    /// `{`
+    /// `}`
+    /// `;`
 
     // ── Layout tokens (produced by indentation logic) ────────────────────────
     /// Emitted when indentation increases — signals the start of a new block.

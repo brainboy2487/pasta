@@ -71,6 +71,27 @@ impl AliasTable {
         // Grammar-specific explicit tokens used by parser/lexer
         add_aliases!("OBJ", ["obj"]);
         add_aliases!("SPAWN", ["spawn"]);
+        // New control keywords
+        add_aliases!("UNLESS", ["unless"]);
+        add_aliases!("UNTIL",  ["until"]);
+        add_aliases!("PASS",   ["pass", "noop"]);
+        add_aliases!("ASSERT", ["assert", "check"]);
+        add_aliases!("TYPEOF", ["typeof", "type_of", "kindof"]);
+        add_aliases!("YIELD",  ["yield", "emit"]);
+        add_aliases!("RETURN", ["return"]);
+        add_aliases!("MATCH",  ["match", "switch"]);
+        add_aliases!("WHEN",   ["when"]);
+        add_aliases!("WITH",   ["with"]);
+        add_aliases!("FROM",   ["from"]);
+        add_aliases!("CONST",  ["const", "constant"]);
+        add_aliases!("EXPORT", ["export"]);
+        add_aliases!("AWAIT",  ["await"]);
+        // Graphics keywords
+        add_aliases!("DRAW",   ["draw", "render"]);
+        add_aliases!("COLOR",  ["color", "colour"]);
+        add_aliases!("FRAME",  ["frame"]);
+        add_aliases!("STEP",   ["step"]);
+
         add_aliases!("MUT", ["mut"]); // keep MUT available as canonical if needed
         // import is lexed as Identifier and dispatched through call_builtin;
         // the alias entry lets a future ImportStatement token be added cleanly.
