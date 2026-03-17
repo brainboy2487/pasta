@@ -39,18 +39,18 @@ pub enum Value {
     None,
 }
 
-impl From<f64> for Value {
-    fn from(n: f64) -> Self {
-        Value::Number(n)
-    }
+
+impl From<i64> for Value {
+    fn from(n: i64) -> Self { Value::Number(n as f64) }
 }
 
-impl From<&str> for Value {
-    fn from(s: &str) -> Self {
-        Value::String(s.to_string())
-    }
+impl From<i32> for Value {
+    fn from(n: i32) -> Self { Value::Number(n as f64) }
 }
 
+impl From<usize> for Value {
+    fn from(n: usize) -> Self { Value::Number(n as f64) }
+}
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -199,6 +199,16 @@ impl Default for Environment {
 }
 
 impl Environment {
+    /// Return the value bound to `name` by searching from innermost scope outward.
+    pub fn get_symbol(&self, name: &str) -> Option<Value> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(v) = scope.get(name) {
+                return Some(v);
+            }
+        }
+        None
+    }
+
     /// New environment with a single global scope.
     pub fn new() -> Self {
         Self {

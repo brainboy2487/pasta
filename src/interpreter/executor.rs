@@ -94,6 +94,12 @@ pub struct Executor {
     pub constraints: ConstraintEngine,
     pub diagnostics: Vec<String>,
     pub gfx_canvases: HashMap<String, (usize, usize, Vec<u8>)>,
+            pub gfx_windows: std::collections::HashMap<String, (usize, usize, Vec<u8>, bool)>,
+            /// Live X11 windows keyed by the same handle string as gfx_windows.
+            /// Only populated when the x11 feature is enabled and a display is available.
+            #[cfg(feature = "x11")]
+            pub x11_windows: std::collections::HashMap<String, crate::stdlib::graphics::backend::x11::X11Window>,
+            pub next_window_id: usize,
     pub next_canvas_id: usize,
     pub rng: Rng,
     pub while_limit: usize,
@@ -136,6 +142,10 @@ impl Executor {
             diagnostics: Vec::new(),
             gfx_canvases: HashMap::new(),
             next_canvas_id: 1,
+            gfx_windows: std::collections::HashMap::new(),
+            #[cfg(feature = "x11")]
+            x11_windows: std::collections::HashMap::new(),
+            next_window_id: 1,
             rng: Rng::new(),
             while_limit: DEFAULT_WHILE_LIMIT,
             functions: HashMap::new(),
@@ -328,8 +338,22 @@ impl Executor {
             match stmt {
                 Statement::FunctionDef { name, params, body, .. } => {
                     self.functions.insert(name.name.clone(), (params.clone(), body.clone()));
-                self.env.set_global(name.name.clone(), Value::Lambda(body.clone()));
-                self.register_functions_recursive(body);
+/* Inserted alias registration: if the function name contains a dot (e.g., "def.swap"),
+   also register the short name ("swap") so calls using either form resolve. */
+if let Some(pos) = name.name.rfind('.') {
+    let short = name.name[pos+1..].to_string();
+    if !self.functions.contains_key(&short) {
+        self.functions.insert(short.clone(), (params.clone(), body.clone()));
+    }
+    if params.is_empty() {
+        self.env.set_global(short, Value::Lambda(body.clone()));
+    }
+}
+
+                    if params.is_empty() {
+                        self.env.set_global(name.name.clone(), Value::Lambda(body.clone()));
+                    }
+                    self.register_functions_recursive(body);
                 }
                 Statement::DoBlock    { body, .. } => self.register_functions_recursive(body),
                 Statement::WhileBlock { body, .. } => self.register_functions_recursive(body),
@@ -350,7 +374,9 @@ impl Executor {
         for stmt in &program.statements {
             if let Statement::FunctionDef { name, params, body, span: _ } = stmt {
                 self.functions.insert(name.name.clone(), (params.clone(), body.clone()));
-                self.env.set_global(name.name.clone(), Value::Lambda(body.clone()));
+                if params.is_empty() {
+                    self.env.set_global(name.name.clone(), Value::Lambda(body.clone()));
+                }
             }
         }
 
@@ -365,13 +391,7 @@ impl Executor {
                 return Err(e);
             }
             let _ = self.collect_garbage();
-            if self.control_flow.is_some() {
-                // RET.NOW reached top-level: clear the signal and continue executing
-                // remaining top-level statements (tests expect the suite to proceed).
-                self.control_flow = None;
-                continue;
-            }
-
+            if self.control_flow.is_some() { self.control_flow = None; }
         }
 
         if let Err(e) = self.constraints.validate_all() {
@@ -510,7 +530,8 @@ impl Executor {
     // ── Builtins ──────────────────────────────────────────────────────────────
 
     pub fn call_builtin(&mut self, name: &str, args: Vec<Value>) -> Result<Value> {
-        // Python-style type introspection (runs before heap deref).
+//            println!("[BUILTIN CALL] name='{}' args={:?}", name, args);
+// Python-style type introspection (runs before heap deref).
         if name == "type" {
             if args.len() != 1 { return Err(anyhow!("type expects 1 argument")); }
             let t = match &args[0] {
@@ -534,7 +555,313 @@ impl Executor {
         // Eagerly deref heap handles so builtin arms never see `Value::Heap`.
         let args: Vec<Value> = args.into_iter().map(|v| self.deref(v)).collect();
 
-        match name {
+                if name.eq_ignore_ascii_case("WINDOW_SAVE") {
+            if args.len() != 2 { return Err(anyhow!("WINDOW_SAVE expects 2 args (window_handle, path)")); }
+            match (&args[0], &args[1]) {
+                (Value::String(h), Value::String(path)) => {
+                    let win = match self.gfx_windows.get(h) {
+                        Some(w) => w,
+                        None => return Err(anyhow!("WINDOW_SAVE: unknown window handle")),
+                    };
+                    let (w, hgt, buf, _open) = win;
+                    // Write P6 PPM
+                    use std::fs::File;
+                    use std::io::Write;
+                    let mut f = File::create(path).map_err(|e| anyhow!("WINDOW_SAVE: {}", e))?;
+                    let header = format!("P6\n{} {}\n255\n", *w, *hgt);
+                    f.write_all(header.as_bytes()).map_err(|e| anyhow!("WINDOW_SAVE: {}", e))?;
+                    f.write_all(&buf).map_err(|e| anyhow!("WINDOW_SAVE: {}", e))?;
+                    return Ok(Value::None);
+                }
+                _ => return Err(anyhow!("WINDOW_SAVE: expected (window_handle:string, path:string)")),
+            }
+        }
+let _n = name.to_ascii_lowercase(); match _n.as_str() {
+            // Headless graphics builtins for tests: window, window_set_pixel, window_save, window_fill
+            // window(title:string, width:number, height:number) -> string handle
+            // window_set_pixel(handle:string, x:number, y:number, r:number, g:number, b:number) -> none
+            // window_fill(handle:string, x:number, y:number, w:number, h:number, r:number, g:number, b:number) -> none
+            // window_save(handle:string, path:string) -> none (writes P6 PPM)
+            "window" => {
+                if args.len() != 3 { return Err(anyhow!("WINDOW expects 3 args (title, width, height)")); }
+                match (&args[0], &args[1], &args[2]) {
+                    (Value::String(title), Value::Number(w), Value::Number(h)) => {
+                        let width  = *w as usize;
+                        let height = *h as usize;
+                        if width == 0 || height == 0 {
+                            return Err(anyhow!("WINDOW: width and height must be > 0"));
+                        }
+                        let buf = vec![0u8; width.saturating_mul(height).saturating_mul(3)];
+                        let handle = format!("win://{}", self.next_window_id);
+                        self.next_window_id = self.next_window_id.saturating_add(1);
+                        self.gfx_windows.insert(handle.clone(), (width, height, buf, true));
+
+                        // ── Live X11 window (compiled when x11 feature present) ──
+                        #[cfg(feature = "x11")]
+                        {
+                            match crate::stdlib::graphics::backend::x11::X11Window::new(
+                                title, width, height
+                            ) {
+                                Ok(xwin) => {
+                                    self.x11_windows.insert(handle.clone(), xwin);
+                                }
+                                Err(e) => {
+                                    eprintln!("[pasta/gfx] X11 unavailable ({}), using headless", e);
+                                }
+                            }
+                        }
+
+                        Ok(Value::String(handle))
+                    }
+                    _ => Err(anyhow!("WINDOW: expected (title:string, width:number, height:number)")),
+                }
+            }
+
+
+            "canvas" => {
+                // CANVAS(width, height) -> canvas_handle:string
+                if args.len() != 2 { return Err(anyhow!("CANVAS expects 2 args (width, height)")); }
+                match (&args[0], &args[1]) {
+                    (Value::Number(w), Value::Number(h)) => {
+                        let width  = *w as usize;
+                        let height = *h as usize;
+                        if width == 0 || height == 0 {
+                            return Err(anyhow!("CANVAS: width and height must be > 0"));
+                        }
+                        let buf = vec![0u8; width.saturating_mul(height).saturating_mul(3)];
+                        let handle = format!("canvas://{}", self.next_window_id);
+                        self.next_window_id = self.next_window_id.saturating_add(1);
+                        self.gfx_windows.insert(handle.clone(), (width, height, buf, true));
+                        Ok(Value::String(handle))
+                    }
+                    _ => Err(anyhow!("CANVAS: expected (width:number, height:number)")),
+                }
+            }
+            "pixel" => {
+                // PIXEL(canvas, x, y, r, g, b) -> none
+                if args.len() != 6 {
+                    return Err(anyhow!("PIXEL expects 6 args (canvas, x, y, r, g, b)"));
+                }
+                match (&args[0], &args[1], &args[2], &args[3], &args[4], &args[5]) {
+                    (Value::String(handle), Value::Number(xn), Value::Number(yn),
+                     Value::Number(rn), Value::Number(gn), Value::Number(bn)) => {
+                        let x = *xn as isize;
+                        let y = *yn as isize;
+                        let r = (*rn as i32).clamp(0, 255) as u8;
+                        let g = (*gn as i32).clamp(0, 255) as u8;
+                        let b = (*bn as i32).clamp(0, 255) as u8;
+                        if let Some((width, height, ref mut buf, _)) =
+                            self.gfx_windows.get_mut(handle)
+                        {
+                            if x >= 0 && y >= 0
+                                && (x as usize) < *width
+                                && (y as usize) < *height
+                            {
+                                let idx = (y as usize * *width + x as usize) * 3;
+                                if idx + 2 < buf.len() {
+                                    buf[idx]     = r;
+                                    buf[idx + 1] = g;
+                                    buf[idx + 2] = b;
+                                }
+                            }
+                            Ok(Value::None)
+                        } else {
+                            Err(anyhow!("PIXEL: unknown handle '{}'", handle))
+                        }
+                    }
+                    _ => Err(anyhow!("PIXEL: expected (canvas:string, x:number, y:number, r:number, g:number, b:number)")),
+                }
+            }
+            "blit" => {
+                // BLIT(window, canvas) -> none
+                if args.len() != 2 {
+                    return Err(anyhow!("BLIT expects 2 args (window, canvas)"));
+                }
+                match (&args[0], &args[1]) {
+                    (Value::String(win_h), Value::String(canvas_h)) => {
+                        let canvas_copy = match self.gfx_windows.get(canvas_h) {
+                            Some((w, h, buf, _)) => (*w, *h, buf.clone()),
+                            None => return Err(anyhow!("BLIT: unknown canvas handle '{}'", canvas_h)),
+                        };
+                        if let Some((ww, wh, ref mut wbuf, _)) =
+                            self.gfx_windows.get_mut(win_h)
+                        {
+                            if *ww != canvas_copy.0 || *wh != canvas_copy.1 {
+                                return Err(anyhow!(
+                                    "BLIT: window ({}x{}) and canvas ({}x{}) dimensions must match",
+                                    ww, wh, canvas_copy.0, canvas_copy.1
+                                ));
+                            }
+                            wbuf.copy_from_slice(&canvas_copy.2);
+                        } else {
+                            return Err(anyhow!("BLIT: unknown window handle '{}'", win_h));
+                        }
+                        // ── Push to live X11 window ──────────────────────────
+                        #[cfg(feature = "x11")]
+                        {
+                            if let Some(xwin) = self.x11_windows.get_mut(win_h) {
+                                let (cw, ch, _) = &canvas_copy;
+                                let mut canvas =
+                                    crate::stdlib::graphics::canvas::Canvas::new(*cw, *ch);
+                                canvas.load_rgb(&canvas_copy.2);
+                                let _ = xwin.present(&canvas);
+                                let open = xwin.poll();
+                                if let Some(entry) = self.gfx_windows.get_mut(win_h) {
+                                    entry.3 = open;
+                                }
+                            }
+                        }
+                        Ok(Value::None)
+                    }
+                    _ => Err(anyhow!("BLIT: expected (window:string, canvas:string)")),
+                }
+            }
+            "window_open" => {
+                // WINDOW_OPEN(handle) -> bool
+                if args.len() != 1 { return Err(anyhow!("WINDOW_OPEN expects 1 arg (handle)")); }
+                match &args[0] {
+                    Value::String(h) => {
+                        // Poll X11 events to update open state
+                        #[cfg(feature = "x11")]
+                        {
+                            if let Some(xwin) = self.x11_windows.get_mut(h) {
+                                let open = xwin.poll();
+                                if let Some(entry) = self.gfx_windows.get_mut(h) {
+                                    entry.3 = open;
+                                }
+                            }
+                        }
+                        let open = self.gfx_windows.get(h).map(|e| e.3).unwrap_or(false);
+                        Ok(Value::Bool(open))
+                    }
+                    _ => Err(anyhow!("WINDOW_OPEN: expected string handle")),
+                }
+            }
+
+            "close" => {
+                // CLOSE(handle) -> none
+                if args.len() != 1 { return Err(anyhow!("CLOSE expects 1 arg (handle)")); }
+                match &args[0] {
+                    Value::String(h) => {
+                        #[cfg(feature = "x11")]
+                        {
+                            if let Some(mut xwin) = self.x11_windows.remove(h) {
+                                xwin.close();
+                            }
+                        }
+                        if let Some(entry) = self.gfx_windows.get_mut(h) {
+                            entry.3 = false;
+                        }
+                        Ok(Value::None)
+                    }
+                    _ => Err(anyhow!("CLOSE: expected string handle")),
+                }
+            }
+
+            "window_set_pixel" => {
+                if args.len() != 6 { return Err(anyhow!("window_set_pixel expects 6 args (handle,x,y,r,g,b)")); }
+                match (&args[0], &args[1], &args[2], &args[3], &args[4], &args[5]) {
+                    (Value::String(handle), Value::Number(xn), Value::Number(yn), Value::Number(rn), Value::Number(gn), Value::Number(bn)) => {
+                        let x = *xn as isize;
+                        let y = *yn as isize;
+                        let r = *rn as i32;
+                        let g = *gn as i32;
+                        let b = *bn as i32;
+                        if let Some(entry) = self.gfx_windows.get_mut(handle) {
+                            let (width, height, ref mut buf, _vis) = entry;
+                            if x < 0 || y < 0 || x as usize >= *width || y as usize >= *height {
+                                return Err(anyhow!("window_set_pixel: coordinates out of bounds"));
+                            }
+                            let xi = x as usize;
+                            let yi = y as usize;
+                            let idx = (yi * (*width) + xi).saturating_mul(3);
+                            let rr = (r.max(0).min(255)) as u8;
+                            let gg = (g.max(0).min(255)) as u8;
+                            let bb = (b.max(0).min(255)) as u8;
+                            if idx + 2 < buf.len() {
+                                buf[idx] = rr;
+                                buf[idx+1] = gg;
+                                buf[idx+2] = bb;
+                                Ok(Value::None)
+                            } else {
+                                Err(anyhow!("window_set_pixel: internal buffer index out of range"))
+                            }
+                        } else {
+                            Err(anyhow!("window_set_pixel: unknown handle"))
+                        }
+                    }
+                    _ => Err(anyhow!("window_set_pixel: expected (handle:string,x:number,y:number,r:number,g:number,b:number)")),
+                }
+            }
+            "window_fill" => {
+                if args.len() != 8 { return Err(anyhow!("window_fill expects 8 args (handle,x,y,w,h,r,g,b)")); }
+                match (&args[0], &args[1], &args[2], &args[3], &args[4], &args[5], &args[6], &args[7]) {
+                    (Value::String(handle), Value::Number(xn), Value::Number(yn), Value::Number(wn), Value::Number(hn), Value::Number(rn), Value::Number(gn), Value::Number(bn)) => {
+                        let x0 = *xn as isize;
+                        let y0 = *yn as isize;
+                        let w = *wn as isize;
+                        let h = *hn as isize;
+                        let r = *rn as i32;
+                        let g = *gn as i32;
+                        let b = *bn as i32;
+                        if w <= 0 || h <= 0 { return Err(anyhow!("window_fill: width/height must be > 0")); }
+                        if let Some(entry) = self.gfx_windows.get_mut(handle) {
+                            let (width, height, ref mut buf, _vis) = entry;
+                            let rr = (r.max(0).min(255)) as u8;
+                            let gg = (g.max(0).min(255)) as u8;
+                            let bb = (b.max(0).min(255)) as u8;
+                            for yy in y0 .. (y0 + h) {
+                                for xx in x0 .. (x0 + w) {
+                                    if xx < 0 || yy < 0 || xx as usize >= *width || yy as usize >= *height {
+                                        continue;
+                                    }
+                                    let xi = xx as usize;
+                                    let yi = yy as usize;
+                                    let idx = (yi * (*width) + xi).saturating_mul(3);
+                                    if idx + 2 < buf.len() {
+                                        buf[idx] = rr;
+                                        buf[idx+1] = gg;
+                                        buf[idx+2] = bb;
+                                    }
+                                }
+                            }
+                            Ok(Value::None)
+                        } else {
+                            Err(anyhow!("window_fill: unknown handle"))
+                        }
+                    }
+                    _ => Err(anyhow!("window_fill: expected (handle:string,x:number,y:number,w:number,h:number,r:number,g:number,b:number)")),
+                }
+            }
+            "window_save" => {
+                if args.len() != 2 { return Err(anyhow!("window_save expects 2 args (handle, path)")); }
+                match (&args[0], &args[1]) {
+                    (Value::String(handle), Value::String(path)) => {
+                        if let Some(entry) = self.gfx_windows.get(handle) {
+                            let (width, height, buf, _vis) = entry;
+                            match std::fs::File::create(path) {
+                                Ok(mut f) => {
+                                    use std::io::Write;
+                                    let header = format!("P6\n{} {}\n255\n", width, height);
+                                    if let Err(e) = f.write_all(header.as_bytes()) {
+                                        return Err(anyhow!("window_save: write header failed: {}", e));
+                                    }
+                                    if let Err(e) = f.write_all(&buf[..]) {
+                                        return Err(anyhow!("window_save: write pixels failed: {}", e));
+                                    }
+                                    Ok(Value::None)
+                                }
+                                Err(e) => Err(anyhow!("window_save: cannot create file {}: {}", path, e)),
+                            }
+                        } else {
+                            Err(anyhow!("window_save: unknown handle"))
+                        }
+                    }
+                    _ => Err(anyhow!("window_save: expected (handle:string, path:string)")),
+                }
+            }
+
+
             "__pasta_stdin_readline" | "stdin_readline" => {
                 let mut buf = String::new();
                 let n = io::stdin().read_line(&mut buf)?;
@@ -1973,7 +2300,9 @@ impl Executor {
     }
 
     pub fn run(src: &str) -> Result<Environment> {
-        let prog = Executor::parse(src);
+            // Normalize leading whitespace so leading blank/indented lines don't parse as empty Raw expressions.
+    let src = src.trim_start();
+let prog = Executor::parse(src);
         let mut ex = Executor::new();
         ex.execute_program(&prog)?;
         Ok(ex.env)

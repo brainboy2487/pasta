@@ -42,8 +42,10 @@ pub use int_api::{InterpreterApi, ModuleEnvHandle, InterpreterSnapshot, default_
 // Helpful compile-time check: if repl.rs is missing, this test will fail early.
 #[cfg(test)]
 mod __repl_file_presence_check {
+    use crate::interpreter::repl;
+
     #[test]
     fn repl_module_present() {
-        let _ = crate::repl::run_repl;
+        let _ = repl::run_repl;
     }
 }
