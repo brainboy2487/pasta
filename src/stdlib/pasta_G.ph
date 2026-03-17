@@ -1,288 +1,277 @@
-# pasta_G.ph — Basic graphics header for PastaLang
-# Version: 0.1
-# Purpose: Provide a small, stable 2D graphics API for scripts.
+# pasta_G.ph — Pasta Standard Graphics Library
+# Version: 0.2
+# Wired to real interpreter builtins:
+#   WINDOW(title, w, h)         -> window_handle
+#   CANVAS(w, h)                -> canvas_handle
+#   PIXEL(canvas, x, y, r, g, b)
+#   BLIT(window, canvas)
+#   WINDOW_OPEN(window)         -> bool
+#   WINDOW_SAVE(window, path)
+#   CLOSE(window)
 #
-# Design goals:
-# - Minimal, easy-to-implement runtime contract (few builtins).
-# - Familiar primitives: canvas, pixel, line, rect, circle, fill, text, save, show.
-# - Graceful fallback to no-op or textual output when graphics backend is absent.
-#
-# Runtime primitives required (implement these in the interpreter as builtins):
-# - __pasta_g_create_canvas(width: number, height: number) -> canvas_id (string or number)
-# - __pasta_g_destroy_canvas(canvas_id)
-# - __pasta_g_clear(canvas_id, color_string)
-# - __pasta_g_set_pixel(canvas_id, x: number, y: number, color_string)
-# - __pasta_g_get_pixel(canvas_id, x: number, y: number) -> color_string
-# - __pasta_g_draw_line(canvas_id, x1, y1, x2, y2, color_string, width)
-# - __pasta_g_draw_rect(canvas_id, x, y, w, h, color_string, fill_bool, stroke_width)
-# - __pasta_g_draw_circle(canvas_id, cx, cy, r, color_string, fill_bool, stroke_width)
-# - __pasta_g_draw_text(canvas_id, x, y, text_string, font_name, font_size, color_string)
-# - __pasta_g_blit(canvas_id, src_canvas_id, dx, dy)
-# - __pasta_g_save(canvas_id, filename_string) -> bool
-# - __pasta_g_show(canvas_id)  # present to screen / window; may be no-op in headless mode
-# - __pasta_g_poll_events() -> list of event objects (optional; for interactive apps)
-#
-# If the runtime does not implement these builtins, the header will fall back to
-# printing textual descriptions of drawing commands so scripts remain debuggable.
+# All high-level helpers below are implemented in pure Pasta
+# on top of those six primitives.
 
 # ---------------------------------------------------------------------
 # Color helpers
+# color values are r,g,b numbers in [0,255]
 # ---------------------------------------------------------------------
 
-# color_rgb(r,g,b) -> "rgb(r,g,b)"
-set color_rgb = DO r, g, b:
-    PRINT str("rgb(")  # placeholder to show intent if builtin missing
-    # runtime should provide a string builder or return formatted string
-    # best practice: runtime exposes a helper builtin "g_color_rgb" returning a string
-    TRY:
-        CALL "g_color_rgb"(r, g, b)
-    OTHERWISE:
-        # fallback: simple string
-        str("rgb(") + str(r) + "," + str(g) + "," + str(b) + ")"
+# clamp a value to [0, 255]
+set g_clamp = DO v:
+    if v < 0:
+        set v = 0
+    if v > 255:
+        set v = 255
+    v
 END
 
-# color_hex("#RRGGBB") -> "#RRGGBB" (identity, validates if runtime helper exists)
-set color_hex = DO s:
-    TRY:
-        CALL "g_color_hex"(s)
-    OTHERWISE:
-        s
+# pack r,g,b into a list for passing around
+set g_color = DO r, g, b:
+    [r, g, b]
 END
 
-# Transparent color helper
-set color_rgba = DO r, g, b, a:
-    TRY:
-        CALL "g_color_rgba"(r, g, b, a)
-    OTHERWISE:
-        str("rgba(") + str(r) + "," + str(g) + "," + str(b) + "," + str(a) + ")"
-END
+# common named colors as [r,g,b] lists
+set G_BLACK   = [0,   0,   0  ]
+set G_WHITE   = [255, 255, 255]
+set G_RED     = [255, 0,   0  ]
+set G_GREEN   = [0,   255, 0  ]
+set G_BLUE    = [0,   0,   255]
+set G_YELLOW  = [255, 255, 0  ]
+set G_CYAN    = [0,   255, 255]
+set G_MAGENTA = [255, 0,   255]
+set G_GRAY    = [128, 128, 128]
+set G_ORANGE  = [255, 128, 0  ]
 
 # ---------------------------------------------------------------------
-# Canvas lifecycle
+# Window / canvas lifecycle
 # ---------------------------------------------------------------------
 
-# create_canvas(width, height) -> canvas_id
-set create_canvas = DO w, h:
-    TRY:
-        CALL "__pasta_g_create_canvas"(w, h)
-    OTHERWISE:
-        # fallback: return None to indicate no canvas available
-        None
+# g_window(title, w, h) -> window_handle
+set g_window = DO title, w, h:
+    WINDOW(title, w, h)
 END
 
-# destroy_canvas(canvas_id)
-set destroy_canvas = DO cid:
-    TRY:
-        CALL "__pasta_g_destroy_canvas"(cid)
-    OTHERWISE:
-        # no-op
-        set _ = 0
+# g_canvas(w, h) -> canvas_handle
+set g_canvas = DO w, h:
+    CANVAS(w, h)
 END
 
-# clear(canvas_id, color)
-set clear = DO cid, color:
-    TRY:
-        CALL "__pasta_g_clear"(cid, color)
-    OTHERWISE:
-        PRINT "G: clear"  # debug fallback
+# g_close(window)
+set g_close = DO win:
+    CLOSE(win)
 END
 
-# save(canvas_id, filename) -> bool
-set save = DO cid, filename:
-    TRY:
-        CALL "__pasta_g_save"(cid, filename)
-    OTHERWISE:
-        False
+# g_open(window) -> bool
+set g_open = DO win:
+    WINDOW_OPEN(win)
 END
 
-# show(canvas_id) -> present to screen (may open a window)
-set show = DO cid:
-    TRY:
-        CALL "__pasta_g_show"(cid)
-    OTHERWISE:
-        PRINT "G: show (no-op in this runtime)"
+# g_show(window, canvas) — blit canvas to window
+set g_show = DO win, canvas:
+    BLIT(win, canvas)
+END
+
+# g_save(window, path) — save window framebuffer as PPM
+set g_save = DO win, path:
+    WINDOW_SAVE(win, path)
 END
 
 # ---------------------------------------------------------------------
-# Primitive drawing operations
+# Pixel drawing
 # ---------------------------------------------------------------------
 
-# set_pixel(canvas, x, y, color)
-set set_pixel = DO cid, x, y, color:
-    TRY:
-        CALL "__pasta_g_set_pixel"(cid, x, y, color)
-    OTHERWISE:
-        PRINT "G: set_pixel " + str(x) + "," + str(y) + " " + str(color)
+# g_pixel(canvas, x, y, r, g, b)
+set g_pixel = DO canvas, x, y, r, g, b:
+    PIXEL(canvas, x, y, r, g, b)
 END
 
-# get_pixel(canvas, x, y) -> color_string or None
-set get_pixel = DO cid, x, y:
-    TRY:
-        CALL "__pasta_g_get_pixel"(cid, x, y)
-    OTHERWISE:
-        None
-END
-
-# draw_line(canvas, x1,y1, x2,y2, color, width)
-set draw_line = DO cid, x1, y1, x2, y2, color, width:
-    TRY:
-        CALL "__pasta_g_draw_line"(cid, x1, y1, x2, y2, color, width)
-    OTHERWISE:
-        PRINT "G: line " + str(x1) + "," + str(y1) + " -> " + str(x2) + "," + str(y2)
-END
-
-# draw_rect(canvas, x,y, w,h, color, fill=false, stroke_width=1)
-set draw_rect = DO cid, x, y, w, h, color, fill, stroke:
-    # normalize optional args
-    if fill == None:
-        set fill = False
-    if stroke == None:
-        set stroke = 1
-    TRY:
-        CALL "__pasta_g_draw_rect"(cid, x, y, w, h, color, fill, stroke)
-    OTHERWISE:
-        PRINT "G: rect " + str(x) + "," + str(y) + " " + str(w) + "x" + str(h)
-END
-
-# draw_circle(canvas, cx,cy, r, color, fill=false, stroke_width=1)
-set draw_circle = DO cid, cx, cy, r, color, fill, stroke:
-    if fill == None:
-        set fill = False
-    if stroke == None:
-        set stroke = 1
-    TRY:
-        CALL "__pasta_g_draw_circle"(cid, cx, cy, r, color, fill, stroke)
-    OTHERWISE:
-        PRINT "G: circle " + str(cx) + "," + str(cy) + " r=" + str(r)
-END
-
-# draw_text(canvas, x,y, text, font="sans", size=12, color)
-set draw_text = DO cid, x, y, text, font, size, color:
-    if font == None:
-        set font = "sans"
-    if size == None:
-        set size = 12
-    TRY:
-        CALL "__pasta_g_draw_text"(cid, x, y, text, font, size, color)
-    OTHERWISE:
-        PRINT "G: text at " + str(x) + "," + str(y) + ": " + str(text)
-END
-
-# blit(src_canvas, dst_canvas, dx, dy)
-set blit = DO dst, src, dx, dy:
-    TRY:
-        CALL "__pasta_g_blit"(dst, src, dx, dy)
-    OTHERWISE:
-        PRINT "G: blit"
+# g_pixel_color(canvas, x, y, color) where color = [r,g,b]
+set g_pixel_color = DO canvas, x, y, color:
+    PIXEL(canvas, x, y, color[0], color[1], color[2])
 END
 
 # ---------------------------------------------------------------------
-# Convenience higher-level helpers (implemented in terms of primitives)
+# Filled rectangle
+# g_fill_rect(canvas, x, y, w, h, r, g, b)
 # ---------------------------------------------------------------------
-
-# fill_rect(canvas, x,y,w,h, color) -> alias for draw_rect with fill=true
-set fill_rect = DO cid, x, y, w, h, color:
-    CALL draw_rect(cid, x, y, w, h, color, True, 0)
+set g_fill_rect = DO canvas, rx, ry, rw, rh, r, g, b:
+    set cy = ry
+    while cy < (ry + rh):
+        set cx = rx
+        while cx < (rx + rw):
+            PIXEL(canvas, cx, cy, r, g, b)
+            set cx = cx + 1
+        set cy = cy + 1
 END
 
-# stroke_rect(canvas, x,y,w,h, color, stroke_width)
-set stroke_rect = DO cid, x, y, w, h, color, stroke:
-    CALL draw_rect(cid, x, y, w, h, color, False, stroke)
-END
-
-# fill_circle(canvas, cx,cy,r,color)
-set fill_circle = DO cid, cx, cy, r, color:
-    CALL draw_circle(cid, cx, cy, r, color, True, 0)
-END
-
-# clear_to_color(canvas, color)
-set clear_to_color = DO cid, color:
-    CALL clear(cid, color)
+# g_fill_rect_color(canvas, x, y, w, h, color)
+set g_fill_rect_color = DO canvas, rx, ry, rw, rh, color:
+    g_fill_rect(canvas, rx, ry, rw, rh, color[0], color[1], color[2])
 END
 
 # ---------------------------------------------------------------------
-# Simple animation loop helper (cooperative)
-# - frame_fn is a lambda that receives (canvas_id, t, dt) and draws a frame
-# - fps is target frames per second (optional)
+# Clear canvas to a solid color
+# g_clear(canvas, w, h, r, g, b)
 # ---------------------------------------------------------------------
-set animate = DO canvas, frame_fn, fps:
-    if fps == None:
-        set fps = 30
-    # naive loop: runtime should provide sleep_ms builtin for timing
-    set last_t = 0
+set g_clear = DO canvas, w, h, r, g, b:
+    g_fill_rect(canvas, 0, 0, w, h, r, g, b)
+END
+
+# g_clear_color(canvas, w, h, color)
+set g_clear_color = DO canvas, w, h, color:
+    g_fill_rect(canvas, 0, 0, w, h, color[0], color[1], color[2])
+END
+
+# g_clear_black(canvas, w, h)
+set g_clear_black = DO canvas, w, h:
+    g_fill_rect(canvas, 0, 0, w, h, 0, 0, 0)
+END
+
+# ---------------------------------------------------------------------
+# Line drawing (Bresenham)
+# g_line(canvas, x0, y0, x1, y1, r, g, b)
+# ---------------------------------------------------------------------
+set g_line = DO canvas, x0, y0, x1, y1, r, g, b:
+    set dx = x1 - x0
+    set dy = y1 - y0
+    if dx < 0:
+        set dx = 0 - dx
+    if dy < 0:
+        set dy = 0 - dy
+    set sx = 1
+    if x0 > x1:
+        set sx = 0 - 1
+    set sy = 1
+    if y0 > y1:
+        set sy = 0 - 1
+    set err = dx - dy
+    set lx = x0
+    set ly = y0
     set running = True
     while running:
-        # runtime should provide a monotonic time in seconds via "time_now"
-        TRY:
-            let now = CALL "time_now"()
-        OTHERWISE:
-            let now = 0
-        let dt = now - last_t
-        # call user frame function
-        TRY:
-            CALL frame_fn(canvas, now, dt)
-        OTHERWISE:
-            # if frame_fn fails, stop animation
-            set running = False
-        # present frame
-        CALL show(canvas)
-        # sleep to cap fps if runtime supports sleep_ms
-        TRY:
-            CALL "sleep_ms"( (1000 / fps) )
-        OTHERWISE:
-            # best-effort no-op
-            set _ = 0
-        set last_t = now
-    END
+        PIXEL(canvas, lx, ly, r, g, b)
+        if lx == x1:
+            if ly == y1:
+                set running = False
+        set e2 = err + err
+        if e2 > (0 - dy):
+            set err = err - dy
+            set lx = lx + sx
+        if e2 < dx:
+            set err = err + dx
+            set ly = ly + sy
+END
+
+# g_line_color(canvas, x0,y0, x1,y1, color)
+set g_line_color = DO canvas, x0, y0, x1, y1, color:
+    g_line(canvas, x0, y0, x1, y1, color[0], color[1], color[2])
 END
 
 # ---------------------------------------------------------------------
-# Event polling (optional)
-# - poll_events() returns a list of event objects if runtime supports it.
-# - Event object fields: type ("mouse", "key", "quit"), x,y, key, modifiers
+# Rectangle outline
+# g_rect(canvas, x, y, w, h, r, g, b)
 # ---------------------------------------------------------------------
-set poll_events = DO:
-    TRY:
-        CALL "__pasta_g_poll_events"()
-    OTHERWISE:
-        []
+set g_rect = DO canvas, rx, ry, rw, rh, r, g, b:
+    g_line(canvas, rx,       ry,       rx+rw-1, ry,       r, g, b)
+    g_line(canvas, rx,       ry+rh-1, rx+rw-1, ry+rh-1, r, g, b)
+    g_line(canvas, rx,       ry,       rx,       ry+rh-1, r, g, b)
+    g_line(canvas, rx+rw-1, ry,       rx+rw-1, ry+rh-1, r, g, b)
 END
 
 # ---------------------------------------------------------------------
-# Example usage
+# Circle (midpoint algorithm)
+# g_circle(canvas, cx, cy, radius, r, g, b)
 # ---------------------------------------------------------------------
-# IMPORT "pasta_G.ph"
-#
-# let c = create_canvas(320, 240)
-# if c != None:
-#     clear(c, color_hex("#202020"))
-#     draw_line(c, 10, 10, 300, 200, color_rgb(255,0,0), 2)
-#     fill_rect(c, 50, 50, 100, 60, color_hex("#00FF00"))
-#     draw_text(c, 20, 220, "Hello Pasta G", "sans", 14, color_hex("#FFFFFF"))
-#     save(c, "out.png")
-#     show(c)
-#
-# # Simple animation
-# set frame = DO cid, t, dt:
-#     clear(cid, color_hex("#000000"))
-#     let x = (t * 50) % 320
-#     fill_circle(cid, x, 120, 20, color_rgb(0, 128, 255))
-# END
-#
-# animate(c, frame, 30)
-#
+set g_circle = DO canvas, cx, cy, radius, r, g, b:
+    set px = radius
+    set py = 0
+    set err = 0
+    while px >= py:
+        PIXEL(canvas, cx+px, cy+py, r, g, b)
+        PIXEL(canvas, cx+py, cy+px, r, g, b)
+        PIXEL(canvas, cx-py, cy+px, r, g, b)
+        PIXEL(canvas, cx-px, cy+py, r, g, b)
+        PIXEL(canvas, cx-px, cy-py, r, g, b)
+        PIXEL(canvas, cx-py, cy-px, r, g, b)
+        PIXEL(canvas, cx+py, cy-px, r, g, b)
+        PIXEL(canvas, cx+px, cy-py, r, g, b)
+        set py = py + 1
+        if err <= 0:
+            set err = err + (py + py + 1)
+        if err > 0:
+            set px = px - 1
+            set err = err + (1 - px - px)
+END
+
+# g_circle_color(canvas, cx, cy, radius, color)
+set g_circle_color = DO canvas, cx, cy, radius, color:
+    g_circle(canvas, cx, cy, radius, color[0], color[1], color[2])
+END
+
 # ---------------------------------------------------------------------
-# Notes for runtime implementers
+# Gradient fill helpers
+# g_gradient_h(canvas, x, y, w, h, r0,g0,b0, r1,g1,b1)
+# horizontal gradient from color0 (left) to color1 (right)
 # ---------------------------------------------------------------------
-# - The runtime may implement the primitives using any backend:
-#   - SDL2 / sdl2_ttf for interactive windows
-#   - Cairo / Skia for vector-backed drawing and PNG export
-#   - headless SVG/PNG renderer for servers
-# - Builtins should accept and return simple Pasta values (numbers, strings).
-# - For portability, __pasta_g_save should support PNG and SVG filenames (by extension).
-# - __pasta_g_show may open a window or be a no-op in headless environments.
-# - Event objects returned by __pasta_g_poll_events should be simple maps or lists
-#   that the interpreter can expose as Pasta values (e.g., list of { "type":"mouse", "x":.. }).
-#
+set g_gradient_h = DO canvas, x, y, w, h, r0, g0, b0, r1, g1, b1:
+    set cy = y
+    while cy < (y + h):
+        set cx = x
+        while cx < (x + w):
+            set t = (cx - x)
+            set r = r0 + ((r1 - r0) * t / w)
+            set g = g0 + ((g1 - g0) * t / w)
+            set b = b0 + ((b1 - b0) * t / w)
+            PIXEL(canvas, cx, cy, r, g, b)
+            set cx = cx + 1
+        set cy = cy + 1
+END
+
+# ---------------------------------------------------------------------
+# Vertical gradient
+# g_gradient_v(canvas, x, y, w, h, r0,g0,b0, r1,g1,b1)
+# ---------------------------------------------------------------------
+set g_gradient_v = DO canvas, x, y, w, h, r0, g0, b0, r1, g1, b1:
+    set cy = y
+    while cy < (y + h):
+        set t = (cy - y)
+        set r = r0 + ((r1 - r0) * t / h)
+        set g = g0 + ((g1 - g0) * t / h)
+        set b = b0 + ((b1 - b0) * t / h)
+        set cx = x
+        while cx < (x + w):
+            PIXEL(canvas, cx, cy, r, g, b)
+            set cx = cx + 1
+        set cy = cy + 1
+END
+
+# ---------------------------------------------------------------------
+# Event loop helper
+# g_loop(window, canvas, frame_fn)
+# Calls frame_fn(canvas) each frame until window is closed.
+# frame_fn should draw into canvas; g_loop blits each frame.
+# ---------------------------------------------------------------------
+set g_loop = DO win, canvas, frame_fn:
+    while WINDOW_OPEN(win):
+        frame_fn(canvas)
+        BLIT(win, canvas)
+END
+
+# ---------------------------------------------------------------------
+# Simple run-once render + save
+# g_render_save(title, w, h, draw_fn, path)
+# Creates window+canvas, calls draw_fn(canvas), blits, saves PPM.
+# ---------------------------------------------------------------------
+set g_render_save = DO title, w, h, draw_fn, path:
+    set win    = WINDOW(title, w, h)
+    set canvas = CANVAS(w, h)
+    draw_fn(canvas)
+    BLIT(win, canvas)
+    WINDOW_SAVE(win, path)
+    CLOSE(win)
+END
+
 # ---------------------------------------------------------------------
 # End of pasta_G.ph
+# ---------------------------------------------------------------------

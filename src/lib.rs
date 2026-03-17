@@ -18,6 +18,7 @@ pub mod readline;
 pub mod parser;
 pub mod semantics;
 pub mod interpreter;
+pub mod stdlib;
 pub mod runtime;
 
 #[cfg(feature = "scheduler")]

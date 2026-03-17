@@ -1,0 +1,20 @@
+// src/stdlib/graphics/backend/mod.rs
+#[cfg(target_os = "linux")]
+mod x11;
+#[cfg(target_os = "linux")]
+pub use x11::X11Window as PlatformWindow;
+
+use crate::stdlib::graphics::canvas::Canvas;
+
+pub trait BackendWindow {
+    fn blit(&mut self, canvas: &Canvas) -> Result<(), String>;
+    fn is_open(&mut self) -> bool;
+    fn close(&mut self);
+}
+
+pub fn create_window(title: &str, width: usize, height: usize) -> Result<Box<dyn BackendWindow + Send>, String> {
+    #[cfg(target_os = "linux")]
+    { return Ok(Box::new(x11::X11Window::new(title, width, height)?)); }
+    #[cfg(not(target_os = "linux"))]
+    { Err("No Linux backend available".to_string()) }
+}

@@ -48,30 +48,6 @@ pub enum ErrorKind {
     Bitwise,
     /// RNG/hardware random errors.
     Rng,
-/// Graphics subsystem errors.
-    Graphics,
-    /// Window management errors.
-    Window,
-    /// Canvas / pixel buffer errors.
-    Canvas,
-    /// X11 backend errors.
-    X11,
-    /// Token/lexer errors.
-    Lex,
-    /// Scope / environment errors.
-    Scope,
-    /// Loop control errors.
-    Loop,
-    /// Threading errors.
-    Thread,
-    /// AI/ML errors.
-    Ai,
-    /// Tensor operation errors.
-    Tensor,
-    /// Assertion failure.
-    Assertion,
-    /// Feature not yet implemented.
-    Unimplemented,
     /// Generic catch-all.
     Other,
 }
@@ -167,19 +143,7 @@ fn format_kind(k: &ErrorKind) -> &'static str {
         ErrorKind::Asm => "AsmError",
         ErrorKind::Bitwise => "BitwiseError",
         ErrorKind::Rng => "RngError",
-        ErrorKind::Graphics      => "GraphicsError",
-        ErrorKind::Window        => "WindowError",
-        ErrorKind::Canvas        => "CanvasError",
-        ErrorKind::X11           => "X11Error",
-        ErrorKind::Lex           => "LexError",
-        ErrorKind::Scope         => "ScopeError",
-        ErrorKind::Loop          => "LoopError",
-        ErrorKind::Thread        => "ThreadError",
-        ErrorKind::Ai            => "AiError",
-        ErrorKind::Tensor        => "TensorError",
-        ErrorKind::Assertion     => "AssertionError",
-        ErrorKind::Unimplemented => "Unimplemented",
-        ErrorKind::Other         => "Error",
+        ErrorKind::Other => "Error",
     }
 }
 
