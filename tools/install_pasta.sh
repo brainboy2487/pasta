@@ -2,13 +2,11 @@
 set -euo pipefail
 
 SRC="target/release/pasta"
-DEST="/usr/bin/pasta"
+# Install to /usr/local/bin so it takes priority over any older /usr/bin/pasta.
+DEST="/usr/local/bin/pasta"
 
-echo "[install] Checking for $SRC ..."
-if [[ ! -f "$SRC" ]]; then
-    echo "[install] ERROR: $SRC not found. Run 'cargo build --release' first."
-    exit 1
-fi
+echo "[install] Building release binary ..."
+cargo build --release -q
 
 echo "[install] Copying $SRC -> $DEST"
 sudo cp "$SRC" "$DEST"

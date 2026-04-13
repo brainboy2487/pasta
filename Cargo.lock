@@ -801,7 +801,7 @@ checksum = "e2355d85b9a3786f481747ced0e0ff2ba35213a1f9bd406ed906554d7af805a1"
 
 [[package]]
 name = "pasta"
-version = "1.0.3"
+version = "1.6.1"
 dependencies = [
  "anyhow",
  "anymap",
@@ -809,6 +809,7 @@ dependencies = [
  "chrono",
  "criterion",
  "image",
+ "lazy_static",
  "libc",
  "log",
  "notify",

@@ -1,0 +1,294 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Conway's Game of Life — examples/game_demos/conways_gol.ps
+#
+# Fast-path rebuild:
+# - padded memory buffers remove neighbour bounds checks from the hot loop
+# - generation stepping uses direct PEEK/POKE with global buffers
+# - rendering batches changed cells through DRAW_GRID_BATCH instead of issuing
+#   one canvas_fill_rect call per live cell
+#
+# Controls:  SPACE        — pause / resume
+#            R            — randomize grid
+#            Q / Escape   — quit
+#
+# Run:  cargo run --features x11 -- examples/game_demos/conways_gol.ps
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Grid / window constants ────────────────────────────────────────────────────
+CELL      = 14
+COLS      = 48
+ROWS      = 36
+FPS       = 12
+WIN_W     = COLS * CELL
+WIN_H     = ROWS * CELL
+STRIDE    = COLS + 2
+BUF_CELLS = STRIDE * (ROWS + 2)
+
+# ── Colors ────────────────────────────────────────────────────────────────────
+COL_BG   = color(15, 15, 15)
+COL_LIVE = color(80, 220, 80)
+COL_GRID = color(24, 24, 24)
+
+# ── Double buffers with one dead-cell border on all sides ─────────────────────
+ALLOC.MEM(BUF_CELLS) -> cur_buf
+ALLOC.MEM(BUF_CELLS) -> nxt_buf
+
+DEF idx(col, row):
+    RET.NOW((row + 1) * STRIDE + (col + 1))
+END
+
+DEF clear_current():
+    i = 0
+    WHILE i < BUF_CELLS:
+        POKE(cur_buf, i, 0)
+        i = i + 1
+    END
+END
+
+DEF randomize_current():
+    clear_current()
+
+    row = 0
+    WHILE row < ROWS:
+        base = (row + 1) * STRIDE + 1
+        col = 0
+        WHILE col < COLS:
+            alive = 0
+            IF rand.int(0, 100) < 28:
+                alive = 1
+            END
+            POKE(cur_buf, base + col, alive)
+            col = col + 1
+        END
+        row = row + 1
+    END
+
+    # Seed a few small moving patterns so the opening state evolves quickly.
+    POKE(cur_buf, idx(4, 3), 1)
+    POKE(cur_buf, idx(5, 4), 1)
+    POKE(cur_buf, idx(3, 5), 1)
+    POKE(cur_buf, idx(4, 5), 1)
+    POKE(cur_buf, idx(5, 5), 1)
+
+    POKE(cur_buf, idx(20, 10), 1)
+    POKE(cur_buf, idx(21, 10), 1)
+    POKE(cur_buf, idx(22, 10), 1)
+
+    POKE(cur_buf, idx(34, 20), 1)
+    POKE(cur_buf, idx(35, 20), 1)
+    POKE(cur_buf, idx(34, 21), 1)
+    POKE(cur_buf, idx(35, 21), 1)
+END
+
+DEF step_once():
+    col = 0
+    WHILE col < STRIDE:
+        POKE(nxt_buf, col, 0)
+        POKE(nxt_buf, (ROWS + 1) * STRIDE + col, 0)
+        col = col + 1
+    END
+
+    row = 1
+    WHILE row <= ROWS:
+        base = row * STRIDE
+        POKE(nxt_buf, base, 0)
+        POKE(nxt_buf, base + COLS + 1, 0)
+        row = row + 1
+    END
+
+    row = 1
+    WHILE row <= ROWS:
+        base  = row * STRIDE
+        row_above = base - STRIDE
+        row_below = base + STRIDE
+        col = 1
+        WHILE col <= COLS:
+            cell = base + col
+            alive = PEEK(cur_buf, cell)
+
+            neighbours = 0
+            neighbours = neighbours + PEEK(cur_buf, row_above + col - 1)
+            neighbours = neighbours + PEEK(cur_buf, row_above + col)
+            neighbours = neighbours + PEEK(cur_buf, row_above + col + 1)
+            neighbours = neighbours + PEEK(cur_buf, base + col - 1)
+            neighbours = neighbours + PEEK(cur_buf, base + col + 1)
+            neighbours = neighbours + PEEK(cur_buf, row_below + col - 1)
+            neighbours = neighbours + PEEK(cur_buf, row_below + col)
+            neighbours = neighbours + PEEK(cur_buf, row_below + col + 1)
+
+            next_alive = 0
+            IF alive == 1:
+                IF neighbours == 2 OR neighbours == 3:
+                    next_alive = 1
+                END
+            OTHERWISE:
+                IF neighbours == 3:
+                    next_alive = 1
+                END
+            END
+
+            POKE(nxt_buf, cell, next_alive)
+            col = col + 1
+        END
+        row = row + 1
+    END
+END
+
+DEF draw_grid_lines():
+    SET_COLOR(COL_GRID)
+    row = 0
+    WHILE row <= ROWS:
+        y = row * CELL
+        canvas_fill_rect(win, 0, y, WIN_W, y + 1)
+        row = row + 1
+    END
+
+    col = 0
+    WHILE col <= COLS:
+        x = col * CELL
+        canvas_fill_rect(win, x, 0, x + 1, WIN_H)
+        col = col + 1
+    END
+END
+
+DEF draw_background():
+    SET_COLOR(COL_BG)
+    canvas_fill_rect(win, 0, 0, WIN_W, WIN_H)
+END
+
+DEF draw_full():
+    draw_background()
+    runs = []
+    row = 0
+    WHILE row < ROWS:
+        base = (row + 1) * STRIDE + 1
+        run_start = -1
+        col = 0
+        WHILE col < COLS:
+            IF PEEK(cur_buf, base + col) == 1:
+                IF run_start < 0:
+                    run_start = col
+                END
+            OTHERWISE:
+                IF run_start >= 0:
+                    list_append(runs, [run_start, row, col - run_start, COL_LIVE])
+                    run_start = -1
+                END
+            END
+            col = col + 1
+        END
+        IF run_start >= 0:
+            list_append(runs, [run_start, row, col - run_start, COL_LIVE])
+        END
+        row = row + 1
+    END
+    IF list_len(runs) > 0:
+        DRAW_GRID_RUNS(runs)
+    END
+    draw_grid_lines()
+END
+
+DEF draw_diff():
+    runs = []
+    row = 0
+    WHILE row < ROWS:
+        base = (row + 1) * STRIDE + 1
+        run_start = -1
+        run_color = COL_BG
+        col = 0
+        WHILE col < COLS:
+            cell = base + col
+            now_alive = PEEK(cur_buf, cell)
+            changed = 0
+            color = COL_BG
+            IF now_alive != PEEK(nxt_buf, cell):
+                changed = 1
+                IF now_alive == 1:
+                    color = COL_LIVE
+                END
+            END
+
+            IF changed == 1:
+                IF run_start < 0:
+                    run_start = col
+                    run_color = color
+                OTHERWISE:
+                    IF color != run_color:
+                        list_append(runs, [run_start, row, col - run_start, run_color])
+                        run_start = col
+                        run_color = color
+                    END
+                END
+            OTHERWISE:
+                IF run_start >= 0:
+                    list_append(runs, [run_start, row, col - run_start, run_color])
+                    run_start = -1
+                END
+            END
+            col = col + 1
+        END
+        IF run_start >= 0:
+            list_append(runs, [run_start, row, col - run_start, run_color])
+        END
+        row = row + 1
+    END
+    IF list_len(runs) > 0:
+        DRAW_GRID_RUNS(runs)
+        draw_grid_lines()
+    END
+END
+
+win = WINDOW("Conway's Game of Life", WIN_W, WIN_H)
+SET_DRAW_TARGET(win)
+DRAW_GRID(CELL, CELL)
+fps_init(FPS)
+
+randomize_current()
+needs_full_redraw = true
+paused = false
+running = true
+
+PRINT "Conway's Game of Life — SPACE pause/resume, R randomize, Q/Esc quit"
+
+WHILE running AND window_poll(win):
+    fps_begin(FPS)
+
+    key = WINDOW_KEY(win)
+    IF key == "q" OR key == "Q" OR key == "Escape":
+        running = false
+    END
+
+    IF key == " ":
+        IF paused:
+            paused = false
+        OTHERWISE:
+            paused = true
+        END
+    END
+
+    IF key == "r" OR key == "R":
+        randomize_current()
+        needs_full_redraw = true
+    END
+
+    IF needs_full_redraw:
+        draw_full()
+        needs_full_redraw = false
+    OTHERWISE:
+        IF NOT paused:
+            step_once()
+            tmp = cur_buf
+            cur_buf = nxt_buf
+            nxt_buf = tmp
+            draw_diff()
+        END
+    END
+
+    SWAP_BUFFER(win)
+    fps_end()
+    fps_tick()
+END
+
+FREE cur_buf
+FREE nxt_buf
+PRINT "Game of Life exited."

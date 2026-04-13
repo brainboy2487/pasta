@@ -1,8 +1,11 @@
 # Makefile for Pasta dev tasks
-.PHONY: build smoke install dev-setup golden-check ui-demo
+.PHONY: build test smoke install dev-setup golden-check ui-demo
 
 build:
 	cargo build --release
+
+test:
+	cargo test --workspace --all
 
 smoke:
 	python3 tools/devkit/tasks.py smoke

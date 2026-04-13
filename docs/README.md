@@ -1,13 +1,13 @@
-# PASTA — Program for Assignment, Statements, Threading, and Allocation
+# PASTA — Programming And Scripting Tool for Automation
 
-> **Version 1.4.1** · Scripting Language Interpreter written in Rust  
+> **Version 1.6.1** · Scripting Language Interpreter written in Rust  
 > Platform: Arch Linux · Build: `cargo build --release` · Root: `/home/travis/pasta`
 
-[![Build](https://img.shields.io/badge/build-passing-brightgreen)](#18-configuration--build)
-[![Tests](https://img.shields.io/badge/tests-50%2F50-brightgreen)](#17-test-suite)
+[![Build](https://img.shields.io/badge/build-passing-brightgreen)](#20-configuration--build)
+[![Tests](https://img.shields.io/badge/tests-343%20passing-brightgreen)](#19-test-suite)
 [![Language](https://img.shields.io/badge/language-Rust-orange)](https://www.rust-lang.org/)
-[![Version](https://img.shields.io/badge/version-1.4.1-blue)](#19-changelog)
-[![Graphics](https://img.shields.io/badge/graphics-X11%20native-purple)](#graphics-subsystem)
+[![Version](https://img.shields.io/badge/version-1.6.1-blue)](#21-changelog)
+[![Graphics](https://img.shields.io/badge/graphics-X11%20native-purple)](#8-graphics-subsystem)
 
 ---
 
@@ -28,19 +28,26 @@
    - 4.9 [Functions — DEF / DO](#49-functions--def--do)
    - 4.10 [Lambda Expressions](#410-lambda-expressions)
    - 4.11 [Return Semantics — RET.NOW / RET.LATE](#411-return-semantics--retnow--retlate)
-   - 4.12 [Error Handling — ATTEMPT](#412-error-handling--attempt)
+   - 4.12 [Error Handling — TRY / ATTEMPT](#412-error-handling--try--attempt)
    - 4.13 [Priority Declarations](#413-priority-declarations)
    - 4.14 [Brace Blocks](#414-brace-blocks)
+   - 4.15 [Module Imports — FROM / USE / AS](#415-module-imports--from--use--as)
+   - 4.16 [Pointer & Reference System](#416-pointer--reference-system)
 5. [Keywords Reference](#5-keywords-reference)
 6. [Built-in Functions](#6-built-in-functions)
 7. [Standard Library Modules](#7-standard-library-modules)
 8. [Graphics Subsystem](#8-graphics-subsystem)
-   - 8.1 [Core Graphics Builtins](#81-core-graphics-builtins)
-   - 8.2 [pasta_G Standard Graphics Library](#82-pasta_g-standard-graphics-library)
-   - 8.3 [X11 Native Window Backend](#83-x11-native-window-backend)
-   - 8.4 [Graphics Examples](#84-graphics-examples)
-9. [Type System](#9-type-system)
-10. [Shell / OS Layer](#10-shell--os-layer)
+   - 8.1 [Importing Graphics](#81-importing-graphics)
+   - 8.2 [2D Drawing API](#82-2d-drawing-api)
+   - 8.3 [Color Constants](#83-color-constants)
+   - 8.4 [X11 Native Window Backend](#84-x11-native-window-backend)
+   - 8.5 [Graphics Examples](#85-graphics-examples)
+9. [Shell / OS Layer](#9-shell--os-layer)
+    - 9.1 [Script Shell](#91-script-shell)
+    - 9.2 [Interactive Shell](#92-interactive-shell)
+10. [Pipeline System](#10-pipeline-system)
+    - 10.1 [Script Pipelines](#101-script-pipelines)
+    - 10.2 [Expression Pipe Operator |>](#102-expression-pipe-operator-)
 11. [Async Runtime — pasta_async](#11-async-runtime--pasta_async)
 12. [AI / ML Operations](#12-ai--ml-operations)
 13. [Meatball Runtime Architecture (MRA)](#13-meatball-runtime-architecture-mra)
@@ -58,75 +65,59 @@
 
 ## 1. Overview
 
-PASTA is a full-featured, embeddable scripting language interpreter written entirely in Rust. It is designed for expressiveness, safety, and extensibility — combining a clean high-level syntax with direct access to OS primitives, a virtual filesystem, async I/O, AI/ML tensor operations, **native X11 graphics**, and a novel Meatball Runtime Architecture (MRA) for agent-based execution.
+**PASTA** (**P**rogramming **A**nd **S**cripting **T**ool for **A**utomation) is a domain-specific language and interpreter written in Rust. It combines Python-like readability with a Rust-backed execution model, offering:
 
-**Core design goals:**
-
-- Readable, colon-terminated block syntax with optional C-style brace blocks
-- Rust-native performance with a safe ownership model under the hood
-- First-class 2D graphics: WINDOW, CANVAS, PIXEL, BLIT, WINDOW_OPEN — pixel to screen natively
-- First-class support for stdlib namespaces: `sys`, `fs`, `net`, `time`, `rand`, `gc`, `debug`, `ffi`, `thread`, `device`, `tensor`, `memory`
-- Integrated shell/OS layer with a virtual filesystem (VFS) and `shell_os` subsystem
-- Pluggable typing system with configurable numeric coercion, promotion, and rounding
-- Production-ready REPL with raw-mode readline, 50-entry history ring, and full cursor navigation
-- Scaffold for a Meatball Runtime Architecture (MRA) enabling agent-based and multi-backend workloads
-- Structured error system with numeric error codes (E2xxx–E9xxx), ANSI color output, and inline hints
-- Full 50-section regression suite passing cleanly as of v1.4.1
+- **Clean syntax** — Colon/indent or brace-delimited blocks, `DEF`/`DO` functions, `IF`/`OTHERWISE`, `WHILE`, `FOR IN`, `TRY` error handling
+- **Script pipelines** — `a.ps | b.ps | c.ps` up to 8 stages; first stage sends values via `RETURN`; downstream stages receive per-value via `PIPE_IN`
+- **`|>` pipe operator** — expression-level `value |> function` piping
+- **Opt-in 2D graphics** — block `FROM graphics: use ... END`; full drawing API: lines, rects, circles, ellipses, triangles, polygons, arcs; 32 named color constants; PPM export and live X11 windows
+- **Integrated shell** — VFS shell with quote parsing, IO redirect, env vars, glob expansion, command pipes, and text-processing builtins
+- **First-class functions & lambdas** — `LAMBDA x: x * x END`, closures, higher-order patterns
+- **Threading** — `DO: ... END` async blocks, global thread registry, `:threads` / `:thread-details` in REPL
+- **Modular stdlib** — `.ph` headers for math, time, fs, rand, tensor, graphics; stdlib module registry
+- **AI/ML subsystem** — `tensor.*` operations, autograd scaffold, model training pipeline
+- **Async primitives** — `pasta_async` sub-crate with I/O, sync, and runtime modules
+- **Structured errors** — Numeric error codes (E0xxx–E9xxx), `PASTA_PRETTY=1` Rust-style diagnostics
+- **Module imports** — `FROM` / `USE` / `AS` lazy import system with `PASTA_MODULE_PATH` support
+- **Unified pointer system** — `ALLOC`/`FREE`/`GOTO`/`PULL`/`PUSH` for memory, files, devices, and networks
 
 ---
 
 ## 2. Quick Start
 
-### Build (headless — no display required)
-
 ```bash
-cd /home/travis/pasta
+# Clone and build
+git clone https://github.com/yourname/pasta.git
+cd pasta
 cargo build --release
+
+# Run test suite
+./target/release/pasta tests/10_full_suite.ps   # 50 sections
+
+# REPL mode
+./target/release/pasta
+pasta> PRINT 1 + 2
+3
+pasta> exit
+
+# Script mode
+./target/release/pasta examples/hello.ps
 ```
 
-### Build with native X11 window support
+**Hello World:**
+
+```pasta
+# hello.ps
+PRINT "Hello, PASTA!"
+x = 10 + 32
+PRINT x    # 42
+```
+
+**With graphics (X11 build):**
 
 ```bash
 cargo build --release --features x11
-sudo cp target/release/pasta /usr/bin/pasta
-```
-
-### Run a script
-
-```bash
-pasta tests/09_big_test.ps          # 30-section regression suite
-pasta tests/10_full_suite.ps        # 50-section full suite
-pasta tests/test_graphics.ps        # gradient render → out.ppm
-DISPLAY=:0 pasta tests/test_shapes.ps  # live X11 window with shapes
-```
-
-### Interactive REPL
-
-```bash
-pasta
-# PASTA interpreter — :help for commands, exit to quit
-pasta> PRINT "hello world"
-hello world
-pasta> x = 10
-pasta> PRINT x * 2
-20
-pasta> w = WINDOW("test", 200, 120)
-pasta> exit
-Goodbye.
-```
-
-### Graphics quick start
-
-```pasta
-w = WINDOW("hello", 320, 240)
-c = CANVAS(320, 240)
-# draw a red pixel
-PIXEL(c, 100, 100, 255, 0, 0)
-BLIT(w, c)
-WINDOW_SAVE(w, "hello.ppm")
-while WINDOW_OPEN(w):
-  BLIT(w, c)
-CLOSE(w)
+./target/release/pasta tests/test_shapes.ps
 ```
 
 ---
@@ -138,83 +129,87 @@ pasta/
 ├── src/
 │   ├── ai/                        # AI/ML subsystem
 │   │   ├── autograd.rs            # Automatic differentiation
-│   │   ├── datasets.rs            # Dataset loading helpers
-│   │   ├── generate.rs            # Text/tensor generation
+│   │   ├── datasets.rs            # Dataset loading
+│   │   ├── generate.rs            # Generation utilities
 │   │   ├── learn.rs               # Training loops
 │   │   ├── models.rs              # Model definitions
-│   │   ├── tensor.rs              # Core tensor type
-│   │   └── tokenizer.rs           # Tokenization utilities
+│   │   ├── tensor.rs              # Tensor operations
+│   │   ├── tokenizer.rs           # Tokenization
+│   │   └── mod.rs
 │   ├── bin/
-│   │   └── pasta.rs               # Binary entry point
-│   ├── interpreter/
-│   │   ├── shell_os/              # Shell / VFS integration
-│   │   │   ├── cli/               # cli.rs, mod.rs
-│   │   │   ├── commands/          # fs_commands.rs, mod.rs
-│   │   │   └── vfs/               # fs.rs, node.rs, path.rs, mod.rs
-│   │   ├── ai_network.rs          # AI network hooks for interpreter
-│   │   ├── environment.rs         # Variable scopes & env stack
-│   │   ├── errors.rs              # Runtime error types + error codes
-│   │   ├── ex_eval.rs             # Expression/statement evaluator
-│   │   ├── ex_frame.rs            # Stack frame management
-│   │   ├── executor.rs            # Core interpreter dispatch loop
-│   │   ├── int_api.rs             # Internal interpreter API
-│   │   ├── mod.rs
-│   │   ├── repl.rs                # Interactive REPL
-│   │   └── shell.rs               # Shell integration shim
-│   ├── lexer/
-│   │   ├── alias.rs               # Keyword alias table (AliasTable)
-│   │   ├── lexer.rs               # Tokenizer
-│   │   ├── tokens.rs              # Token type definitions
-│   │   ├── mod.rs
-│   │   └── unicode.rs             # Unicode normalization helpers
-│   ├── meatballs/                 # MRA scaffold
-│   │   ├── agent/                 # agent.rs, Cargo.toml
-│   │   ├── api/                   # meatball_api.rs, mod.rs
-│   │   ├── backends/              # Backend stubs (local, pseudo-vm, vm)
-│   │   ├── cli/                   # cli.rs
-│   │   ├── phase0/                # mra_schema.json, objective.md.txt
-│   │   └── runtime/               # runtime.rs
-│   ├── parser/
+│   │   └── pasta.rs               # Main binary entrypoint
+│   ├── error_logging/             # Error system
+│   │   ├── error_handler.rs
+│   │   ├── error_messages.rs
+│   │   ├── error_messages.json
+│   │   └── mod.rs
+│   ├── interpreter/               # Core interpreter
+│   │   ├── ai_network.rs          # AI network integration
+│   │   ├── environment.rs         # Variable environment
+│   │   ├── errors.rs              # RuntimeErrorKind enum (60+ variants)
+│   │   ├── ex_eval.rs             # Expression evaluator
+│   │   ├── ex_frame.rs            # Stack frames
+│   │   ├── executor.rs            # Statement executor
+│   │   ├── int_api.rs             # Internal API
+│   │   ├── int_api_tests.rs       # API tests
+│   │   └── mod.rs
+│   ├── kernel/                    # Low-level kernel operations
+│   ├── lexer/                     # Tokenizer
+│   │   ├── lexer.rs               # Main lexer implementation
+│   │   ├── alias_table.rs         # Keyword aliases
+│   │   ├── tokens.rs              # Token types
+│   │   └── mod.rs
+│   ├── meatballs/                 # MRA agent system
+│   │   ├── backends/              # Execution backends
+│   │   ├── phase0/                # Schema definitions
+│   │   └── mod.rs
+│   ├── mod_loader/                # Module loading system
+│   │   ├── loader.rs              # Module loader
+│   │   ├── resolver.rs            # Path resolution
+│   │   └── mod.rs
+│   ├── parser/                    # AST generation
+│   │   ├── parser.rs              # Main parser
 │   │   ├── ast.rs                 # AST node definitions
-│   │   ├── grammar.rs             # Grammar rules
-│   │   ├── mod.rs
-│   │   └── parser.rs              # Recursive descent parser
-│   ├── pasta_async/               # Async runtime (sub-crate)
-│   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── api.rs, io.rs, lib.rs, runtime.rs
-│   │       ├── serialize.rs, sync.rs, testing.rs
-│   ├── runtime/
-│   │   ├── asm.rs                 # AsmRuntime / AsmBlock
-│   │   ├── bitwise.rs             # Bitwise operations
-│   │   ├── devices.rs             # Device detection & profiles
-│   │   ├── device_ls.json         # Known device list
-│   │   ├── mod.rs                 # auto_configure, detect_host_arch
-│   │   ├── rng.rs                 # RNG utilities
-│   │   ├── scheduler.rs           # Task scheduler
-│   │   ├── strainer.rs            # GC strainer
-│   │   └── threading.rs           # Thread primitives
-│   ├── semantics/
-│   │   ├── constraints.rs         # Type & value constraints
-│   │   ├── priority.rs            # PRIORITY semantic pass
-│   │   └── resolver.rs            # Name & scope resolution
+│   │   └── mod.rs
+│   ├── pasta_async/               # Async runtime sub-crate
+│   │   ├── api.rs                 # Async API
+│   │   ├── io.rs                  # Async I/O
+│   │   ├── runtime.rs             # Runtime loop
+│   │   ├── serialize.rs           # Serialization
+│   │   ├── sync.rs                # Synchronization primitives
+│   │   ├── testing.rs             # Async tests
+│   │   └── mod.rs
+│   ├── pipelines/                 # Pipeline processing
+│   ├── runtime/                   # Runtime support
+│   ├── saucey/                    # Saucey GC and pointer system
+│   │   ├── saucey.rs              # Main Saucey implementation
+│   │   ├── strainer.rs            # GC (Strainer)
+│   │   └── mod.rs
+│   ├── semantics/                 # Semantic analysis
+│   │   ├── constraints.rs         # Type constraints
+│   │   ├── priority.rs            # Priority handling
+│   │   ├── scope.rs               # Scope analysis
+│   │   └── mod.rs
 │   ├── stdlib/                    # Standard library
-│   │   ├── graphics/              # ★ NEW: Native graphics subsystem
+│   │   ├── graphics/              # ★ Native graphics subsystem
 │   │   │   ├── backend/
 │   │   │   │   ├── mod.rs         # BackendWindow trait
 │   │   │   │   ├── x11.rs         # X11 native backend (XPutImage pipeline)
 │   │   │   │   └── win32.rs       # Win32 stub (future)
-│   │   │   ├── builtins.rs        # Builtin adapter helpers
+│   │   │   ├── api.rs             # Importable graphics helpers
 │   │   │   ├── canvas.rs          # Canvas (ARGB pixel buffer)
 │   │   │   ├── draw.rs            # Bresenham line/circle/rect
+│   │   │   ├── events.rs          # Event helpers
 │   │   │   ├── mod.rs
+│   │   │   ├── pixel_format.rs    # Pixel format helpers
 │   │   │   └── window.rs          # Window struct
 │   │   ├── debug.ph, device.ph, ffi.ph, fs.ph, gc.ph
 │   │   ├── math.ph, memory.ph, net.ph
-│   │   ├── pasta_G.ph             # ★ NEW: Standard graphics library (pure Pasta)
+│   │   ├── pasta_G.ph             # ★ Standard graphics library (pure Pasta)
 │   │   ├── rand.ph, stdio.ph, stdlib.pa
 │   │   ├── sys.ph, tensor.ph, thread.ph, time.ph
 │   │   └── mod.rs
+│   ├── threading/                 # Threading support
 │   ├── typing/                    # Type system
 │   │   ├── bool.rs, bool_coerce.rs
 │   │   ├── float.rs               # Float helpers, rounding
@@ -232,14 +227,15 @@ pasta/
 ├── tests/
 │   ├── 09_big_test.ps             # 30-section regression suite
 │   ├── 10_full_suite.ps           # 50-section full suite
-│   ├── test_graphics.ps           # ★ NEW: Gradient render test
-│   ├── test_shapes.ps             # ★ NEW: Triangle/circle/rect in X11 window
+│   ├── test_graphics.ps           # ★ Gradient render test
+│   ├── test_shapes.ps             # ★ Triangle/circle/rect in X11 window
 │   ├── mand_test.ps               # Mandelbrot stress test
 │   └── ...
 ├── examples/
 │   ├── graphics_test.pasta        # Graphics example
 │   └── mandelbrot_gui.pasta       # Mandelbrot GUI target
 ├── tools/                         # Dev tooling scripts
+├── docs/                          # Documentation
 ├── artifacts/                     # Build logs and EATME diagnostic files
 ├── Cargo.toml
 └── Cargo.lock
@@ -257,7 +253,7 @@ PASTA scripts use the `.ps` extension. Comments begin with `#`. Blocks may be op
 |---------|-------------------|-----------------------------|
 | Integer | `42`, `0`, `-1`   | 64-bit float internally     |
 | Float   | `3.14`, `-0.5`    | f64 internally              |
-| Bool    | `true`, `false`   | Lowercase required          |
+| Bool    | `true`, `false`   | Case-insensitive; `true`/`false` preferred |
 | String  | `"hello pasta"`   | Double-quoted UTF-8         |
 | List    | `[1, 2, 3]`       | Heterogeneous values ok     |
 | None    | implicit / unset  | Unassigned variable         |
@@ -288,11 +284,6 @@ PRINT x        # 20
 | `//`     | Floor division     | `15 // 4`   | `3`    |
 | `%`      | Modulo             | `17 % 5`    | `2`    |
 | `^`      | Exponentiation     | `2 ^ 8`     | `256`  |
-| `**`     | Power (alternate)  | `2 ** 8`    | `256`  |
-| `+=`     | Add-assign         | `x += 1`    | —      |
-| `-=`     | Sub-assign         | `x -= 1`    | —      |
-| `*=`     | Mul-assign         | `x *= 2`    | —      |
-| `/=`     | Div-assign         | `x /= 2`    | —      |
 
 **Comparison**
 
@@ -309,8 +300,8 @@ PRINT x        # 20
 
 | Operator | Description  |
 |----------|--------------|
-| `&&`     | Logical AND  |
-| `\|\|`   | Logical OR   |
+| `AND`    | Logical AND  |
+| `OR`     | Logical OR   |
 | `NOT`    | Logical NOT  |
 
 **Bitwise (new in v1.4.1)**
@@ -342,11 +333,23 @@ PRINT list_first(parts)            # a
 PRINT list_last(parts)             # c
 ```
 
+**String Interpolation (v1.4.3)**
+
+```pasta
+name = "PASTA"
+version = 1.4
+PRINT "Welcome to {name} v{version}!"   # Welcome to PASTA v1.4!
+PRINT "2 + 2 = {2 + 2}"                  # 2 + 2 = 4
+PRINT "Escaped: {{ and }}"              # Escaped: { and }
+```
+
 ### 4.5 Lists
 
 ```pasta
 nums = [10, 20, 30, 40, 50]
-PRINT nums[0]                     # 10
+PRINT nums[0]                     # 10  (bracket indexing: 0-based)
+PRINT nums(1)                     # 10  (paren indexing: 1-based)
+PRINT nums[1]                     # 20  (0-based: second element)
 PRINT list_len(nums)              # 5
 PRINT list_sum(nums)              # 150
 PRINT list_sort(nums)             # [10, 20, 30, 40, 50]
@@ -393,6 +396,15 @@ while i < 5 {
     PRINT i
     i = i + 1
 }
+
+# BREAK and CONTINUE (v1.4.2)
+i = 0
+WHILE i < 10:
+    i = i + 1
+    IF i == 5: CONTINUE END
+    IF i == 8: BREAK END
+    PRINT i
+END
 ```
 
 ### 4.8 FOR IN Loops
@@ -409,19 +421,22 @@ END
 FOR ch IN "hello":
     PRINT ch
 END
+
+# With BREAK/CONTINUE (v1.4.2)
+FOR item IN [1, 2, 3, 4, 5]:
+    IF item == 3: CONTINUE END
+    IF item == 5: BREAK END
+    PRINT item
+END
 ```
 
 ### 4.9 Functions — DEF / DO
 
 ```pasta
-DEF add a b:
+DEF add(a, b):
     RET.NOW a + b
 END
 result = add(3, 4)
-PRINT result    # 7
-
-# Alternate call syntax
-result = DO add 3 4
 PRINT result    # 7
 ```
 
@@ -441,31 +456,42 @@ PRINT apply(square, 5)  # 25
 ### 4.11 Return Semantics — RET.NOW / RET.LATE
 
 ```pasta
-DEF sign x:
+DEF sign(x):
     IF x < 0: RET.NOW "negative" END
     IF x == 0: RET.NOW "zero" END
     RET.NOW "positive"
 END
-
-# RET.LATE — body continues executing after return value is set
-DEF deferred_example:
-    RET.LATE 42
-    PRINT "body continued after RET.LATE"
-END
-result = DO deferred_example   # prints message, returns 42
 ```
 
-### 4.12 Error Handling — ATTEMPT
+`RET.LATE` is **experimental** — it sets a deferred return value and allows the function body to continue executing, but the caller receives a raw pending object rather than the resolved value. Use `RET.NOW` or `RETURN` for reliable returns.
+
+### 4.12 Error Handling — TRY / ATTEMPT
+
+`TRY` and `ATTEMPT` are interchangeable keywords for the same block-level construct:
 
 ```pasta
-ATTEMPT:
+TRY:
     x = 1 / 0
 OTHERWISE:
     PRINT "caught an error"
 END
 
-result = ATTEMPT: 2 OTHERWISE: 0 END        # 2
-result = ATTEMPT: 1/0 OTHERWISE: 42 END     # 42
+# ATTEMPT is an alias for TRY
+ATTEMPT:
+    x = risky_call()
+OTHERWISE:
+    PRINT "caught error"
+END
+```
+
+To bind the error message, use `ATTEMPT error_var:`:
+
+```pasta
+ATTEMPT err:
+    raise("something went wrong")
+OTHERWISE:
+    PRINT err   # "something went wrong"
+END
 ```
 
 ### 4.13 Priority Declarations
@@ -511,6 +537,208 @@ while x < 5 {
 
 ---
 
+### 4.15 Module Imports — FROM / USE / AS
+
+New in v1.4.2 — a complete lazy module import system. Symbols are bound on first use, so module code runs only when a symbol from the module is first accessed.
+
+#### Basic import
+
+```pasta
+FROM:
+    mymodule
+        use
+            add
+        END
+END
+
+set result = add(2, 3)   # mymodule is loaded here, on first call
+```
+
+#### Import with alias
+
+Use `AS` to bind the imported symbol under a different name:
+
+```pasta
+FROM:
+    mathutil
+        use
+            add as plus
+        END
+END
+
+set y = plus(10, 7)      # y == 17
+```
+
+#### Multiple symbols from one module
+
+```pasta
+FROM:
+    arith
+        use
+            add
+            mul
+        END
+END
+
+set s = add(3, 4)        # s == 7
+set p = mul(3, 4)        # p == 12
+```
+
+#### Module search path
+
+The runtime searches for `<name>.pm` files in this order:
+
+1. `./<name>.pm` — current working directory
+2. `./modules/<name>.pm` — local `modules/` subdirectory
+3. `$PASTA_MODULE_PATH/<name>.pm` — each colon-separated directory in the `PASTA_MODULE_PATH` environment variable
+4. `./src/stdlib/<name>.pm` — development tree
+5. `./stdlib/<name>.pm` — legacy layout
+
+Set `PASTA_MODULE_PATH` to point to installed stdlib or project-specific module directories:
+
+```bash
+export PASTA_MODULE_PATH=/usr/share/pasta/modules:/home/user/myproject/modules
+```
+
+#### Module file format (`.pm`)
+
+A module file must declare itself with `MOD` and list its exported symbols with `export`:
+
+```pasta
+MOD mathutil:
+    export add
+
+    def add(a, b):
+        return a + b
+END
+```
+
+---
+
+### 4.16 Pointer & Reference System
+
+**New in v1.4.4** — A unified pointer abstraction for memory, files, devices, and network resources.
+
+#### Pointer Types
+
+PASTA supports four kinds of pointers:
+
+| Kind | Description | Creation |
+|------|-------------|----------|
+| `MEM` | Raw memory buffer | `ALLOC.MEM(size)` |
+| `FILE` | File handle | `ALLOC.FILE(path, mode)` or `REF.FILE(path)` |
+| `DEV` | Device handle (GPIO, serial, etc.) | `ALLOC.DEV(id, type)` |
+| `NET` | Network socket | `ALLOC.NET(host, port)` or `REF.NET(endpoint)` |
+
+#### Allocating Pointers
+
+Use `ALLOC.<KIND>` to create a new pointer:
+
+```pasta
+// Allocate 1KB memory buffer
+ALLOC.MEM(1024) -> buffer
+
+// Open a file for reading
+ALLOC.FILE("/tmp/data.txt", "r") -> file_ptr
+
+// Create network connection
+ALLOC.NET("localhost", 8080) -> sock
+```
+
+#### Reading/Writing with GOTO, PULL, PUSH
+
+The `GOTO` statement sets the active pointer context. Inside a `GOTO` block, `PULL` reads and `PUSH` writes:
+
+```pasta
+ALLOC.MEM(64) -> buf
+
+GOTO buf:
+    // Write bytes to buffer
+    PUSH.BYTE 0x48    // 'H'
+    PUSH.BYTE 0x69    // 'i'
+    
+    // Read bytes back (from current offset)
+    PULL.BYTE -> b1
+    PULL.BYTE -> b2
+END
+```
+
+#### Data Types for PULL/PUSH
+
+| Type | Description |
+|------|-------------|
+| `PULL.BYTE` / `PUSH.BYTE` | Single byte (0-255) |
+| `PULL.INT` / `PUSH.INT` | 64-bit integer |
+| `PULL.FLOAT` / `PUSH.FLOAT` | 64-bit float |
+| `PULL.STR(len)` / `PUSH.STR` | String with length |
+| `PULL.BYTES(len)` / `PUSH.BYTES` | Raw byte array |
+
+#### Getting Pointer Info
+
+Use `INFO` to inspect a pointer's metadata:
+
+```pasta
+ALLOC.MEM(128) -> buf
+INFO buf -> metadata
+
+// metadata is a list of [key, value] pairs:
+// [[id, 1], [kind, MEM], [alive, true], [temporary, false], [size, 128], [offset, 0]]
+```
+
+#### REF Expressions
+
+`REF.<KIND>(target)` creates a pointer with optional metadata:
+
+```pasta
+// Create file pointer with metadata
+set fp = REF.FILE("/etc/passwd") WITH { mode: "r", encoding: "utf-8" }
+
+// Create memory pointer from existing data
+set mp = REF.MEM([1, 2, 3, 4])  // Initialize with byte list
+```
+
+#### Freeing Pointers
+
+Use `FREE` to release a pointer. Accessing a freed pointer raises an error:
+
+```pasta
+ALLOC.MEM(64) -> buf
+// ... use buf ...
+FREE buf
+
+// This would raise error[E070]: Use after free
+// GOTO buf: ... END
+```
+
+#### GC Integration
+
+Pointers allocated inside `GOTO` blocks are automatically marked as temporary and freed when the block exits:
+
+```pasta
+ALLOC.MEM(1024) -> main_buf
+
+GOTO main_buf:
+    // This pointer is freed when GOTO exits
+    ALLOC.MEM(64) -> temp_buf
+    // ...
+END
+
+// temp_buf is automatically freed here
+```
+
+#### Error Codes
+
+| Code | Name | Description |
+|------|------|-------------|
+| E070 | `PTR_USE_AFTER_FREE` | Pointer accessed after being freed |
+| E071 | `PTR_KIND_MISMATCH` | Operation not supported for pointer kind |
+| E072 | `PTR_NO_CONTEXT` | PULL/PUSH without active GOTO context |
+| E073 | `PTR_NOT_FOUND` | Pointer ID not in registry |
+| E074 | `PTR_INVALID_TYPE` | Expected pointer value, got something else |
+| E075 | `PTR_METADATA_ERROR` | Invalid metadata in REF expression |
+
+---
+
 ## 5. Keywords Reference
 
 ### Control & Block Keywords
@@ -520,29 +748,39 @@ while x < 5 {
 | `PRINT`      | I/O        | Print a value or expression to stdout                    |
 | `IF`         | Control    | Conditional branch                                       |
 | `OTHERWISE`  | Control    | Else clause of `IF` or `ATTEMPT`                         |
-| `UNLESS`     | Control    | Inverted IF (new v1.4.1)                                 |
+| `UNLESS`     | Control    | Inverted IF — simple conditions only (v1.4.6)            |
 | `WHILE`      | Loop       | Condition-checked loop                                   |
-| `UNTIL`      | Loop       | Loop until condition (new v1.4.1)                        |
+| `UNTIL`      | Loop       | **Reserved — unreliable, do not use**                    |
 | `FOR`        | Loop       | Iteration loop                                           |
 | `IN`         | Loop       | Separates loop variable from iterable                    |
-| `MATCH`      | Control    | Pattern matching keyword (new v1.4.1)                    |
-| `WHEN`       | Control    | Match arm condition (new v1.4.1)                         |
+| `MATCH`      | Control    | **Reserved — not yet implemented**                       |
+| `WHEN`       | Control    | **Reserved — not yet implemented**                       |
 | `END`        | Block      | Closes any open block                                    |
 | `DEF`        | Function   | Define a named function                                  |
 | `DO`         | Function   | Call a named function                                    |
 | `LAMBDA`     | Function   | Anonymous function expression                            |
 | `RET.NOW`    | Return     | Immediate return                                         |
 | `RET.LATE`   | Return     | Deferred return                                          |
-| `ATTEMPT`    | Error      | Opens a try/catch block                                  |
+| `ATTEMPT`    | Error      | Opens a try/catch block (alias for `TRY`)                |
+| `TRY`        | Error      | Opens a try/catch block (preferred form)                 |
 | `PRIORITY`   | Scheduler  | Attach priority metadata to a block                      |
-| `WITH`       | Context    | Context/scope block (new v1.4.1)                         |
-| `FROM`       | Import     | Import source (new v1.4.1)                               |
-| `YIELD`      | Generator  | Emit a value (new v1.4.1)                                |
-| `AWAIT`      | Async      | Async wait (new v1.4.1)                                  |
+| `WITH`       | Context    | **Reserved — not yet implemented**                       |
+| `FROM`       | Import     | Opens a lazy module import block                         |
+| `USE`        | Import     | Names the symbols to import inside a `FROM` block        |
+| `AS`         | Import     | Binds an imported symbol under an alias name             |
+| `BREAK`      | Loop       | Exits the enclosing loop immediately (new v1.4.2)        |
+| `CONTINUE`   | Loop       | Skips to the next loop iteration (new v1.4.2)            |
+| `YIELD`      | Generator  | **Reserved — not yet implemented**                       |
+| `AWAIT`      | Async      | **Reserved — not yet implemented**                       |
 | `ASSERT`     | Debug      | Runtime assertion (new v1.4.1)                           |
 | `PASS`       | Control    | Explicit no-op (new v1.4.1)                              |
 | `CONST`      | Variable   | Constant binding (new v1.4.1)                            |
 | `NOT`        | Boolean    | Logical negation                                         |
+| `AND`        | Boolean    | Logical AND                                              |
+| `OR`         | Boolean    | Logical OR                                               |
+| `GOTO`       | Control    | Jump to a named LOOP label (v1.4.6)                      |
+| `LOOP`       | Control    | Define a named jump target for GOTO (v1.4.6)             |
+| `TYPEOF`     | Type       | Returns type string of a value (v1.4.6)                  |
 
 ### New Operator Tokens (v1.4.1)
 
@@ -553,12 +791,12 @@ while x < 5 {
 | `::`     | Namespace separator     |
 | `\|>`    | Forward pipe operator   |
 | `//`     | Floor division          |
-| `**`     | Power (alternate `^`)   |
-| `+=` `-=` `*=` `/=` `%=` | Compound assignment |
 | `->`     | Return type arrow       |
 | `=>`     | Fat arrow / match arm   |
 | `&` `\|` `~` `<<` `>>` | Bitwise operators |
 | `?`      | Optional / ternary      |
+
+> **Note:** `&&` and `||` are **not supported** — use `AND` and `OR` instead. `**` is **not supported** — use `^`. Compound assignment (`+=`, `-=`, `*=`, `/=`) is **not implemented**.
 
 ---
 
@@ -573,10 +811,10 @@ while x < 5 {
 | `ceil(x)`                       | Ceiling to integer                 |
 | `round(x)`                      | Round to nearest integer           |
 | `sqrt(x)`                       | Square root                        |
-| `pow(x, y)`                     | Power (also `^` / `**`)            |
+| `pow(x, y)`                     | Power (also `^`)                   |
 | `min(a, b)` / `max(a, b)`       | Min / max of two values            |
-| `log(x)` / `log2(x)`           | Natural / base-2 logarithm         |
-| `sin(x)` / `cos(x)` / `tan(x)` | Trigonometric functions            |
+| `log(x)` / `log2(x)`            | Natural / base-2 logarithm         |
+| `sin(x)` / `cos(x)` / `tan(x)`  | Trigonometric functions            |
 | `sign(x)`                       | Returns -1, 0, or 1                |
 
 ### String
@@ -604,6 +842,9 @@ while x < 5 {
 | `bool(x)`      | Convert to boolean                                            |
 | `to_string(x)` | Convert to string                                             |
 | `type_of(x)`   | Returns `"number"`, `"string"`, `"bool"`, `"list"`, `"heap"` |
+| `TYPEOF x`     | Keyword form of `type_of()` — same return values             |
+| `error(msg)`   | Raise a runtime error with the given message                 |
+| `raise(msg)`   | Alias for `error(msg)`                                       |
 
 ### List
 
@@ -622,7 +863,7 @@ while x < 5 {
 | `list_concat(a, b)`       | Concatenate two lists                    |
 | `list_contains(lst, x)`   | Boolean element presence check           |
 | `list_flatten(lst)`       | Flatten one level of nesting             |
-| `range(s, e)`             | List `[s, s+1, ..., e-1]`               |
+| `range(s, e)`             | List `[s, s+1, ..., e-1]`                |
 | `range(s, e, step)`       | List with step (positive or negative)    |
 
 ---
@@ -689,153 +930,256 @@ All modules use dotted-namespace dispatch through `call_builtin`. The lexer abso
 
 ## 8. Graphics Subsystem
 
-PASTA v1.4.1 introduces a complete native 2D graphics pipeline — from PASTA script to X11 window to screen with no external graphics frameworks required.
+Graphics in PASTA v1.5 is **opt-in** — import exactly what you need from the `graphics` module. No startup overhead or warnings on non-graphics scripts.
 
-### Pipeline
+### 8.1 Importing Graphics
 
-```
-PASTA script
-    ↓  PIXEL(canvas, x, y, r, g, b)
-executor.rs  gfx_windows HashMap  (headless RGB buffer)
-    ↓  BLIT(window, canvas)
-Canvas::load_rgb() → Canvas struct (ARGB u32 pixels)
-    ↓
-X11Window::present()
-    ↓
-upload_canvas() → BGRA byte conversion
-    ↓
-XPutImage() → X server → compositor → screen
+```pasta
+FROM graphics:
+    USE canvas_create, canvas_fill_rect, canvas_draw_circle,
+        canvas_save_ppm, color_rgb, RED, GREEN, BLUE
+END
 ```
 
-### 8.1 Core Graphics Builtins
+Any graphics symbol used without an import will raise an undefined-variable error rather than silently failing.
 
-These six builtins form the complete graphics primitive set. All are case-insensitive.
+### 8.2 2D Drawing API
 
-| Builtin                           | Returns        | Description                                       |
-|-----------------------------------|----------------|---------------------------------------------------|
-| `WINDOW(title, w, h)`             | window_handle  | Create a window (+ live X11 window if available)  |
-| `CANVAS(w, h)`                    | canvas_handle  | Allocate an off-screen pixel buffer               |
-| `PIXEL(canvas, x, y, r, g, b)`   | none           | Set one pixel — r,g,b in [0,255]                  |
-| `BLIT(window, canvas)`            | none           | Copy canvas → window buffer + push to X11         |
-| `WINDOW_OPEN(window)`             | bool           | True while window is alive; polls X11 events      |
-| `WINDOW_SAVE(window, path)`       | none           | Save framebuffer as P6 PPM file                   |
-| `CLOSE(window)`                   | none           | Destroy window and free resources                 |
+#### Canvas lifecycle
 
-Handles are opaque strings (`win://1`, `canvas://2`). They are always valid across calls within the same session.
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `canvas_create(w, h)` | handle | Create blank canvas |
+| `canvas_clear(c, color)` | — | Fill canvas with color |
+| `canvas_present(c)` | — | Push canvas to its window |
+| `canvas_blit(c, dst)` | — | Copy canvas to another |
+| `canvas_width(c)` | number | Canvas width |
+| `canvas_height(c)` | number | Canvas height |
+| `canvas_save_ppm(c, path)` | — | Save as PPM file |
 
-### 8.2 pasta_G Standard Graphics Library
+#### Pixel operations
 
-`src/stdlib/pasta_G.ph` is auto-loaded and provides a full high-level 2D drawing API implemented in pure Pasta on top of the six core builtins.
+| Function | Description |
+|----------|-------------|
+| `canvas_set_pixel(c, x, y, color)` | Set one pixel |
+| `canvas_get_pixel(c, x, y)` | Get packed color at pixel |
 
-**Lifecycle wrappers**
+#### Drawing primitives
 
-| Function                         | Description                              |
-|----------------------------------|------------------------------------------|
-| `g_window(title, w, h)`          | Create window                            |
-| `g_canvas(w, h)`                 | Create canvas                            |
-| `g_show(win, canvas)`            | BLIT canvas to window                    |
-| `g_save(win, path)`              | Save to PPM                              |
-| `g_open(win)`                    | Returns true while open                  |
-| `g_close(win)`                   | Close window                             |
+| Function | Description |
+|----------|-------------|
+| `canvas_draw_line(c, x0,y0, x1,y1, color)` | Bresenham line |
+| `canvas_draw_rect(c, x,y, w,h, color)` | Rectangle outline |
+| `canvas_fill_rect(c, x,y, w,h, color)` | Filled rectangle |
+| `canvas_draw_circle(c, cx,cy, r, color)` | Circle outline |
+| `canvas_fill_circle(c, cx,cy, r, color)` | Filled circle |
+| `canvas_draw_ellipse(c, cx,cy, rx,ry, color)` | Ellipse outline |
+| `canvas_fill_ellipse(c, cx,cy, rx,ry, color)` | Filled ellipse |
+| `canvas_draw_triangle(c, x0,y0, x1,y1, x2,y2, color)` | Triangle outline |
+| `canvas_fill_triangle(c, x0,y0, x1,y1, x2,y2, color)` | Filled triangle |
+| `canvas_draw_polygon(c, points, color)` | Polygon outline |
+| `canvas_fill_polygon(c, points, color)` | Filled polygon |
+| `canvas_draw_arc(c, cx,cy, r, a0, a1, color)` | Arc segment |
 
-**Drawing primitives**
+#### Color helpers
 
-| Function                                        | Description                  |
-|-------------------------------------------------|------------------------------|
-| `g_pixel(canvas, x, y, r, g, b)`               | Single pixel                 |
-| `g_pixel_color(canvas, x, y, [r,g,b])`         | Pixel with color list        |
-| `g_fill_rect(canvas, x, y, w, h, r, g, b)`     | Filled rectangle             |
-| `g_clear(canvas, w, h, r, g, b)`               | Fill entire canvas           |
-| `g_clear_black(canvas, w, h)`                  | Fill with black              |
-| `g_line(canvas, x0, y0, x1, y1, r, g, b)`      | Bresenham line               |
-| `g_rect(canvas, x, y, w, h, r, g, b)`          | Rectangle outline            |
-| `g_circle(canvas, cx, cy, radius, r, g, b)`    | Midpoint circle              |
-| `g_gradient_h(canvas, x,y,w,h, r0,g0,b0, r1,g1,b1)` | Horizontal gradient   |
-| `g_gradient_v(canvas, x,y,w,h, r0,g0,b0, r1,g1,b1)` | Vertical gradient     |
+| Function | Description |
+|----------|-------------|
+| `color_rgb(r, g, b)` | Pack RGB into u32 `0xFFRRGGBB` |
+| `color_rgba(r, g, b, a)` | Pack RGBA |
+| `color_hsv(h, s, v)` | HSV → packed RGB |
+| `color_lerp(c1, c2, t)` | Linear interpolate between two colors |
 
-**Named color constants**
+### 8.3 Color Constants
 
-`G_BLACK`, `G_WHITE`, `G_RED`, `G_GREEN`, `G_BLUE`, `G_YELLOW`, `G_CYAN`, `G_MAGENTA`, `G_GRAY`, `G_ORANGE`
+32 named color constants available after import:
 
-Each is a `[r, g, b]` list usable with `_color` variants.
+`RED` `GREEN` `BLUE` `WHITE` `BLACK` `YELLOW` `CYAN` `MAGENTA` `ORANGE` `PINK`  
+`PURPLE` `BROWN` `GRAY` `LIGHT_GRAY` `DARK_GRAY` `LIME` `TEAL` `NAVY` `MAROON`  
+`OLIVE` `SILVER` `GOLD` `INDIGO` `VIOLET` `CORAL` `SALMON` `KHAKI` `TURQUOISE`  
+`LAVENDER` `BEIGE` `TRANSPARENT`
 
-**Loop helpers**
+### 8.4 X11 Native Window Backend
 
-| Function                             | Description                                             |
-|--------------------------------------|---------------------------------------------------------|
-| `g_loop(win, canvas, frame_fn)`      | Event loop — calls `frame_fn(canvas)` each tick         |
-| `g_render_save(title,w,h,draw_fn,path)` | One-shot: create → draw → blit → save → close       |
+Build with `--features x11` for live windows:
 
-### 8.3 X11 Native Window Backend
-
-Location: `src/stdlib/graphics/backend/x11.rs`
-
-The X11 backend is compiled when `--features x11` is passed. It is otherwise omitted — headless operation (pixel buffer + PPM save) always works without any display.
-
-**Build requirements:**
 ```bash
 sudo pacman -S libx11          # Arch Linux
-# or
-sudo apt install libx11-dev    # Debian/Ubuntu
+cargo build --release --features x11
 ```
 
-**Pixel format pipeline:**
-- Canvas stores pixels as `u32` `0xAARRGGBB`
-- X11 `ZPixmap` 32bpp expects `BGRX` byte order on little-endian x86
-- `upload_canvas()` performs the inline ARGB→BGRA conversion per pixel
-- XImage is reused across blits (no malloc per frame) — buffer is pre-allocated at window creation
+Window functions (from the `graphics` module):
 
-**Event handling:**
-- `WM_DELETE_WINDOW` registered at creation — closing the window sets `open = false`
-- `WINDOW_OPEN()` polls pending X events each call via `XPending` / `XNextEvent`
-- `XInitThreads()` called once at startup via `std::sync::Once`
+| Function | Description |
+|----------|-------------|
+| `window_create(title, w, h)` | Open a native window |
+| `window_is_open(win)` | True while window is alive |
+| `window_close(win)` | Close and free resources |
+| `window_poll(win)` | Poll OS events |
+| `window_key(win)` | Last key pressed (string) |
 
-### 8.4 Graphics Examples
+### 8.5 Graphics Examples
 
-**Gradient fill + save to PPM (headless):**
+**Headless — draw shapes and save to PPM:**
+
 ```pasta
-w = WINDOW("gradient", 200, 120)
-c = CANVAS(200, 120)
-y = 0
-while y < 120:
-    x = 0
-    while x < 200:
-        r = x % 256
-        g = y % 256
-        b = (x + y) % 256
-        PIXEL(c, x, y, r, g, b)
-        x = x + 1
-    y = y + 1
-BLIT(w, c)
-WINDOW_SAVE(w, "gradient.ppm")
-```
-
-**Live X11 window with event loop:**
-```pasta
-w = WINDOW("live", 400, 300)
-c = CANVAS(400, 300)
-g_clear_black(c, 400, 300)
-g_circle(c, 200, 150, 80, 50, 200, 255)
-BLIT(w, c)
-while WINDOW_OPEN(w):
-    BLIT(w, c)
-CLOSE(w)
-```
-
-**Using pasta_G helpers:**
-```pasta
-set draw = LAMBDA canvas:
-    g_clear_black(canvas, 320, 240)
-    g_fill_rect(canvas, 20, 20, 100, 80, 220, 50, 50)
-    g_circle(canvas, 200, 120, 60, 50, 220, 50)
-    g_line(canvas, 50, 220, 270, 220, 255, 255, 255)
+FROM:
+    graphics
+        use
+            canvas_create, canvas_fill_rect, canvas_draw_circle,
+            canvas_save_ppm, RED, BLUE
+        END
+    END
 END
-g_render_save("shapes", 320, 240, draw, "shapes.ppm")
+
+c = canvas_create(320, 240)
+canvas_fill_rect(c, 20, 20, 100, 80, RED)
+canvas_draw_circle(c, 200, 120, 60, BLUE)
+canvas_save_ppm(c, "out.ppm")
+PRINT "saved out.ppm"
+```
+
+**Live X11 window:**
+
+```pasta
+FROM:
+    graphics
+        use
+            window_create, window_is_open, window_close, window_poll,
+            canvas_create, canvas_fill_circle, canvas_present, GREEN
+        END
+    END
+END
+
+win = window_create("demo", 400, 300)
+c   = canvas_create(400, 300)
+canvas_fill_circle(c, 200, 150, 80, GREEN)
+canvas_present(c)
+WHILE window_is_open(win):
+    window_poll(win)
+END
+window_close(win)
 ```
 
 ---
 
-## 9. Type System
+## 9. Shell / OS Layer
+
+### 9.1 Script Shell
+
+The script shell (`src/interpreter/shell.rs`) lets Pasta scripts run OS commands and shell pipelines as strings. It supports:
+
+- **Quote parsing** — `"arg with spaces"` and `'single quotes'` work correctly
+- **Env var expansion** — `$HOME`, `${VAR}` expanded before execution
+- **Glob expansion** — `*.ps`, `data_?.csv`, `[abc]*` expanded to matching files
+- **IO redirection** — `cmd > file`, `cmd >> file`, `cmd < file`
+- **Pipes** — `cmd1 | cmd2 | cmd3` with stdin/stdout chaining
+- **Text builtins** — `echo`, `grep`, `wc`, `sort`, `uniq`, `head`, `tail`, `find`
+- **Binary whitelist** — external execution limited to `/bin`, `/usr/bin`, `/usr/local/bin`, and relative paths
+
+```pasta
+# From a Pasta script
+shell("ls *.ps | sort | head -5")
+shell("grep 'RETURN' producer.ps > results.txt")
+```
+
+### 9.2 Interactive Shell
+
+Accessed from the REPL via `:shell` or by running `pasta --shell`. Features:
+
+- Full VFS (virtual filesystem) backed by `DiskImages/fs.img`
+- Standard commands: `ls`, `cd`, `pwd`, `cat`, `mkdir`, `rm`, `cp`, `mv`, `touch`
+- All script-shell features (pipes, redirect, glob, env vars) available interactively
+- Pipeline syntax: `a.ps | b.ps | c.ps` launches a multi-stage script pipeline
+
+---
+
+## 10. Pipeline System
+
+### 10.1 Script Pipelines
+
+PASTA v1.5 supports **multi-stage script pipelines** — up to 8 `.ps` files chained with `|`:
+
+```bash
+# At the REPL or interactive shell:
+pasta> producer.ps | transform.ps | consumer.ps
+```
+
+**How it works:**
+
+- Each stage runs in its own thread, registered in the global thread registry
+- **First stage** — runs once; every `RETURN value` sends `value` downstream
+- **Middle / last stages** — run once per incoming item; `PIPE_IN` holds the received value; `RETURN` forwards downstream (last stage discards)
+- Threads are named `pipeline-{id}-stage-{n}` and visible in `:threads`
+- Errors in one stage are logged to stderr; other stages continue normally
+- Fire-and-forget: the REPL returns immediately while stages run in background
+
+```pasta
+# producer.ps
+FOR i IN range(1, 6):
+    RETURN i
+END
+
+# double.ps — runs once per value received
+PRINT "doubling " + str(PIPE_IN)
+RETURN PIPE_IN * 2
+
+# printer.ps — terminal stage
+PRINT "result: " + str(PIPE_IN)
+```
+
+```bash
+pasta> producer.ps | double.ps | printer.ps
+spawned pipeline (3): producer.ps | double.ps | printer.ps
+doubling 1
+doubling 2
+...
+result: 2
+result: 4
+...
+```
+
+**From the CLI binary:**
+
+```bash
+pasta "producer.ps|double.ps|printer.ps"
+pasta --spawn-pipeline left.ps right.ps
+```
+
+**Thread inspection:**
+
+```
+pasta> :threads
+  THID      NAME                              STATUS        ELAPSED
+  ----------------------------------------------------------------------
+  1         pipeline-1-stage-0               finished      12ms
+  2         pipeline-1-stage-1               running       8ms
+  3         pipeline-1-stage-2               running       8ms
+
+pasta> :thread-details 2
+Thread THID:2
+  name:    pipeline-1-stage-1
+  status:  running
+  elapsed: 8ms (still running)
+  pipeline id:    1
+  pipeline stage: 2/3
+```
+
+### 10.2 Expression Pipe Operator `|>`
+
+For expression-level piping within a single script:
+
+```pasta
+double = LAMBDA x: x * 2 END
+square = LAMBDA x: x * x END
+
+result = 3 |> double |> square    # (3*2)^2 = 36
+PRINT result
+```
+
+`value |> fn` passes `value` as the argument to `fn`. Works with any callable.
+
+---
 
 PASTA uses a unified `Value` enum. The typing module provides configurable numeric promotion, rounding, and coercion.
 
@@ -864,12 +1208,6 @@ PASTA uses a unified `Value` enum. The typing module provides configurable numer
 | Tensor      | `"tensor"`          |
 | Lambda      | `"lambda"`          |
 | None        | `"none"`            |
-
----
-
-## 10. Shell / OS Layer
-
-The `shell_os` subsystem integrates shell-like OS primitives into PASTA. It includes a virtual filesystem (VFS) with persistent backing via `DiskImages/fs.img`, filesystem shell commands, and a CLI integration layer.
 
 ---
 
@@ -1069,7 +1407,7 @@ cargo build --release
 cargo build --release --features x11
 
 # Install system-wide
-sudo cp target/release/pasta /usr/bin/pasta
+sudo cp target/release/pasta /usr/local/bin/pasta
 ```
 
 ### Cargo features
@@ -1095,7 +1433,220 @@ Both are `AtomicBool` and can be set at startup or toggled at runtime via `PASTA
 
 ## 21. Changelog
 
-### v1.4.1 — Current Release
+### v1.6.1 — Current Release
+
+#### New Language Features
+
+- **`color(r, g, b)`** — pack three 0-255 bytes into a `0xFFRRGGBB` color value; always available (no import needed)
+- **`COLOR_GREY`** — additional named color constant (alias for mid-grey)
+- **`range(n)`** — returns `[1..n]` inclusive integer list; `range(s, e)` returns `[s..e]` inclusive
+- **`LIST_CONTAINS(list, val)`** — returns `true` if `val` is an element of `list`; O(n) linear scan
+- **Dict literal syntax** — `{"key": val, ...}` as an expression; works in assignments, DEF returns, and nested expressions
+- **`WHILE(UNBIND_SCOPE)` / `FOR(UNBIND_SCOPE)` / `IF(UNBIND_SCOPE)`** — push a new Block scope; variables created inside die when the block exits
+- **`WHILE(BIND_SCOPE)` / `FOR(BIND_SCOPE)` / `IF(BIND_SCOPE)`** — push a Block scope but hoist all vars to the nearest enclosing Function or Global scope on exit
+
+#### Bug Fixes
+
+- **Lexer: blank lines in indented blocks** — blank or comment-only lines no longer emit spurious `Dedent`/`Indent` tokens that mangled adjacent expressions (previously caused "undefined variable" on lines after blank lines inside DEF bodies)
+- **Parser: `parse_do_body` single-newline skip** — block bodies now correctly skip any number of blank/comment-only lines between a `WHILE`/`FOR`/`IF` header and its first indented statement; previously a single blank line caused the entire block body to be parsed as top-level code
+
+#### Game Demo
+
+- **`examples/game_demos/snake.ps`** — classic Snake game using v1.6.1 features: `color()`, dict literals, `range()`, `LIST_CONTAINS`, `WHILE`/`FOR IN`, `DEF` functions, live X11 window with FPS throttling
+
+---
+
+### v1.5.0
+
+#### Graphics Revamp (opt-in, fully redesigned)
+
+- **`FROM graphics: use ... END` (block indent form)** — Graphics is now an opt-in library; no startup warnings on non-graphics scripts
+- **Full 2D drawing API**: `canvas_draw_line`, `canvas_draw_rect`, `canvas_fill_rect`, `canvas_draw_circle`, `canvas_fill_circle`, `canvas_draw_ellipse`, `canvas_fill_ellipse`, `canvas_draw_triangle`, `canvas_fill_triangle`, `canvas_draw_polygon`, `canvas_fill_polygon`, `canvas_draw_arc`
+- **32 named color constants** imported on demand: `RED`, `GREEN`, `BLUE`, `WHITE`, `BLACK`, `YELLOW`, `CYAN`, `MAGENTA`, `ORANGE`, `PINK`, `PURPLE`, `BROWN`, `GRAY`, `LIGHT_GRAY`, `DARK_GRAY`, `LIME`, `TEAL`, `NAVY`, `MAROON`, `OLIVE`, `SILVER`, `GOLD`, `INDIGO`, `VIOLET`, `CORAL`, `SALMON`, `KHAKI`, `TURQUOISE`, `LAVENDER`, `BEIGE`, `TRANSPARENT`
+- **Color helpers**: `color_rgb()`, `color_rgba()`, `color_hsv()`, `color_lerp()`
+- Removed `pasta_G.ph` auto-load; removed startup warning "Could not find stdlib graphics helpers"
+
+#### Pipeline System (new)
+
+- **Multi-stage script pipelines** — `a.ps | b.ps | c.ps` up to 8 stages; each stage is its own thread
+- **`PIPE_IN` variable** — downstream stages receive per-item value via `PIPE_IN` global
+- **`RETURN` sends downstream** — every `RETURN value` in a pipeline stage forwards the value to the next stage
+- **Thread registry integration** — stage threads named `pipeline-{id}-stage-{n}`, visible in `:threads`
+- **`:thread-details N`** REPL command shows pipeline metadata per thread
+- **Fire-and-forget** — REPL returns immediately; stages run in background
+- **`--spawn-pipeline`** CLI flag and inline `|` syntax in `pasta "a.ps|b.ps"` both supported
+
+#### Shell Overhaul (P1 security + P2 features)
+
+- **P1 security**: Quote tokenizer (`"arg with spaces"`, `'quotes'`), safe VFS path traversal (replaced unsafe raw pointer `walk_mut`), binary execution whitelist, `..` at root boundary fix
+- **P2 features**: IO redirect (`>`, `>>`, `<`), env var expansion (`$VAR`, `${VAR}`), glob expansion (`*`, `?`, `[abc]`), multi-stage shell pipes, text builtins (`echo`, `grep`, `wc`, `sort`, `uniq`, `head`, `tail`, `find`)
+
+#### Keywords & REPL
+
+- **`:keywords`** REPL command completely rewritten — now lists all ~100+ builtins and keywords grouped by category
+- **`:thread-details N`** — new REPL command for per-thread pipeline metadata
+- **REPL banner** updated to `PASTA v1.5`
+
+---
+
+### v1.4.6
+
+#### Family Object System (★ Major New Feature)
+
+- **`OBJ.FAM` syntax.** A dual-parent lineage object model built into the language. Every family node carries exactly two parent slots (`pa`, `pb`), an adoption state machine, and a reconciliation engine.
+- **`x = OBJ.LST(pa, pb)`** — allocate an immutable family node. `OBJ.LST.MUT(pa, pb)` allocates a mutable node.
+- **`DOES_PARENT_EXIST x`** — boolean check whether a node has live parent references.
+- **`::USE UNSAFE-READ::` / `::USE UNSAFE-WRITE::`** — opt-in unsafe permission pragmas for low-level family access.
+- **`TYPEOF x`** — keyword now correctly parses and dispatches to the `type()` builtin (was silently broken).
+- **Full runtime:** `FamilyRegistry`, `FamilyEventBus`, ASM (`AdoptionStateMachine`), reconciliation (Option C), GC hooks, snapshot/recovery API, and structured `LineageError` diagnostics.
+- **22 family tests** covering all subsystems.
+
+#### Keyword Completions
+
+- **`PASS`** — explicit no-op statement (consumes a line, emits nothing).
+- **`ASSERT expr`** — runtime assertion; raises `"Assertion failed"` if `expr` is falsy. Compiles to `IF NOT expr: error("Assertion failed") END`.
+- **`UNLESS cond: body END`** — inverted conditional; compiles to `IF NOT cond: body END`.
+- **`error(msg)` / `raise(msg)`** — builtin functions that immediately raise a runtime error.
+
+#### Correctness Fixes
+
+- **Alias conflict resolution.** `"with"` was shadowed by both FOR and WITH (WITH wins); `"when"` by IF and WHEN (WHEN wins); `"await"` by WAIT and AWAIT (AWAIT wins). Dead first-registrations removed.
+- **Type coercion unification.** `Eq`/`Neq` comparisons now use the same `coerce_to_number` closure as arithmetic — `"" == 0` is now `true` (consistent with `"" + 5 = 5`).
+- **Heap truthiness.** `Value::Heap` is dereferenced before truthiness check; non-empty lists correctly evaluate as truthy.
+- **Exponent right-associativity confirmed.** `2^3^2 = 512` ✅
+- **Pipeline operator precedence confirmed.** `double |> 5 = 10` ✅
+
+#### TRY / OTHERWISE
+
+- Verified correct behaviour in all contexts: basic, ATTEMPT with error binding, nested TRY, TRY inside FOR IN / WHILE loops, TRY inside function bodies, bare TRY (no OTHERWISE).
+- **13 integration tests** added in `tests/try_otherwise_integration.rs`.
+
+#### Tests
+
+- **206 tests passing**, up from 146 in v1.4.5.
+- New test files: `tests/try_otherwise_integration.rs` (13 tests).
+
+---
+
+### v1.4.5
+
+#### Scope System (★ Major Rework)
+
+- **Dedicated `scope.rs` module.** All scope semantics are now centralized in `src/interpreter/scope.rs`. The module provides `ScopeKind`-aware `scope_assign()`, `enter()`/`leave()` wrappers, and convenience accessors — replacing scattered inline scope logic.
+- **`ScopeKind` enum.** Every scope frame is now tagged as `Global`, `Function`, or `Block`:
+  - `Function` — hard boundary (function/lambda calls, module bodies, thread bodies). New variables created inside stay inside and are discarded on return.
+  - `Block` — soft boundary (IF bodies, loop bodies, DO bodies). New variables escape to the nearest `Function`/`Global` scope so they persist after the block ends.
+- **`scope_assign()` replaces `scopes.len() > 1` hack.** The old assignment handler used `if scopes.len() > 1 { set_local } else { assign }`, which caused ALL assignments inside any scoped block to create a local copy. The new logic: (1) if the variable already exists anywhere, update it in place; (2) if the variable is new, create it in the nearest `Function` or `Global` scope.
+- **Variable persistence fixed.** Variables assigned inside `IF`, `WHILE`, and `DO` bodies now correctly persist in the enclosing function/global scope.
+- **All 18+ `push_scope` call sites tagged** with the correct `ScopeKind`.
+
+#### GOTO Loops
+
+- **`LOOP` named-loop keyword** defines a named jump target for `GOTO`.
+- **Syntax:** `name = LOOP … GOTO name … END` — `GOTO name` restarts the loop from the top.
+
+#### Timed DO Loops
+
+- **`DO FOR <N>ms` timed loops** execute a body for a wall-clock duration.
+- **Syntax:** `DO FOR 500ms\n    body\nEND` — runs `body` repeatedly for 500 milliseconds.
+- **Lexer fix:** `500ms` (no space) now correctly tokenizes as `Number(500) + Identifier("ms")` instead of a single unknown identifier.
+- **Alias conflict fix:** `"do"` was wrongly aliased to `THEN` in `alias.rs`, causing all `DO` blocks to be misidentified. Fixed by removing `"do"` from the `THEN` alias list.
+
+#### Parser
+
+- **`IF` without colon now accepted.** `IF cond\n    body\nEND` (Python-style newline-indented body) no longer causes a parse error. `THEN`, `DO`, `:`, and a bare newline are all valid body openers after an `IF` condition.
+- **Both DO-WHILE syntaxes supported:**
+  - `DO targets WHILE condition: body` — original (condition first, body after colon)
+  - `DO\n    body\nWHILE condition\nEND` — C-style (body first, condition after)
+
+#### Tests
+
+- **146 tests passing**, up from 145 in v1.4.4.
+- New tests in `scope.rs`: new-var-in-block-escapes-to-global, new-var-in-function-stays-local, update-existing-var-from-inside-block, nested-blocks-escape-to-function-scope.
+
+---
+
+### v1.4.4
+
+#### Pointer & Reference System (★ Major New Feature)
+
+- **Unified pointer abstraction.** Four pointer kinds — `MEM`, `FILE`, `DEV`, `NET` — providing a consistent API for memory buffers, file handles, device I/O, and network sockets.
+- **`ALLOC.<KIND>(args)` statement.** Allocates a new pointer: `ALLOC.MEM(1024) -> buf`, `ALLOC.FILE("/tmp/data", "r") -> fh`, `ALLOC.NET("localhost", 8080) -> sock`.
+- **`GOTO ptr:` context block.** Sets the active pointer for `PULL`/`PUSH` operations. Supports nested contexts with proper scoping.
+- **`PULL.<TYPE>` / `PUSH.<TYPE>` data transfer.** Read/write bytes, integers, floats, strings, and raw byte arrays to the active pointer: `PUSH.BYTE 0x48`, `PULL.INT -> value`, `PULL.STR(32) -> s`.
+- **`INFO ptr` inspection.** Returns metadata list: `[[id, N], [kind, MEM], [alive, true], [temporary, false], [size, 1024], [offset, 0]]`.
+- **`REF.<KIND>(target)` expression.** Create pointer references with optional `WITH { key: value }` metadata: `REF.FILE("/etc/passwd") WITH { mode: "r" }`.
+- **`FREE ptr` deallocation.** Explicitly release pointer resources. Accessing a freed pointer raises `E070`.
+- **PointerRegistry runtime.** Thread-safe `Arc<RwLock<PointerRegistry>>` in executor for cross-scope pointer access.
+- **PointerContext stack.** Active pointer context managed via `GOTO`/`END` blocks with nested scope support.
+- **GC integration.** `PointerGcTracker` automatically frees temporary pointers allocated within `GOTO` blocks when the block exits.
+
+#### Error Handling
+
+- **Pointer error codes.** Six new error codes for pointer operations:
+  - `E070`: `PTR_USE_AFTER_FREE` — pointer accessed after `FREE`
+  - `E071`: `PTR_KIND_MISMATCH` — operation unsupported for pointer kind
+  - `E072`: `PTR_NO_CONTEXT` — `PULL`/`PUSH` without active `GOTO` context
+  - `E073`: `PTR_NOT_FOUND` — pointer ID not in registry
+  - `E074`: `PTR_INVALID_TYPE` — expected pointer value, got other type
+  - `E075`: `PTR_METADATA_ERROR` — invalid metadata in `REF` expression
+
+#### Tests
+
+- **157 tests passing** (119 unit + 38 integration), up from 145 in v1.4.3.
+- **`tests/pointer_test.pasta`** — Basic pointer allocation and operations.
+- **`tests/pointer_gc_test.pasta`** — GC scope behavior and temporary pointer cleanup.
+- **`tests/pointer_error_test.pasta`** — Error code validation.
+- **`tests/pointer_integration_test.pasta`** — 12-test comprehensive suite: ALLOC operations, GOTO context, nested GOTO, PUSH/PULL data types, REF expressions, FREE cleanup.
+
+---
+
+### v1.4.3
+
+#### Language
+
+- **String interpolation fully implemented.** `"hello {name}"` — any Pasta expression can appear inside `{…}` in a string literal; the expression is lexed, parsed, and evaluated at runtime, and its result is stringified. `{{` produces a literal `{`, `}}` produces a literal `}`. Works in `SET`, `PRINT`, function arguments, and all other string contexts.
+- **`RET.NOW expr` without parentheses fixed.** The parser now recognises the three-token form `RET . NOW` (emitted when there is whitespace before the dot) in addition to the single-token absorbed form `RET.NOW`, making `RET.NOW a + b` equivalent to `RET.NOW(): a + b`.
+
+#### Tests
+
+- **145 tests passing** (119 unit + 26 integration), up from 135 in v1.4.2.
+- **`tests/string_interp_integration.rs`** — 10 tests: basic variable substitution, multiple interpolations per string, arithmetic inside `{…}`, double-brace escaping, plain string fast-path, builtin call inside interpolation, `SET`/`PRINT` path, multi-argument function call via `RET.NOW`.
+
+---
+
+### v1.4.2
+
+#### Module Import System
+
+- **Block indent `FROM` / `use` / `AS` import syntax.** Symbols are lazily bound on first access; the module file is loaded, parsed, and executed only once per session.
+- **Alias binding fixed.** `add as myplus` correctly registers `myplus` in `exec.functions` so named parameters are available.
+- **Error propagation fixed.** A missing module now surfaces a `ModuleNotFoundError` immediately at call time rather than falling through to an unhelpful "unknown function" message.
+- **`PASTA_MODULE_PATH` environment variable.** Colon-separated list of directories appended to the module search path, enabling installed stdlib and project-specific modules.
+- **Stdlib search path corrected.** `resolve_module_path` now correctly resolves the development `src/stdlib/` directory and the legacy `stdlib/` layout.
+
+#### Bug fixes
+
+- **`runtime_error_includes_traceback` test fixed.** `pop_frame` was being called before `span_err` in `WhileBlock` (×3) and `ForIn` (×1) error paths, causing an empty traceback. Fixed by removing the premature pops.
+- **All debug instrumentation removed.** ~25 `eprintln!`/`println!` calls removed from `ex_eval.rs`, `executor.rs`, and `environment.rs`; `[ENV_GET_FAIL]` per-lookup dump removed from `environment::get()`.
+
+#### Language
+
+- **`BREAK` and `CONTINUE` keywords fully implemented.** End-to-end loop-control flow: lexer → alias table → AST → parser → `ControlFlowSignal` → evaluator. `BREAK` exits the innermost loop immediately; `CONTINUE` skips the remainder of the current iteration and re-evaluates the loop condition. Both uppercase (`BREAK`/`CONTINUE`) and lowercase (`break`/`continue`) aliases work. Correct signal propagation: `Return`/`Killed` signals pass through loop boundaries; `Break`/`Continue` are consumed by their own loop boundary and do not leak to outer scopes.
+- **`PRINT` multi-argument formatting fixed.** `PRINT a, ",", b` was rendering as `[a, ,, b]` (list with brackets) because `do_print` printed `Value::List` with the same `[…]` format as REPL display. `do_print` now renders a `Value::List` as space-separated items without brackets.
+- **`PASTA_MODULE_PATH` test race fixed.** `resolve_honours_pasta_module_path_env` and `resolve_pasta_module_path_multiple_entries` were non-deterministically failing under parallel test execution due to concurrent `env::set_var` calls. Serialised with a per-file `OnceLock<Mutex<()>>` guard.
+- **Install path corrected.** `tools/install_pasta.sh` now installs to `/usr/local/bin/pasta` instead of `/usr/bin/pasta`.
+
+#### Tests
+
+- **135 tests passing** (119 unit + 16 integration), up from 50 in v1.4.1.
+- **`tests/from_use_integration.rs`** — 4 tests: basic lazy load, alias (`add as plus`), multi-symbol, module-not-found error.
+- **`tests/module_path_resolution.rs`** — 5 tests covering CWD, `modules/` subdir, `PASTA_MODULE_PATH` (single and multi-entry), and missing-module error quality.
+- **`tests/break_continue_integration.rs`** — 6 tests: `WHILE` break, nested break (inner-only), `WHILE` continue, `FOR IN` break, `FOR IN` continue, lowercase alias round-trip.
+
+---
+
+### v1.4.1
 
 #### Graphics Subsystem (★ Major New Feature)
 
@@ -1188,44 +1739,65 @@ Both are `AtomicBool` and can be set at startup or toggled at runtime via `PASTA
 
 ## 22. Roadmap / To-Do
 
-### Immediate Priority (v1.5 targets)
+### Completed in v1.6.1
 
-- [ ] **`BREAK` and `CONTINUE` keywords.** Loop control flow — `BREAK` exits early, `CONTINUE` skips to next iteration.
-- [ ] **String interpolation.** `"hello {name}"` or `f"..."` syntax to eliminate `concat()` chains.
-- [ ] **Dictionaries / Maps.** `{key: value}` literal type with `dict.get`, `dict.set`, `dict.keys`, `dict.values`, `dict.contains`, `dict.remove`, `dict.len`.
-- [ ] **`IMPORT` / module system.** `IMPORT "utils.ps"` or `IMPORT math` for explicit code splitting.
-- [ ] **Mandelbrot in pure Pasta.** Write `iterate_point(x0, y0, max_iter)` and `mandelbrot(w, h, max_iter)` using CANVAS/PIXEL/BLIT. Target: `examples/mandelbrot_gui.pasta` running live in X11 at 200×150.
-- [ ] **`FOR IN` with index.** `FOR i idx IN list` or `enumerate(lst)` builtin.
-- [ ] **REPL history persistence.** Save/restore `~/.pasta_history` across sessions.
+- [x] **`color(r,g,b)` builtin** — pack RGB into color value
+- [x] **`COLOR_GREY` constant** — additional named color
+- [x] **`range(n)` / `range(s,e)`** — inclusive integer range builtins
+- [x] **`LIST_CONTAINS(list, val)`** — membership test builtin
+- [x] **Dict literal `{...}` syntax** — inline dict construction expressions
+- [x] **Scope modifiers** — `UNBIND_SCOPE` / `BIND_SCOPE` on WHILE/FOR/IF blocks
+- [x] **Lexer blank-line bug fixed** — spurious Dedent/Indent on blank lines in blocks
+- [x] **Parser parse_do_body bug fixed** — blank lines between block header and body
+- [x] **Snake game demo** — `examples/game_demos/snake.ps`
 
-### Medium-Term (v1.6)
+### Completed in v1.5.0
 
-- [ ] **Mandelbrot at full resolution.** 800×600, `max_iter=1000`, with color palette mapping.
-- [ ] **Mouse event handling in X11 backend.** Expose click/move events for zoom and pan.
-- [ ] **True lexical closure capture.** Proper capture-at-definition semantics.
-- [ ] **Typed exceptions in `ATTEMPT`.** `CATCH TypeError`, `CATCH IOError`, etc.
-- [ ] **`MATCH` / pattern matching.** `MATCH value: CASE x: ... END`.
-- [ ] **CLI flags.** `--verbose`, `--debug`, `--version`, `--eval <expr>`, `--check`.
-- [ ] **Multi-line REPL.** Continuation detection for multi-line `DEF` and `IF` blocks.
-- [ ] **`stdio.*` namespace.** `stdio.read_line()`, `stdio.read_all()`, `stdio.write(s)`.
-- [ ] **SHM extension for X11.** Zero-copy blit via `XShmPutImage` for higher frame rates.
-- [ ] **Wayland backend.** `wl_surface` + `wl_shm` for display-server-agnostic rendering.
+- [x] **Graphics revamp** — opt-in block `FROM graphics: use ... END`, full 2D API, 32 color constants
+- [x] **Pipeline system** — multi-stage MPSC, `PIPE_IN`, `RETURN` forwarding, thread registry, `:thread-details`
+- [x] **Shell overhaul** — P1 security (quote tokenizer, safe VFS traversal, whitelist), P2 features (redirect, glob, env vars, text builtins)
+- [x] **`:keywords` comprehensive listing** — all ~100+ builtins grouped by category
+- [x] **Version bumped to 1.5.0**
+
+### Previously Completed
+
+- [x] **`BREAK` and `CONTINUE` keywords** (v1.4.2)
+- [x] **String interpolation** `"hello {name}"` (v1.4.3)
+- [x] **`FROM` / `USE` / `AS` module import system** (v1.4.2)
+- [x] **Family Object System** `OBJ.FAM` (v1.4.6)
+- [x] **`PASS`, `ASSERT`, `UNLESS` keywords** (v1.4.6)
+- [x] **`TRY / OTHERWISE` integration tests** (v1.4.6)
+
+### Near-Term (v1.6.1.x)
+
+- [ ] **Windows support** — pack pasta into a `.exe` installer via `cross` cross-compilation; Win32 display backend; readline fallback for Windows terminal
+- [ ] **Dictionaries / Maps** — `{key: value}` literal with `dict.get`, `dict.set`, `dict.keys`, `dict.values`, `dict.contains`, `dict.remove`, `dict.len`
+- [ ] **`FOR IN` with index** — `enumerate(lst)` builtin or `FOR i idx IN list` syntax
+- [ ] **REPL history persistence** — save/restore `~/.pasta_history` across sessions
+- [ ] **GLOB.DEF** — global function modifier prefix (currently deferred by design)
+
+### Medium-Term (v1.6.1)
+
+- [ ] **True lexical closure capture** — proper capture-at-definition semantics
+- [ ] **Typed exceptions** — `CATCH TypeError`, `CATCH IOError` in `TRY/OTHERWISE`
+- [ ] **`MATCH` / pattern matching** — `MATCH value: CASE x: ... END`
+- [ ] **Multi-line REPL** — continuation detection for multi-line `DEF` and `IF` blocks
+- [ ] **`stdio.*` namespace** — `stdio.read_line()`, `stdio.write(s)`
+- [ ] **SHM X11 extension** — `XShmPutImage` for zero-copy blit
 
 ### Long-Term / Architecture
 
-- [ ] **MRA backends.** Implement `local` and `pseudo-vm` in `meatballs/backends/`.
-- [ ] **Bytecode compiler.** AST → compact bytecode for faster repeated execution.
-- [ ] **Garbage collector.** Replace drop-based reclamation with a proper tracing GC.
-- [ ] **Native async — `ASYNC DEF` / `AWAIT`.** Surface `pasta_async` as first-class keywords.
-- [ ] **AI model training pipeline.** Wire `learn.rs` to `tensor.*` stdlib.
-- [ ] **LSP / language server.** Autocomplete, go-to-definition, hover docs, inline diagnostics.
-- [ ] **Windows / macOS support.** Win32 backend stub exists — needs `CreateWindowEx` + `StretchDIBits`.
-- [ ] **Tail-call optimization (TCO).** Unbounded recursion depth for tail-recursive patterns.
-- [ ] **`device.*` auto-configure expansion.** GPU/NPU detection for tensor dispatch routing.
-- [ ] **Expanded test suite.** Dedicated tests for graphics, async, VFS, MRA, AI/tensor.
+- [ ] **MRA backends** — implement `local` and `pseudo-vm` in `meatballs/backends/`
+- [ ] **Bytecode compiler** — AST → compact bytecode for faster repeated execution
+- [ ] **Garbage collector** — replace drop-based reclamation with tracing GC
+- [ ] **Native async** — `ASYNC DEF` / `AWAIT` surfacing `pasta_async` as first-class keywords
+- [ ] **AI model training pipeline** — wire `learn.rs` to `tensor.*` stdlib
+- [ ] **LSP / language server** — autocomplete, go-to-definition, hover docs
+- [ ] **Wayland backend** — `wl_surface` + `wl_shm` for compositor-agnostic rendering
+- [ ] **Tail-call optimization** — unbounded recursion depth for tail-recursive patterns
 
 ---
 
-*PASTA v1.4.1 — Built with ❤️ in Rust*  
+*PASTA v1.6.1 — Built with ❤️ in Rust*  
 *Project root: `/home/travis/pasta` · Platform: Arch Linux*  
 *Native X11 graphics pipeline: `cargo build --release --features x11`*

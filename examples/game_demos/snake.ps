@@ -1,0 +1,227 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Snake — examples/game_demos/snake.ps
+#
+# Classic snake game written in Pasta v1.6.1.
+# Uses: graphics, FPS timing, color(), COLOR_* constants, dict literals,
+#       range(), LIST_CONTAINS, function-scoped variables.
+#
+# Controls:  Arrow keys  — steer
+#            Escape      — quit
+#            Enter       — restart after game over
+#
+# Run:  cargo run --features x11 -- examples/game_demos/snake.ps
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Grid / window constants ────────────────────────────────────────────────────
+CELL  = 20
+COLS  = 20
+ROWS  = 20
+WIN_W = COLS * CELL
+WIN_H = ROWS * CELL
+SPEED = 10
+
+# ── Colors using new color() and COLOR_* constants ────────────────────────────
+COL_BG   = color(20,  20,  20)
+COL_GRID = color(35,  35,  35)
+COL_FOOD = color(220, 50,  50)
+COL_HEAD = color(80,  230, 80)
+COL_BODY = color(40,  160, 40)
+COL_DEAD = color(180, 40,  40)
+
+# ── Open window and set up FPS ─────────────────────────────────────────────────
+win = WINDOW("Pasta Snake", WIN_W, WIN_H)
+SET_DRAW_TARGET(win)
+fps_init(SPEED)
+
+# ── draw_cell: fill one grid cell at grid coords (gx, gy) with given padding ──
+DEF draw_cell(gx, gy, pad):
+    px = gx * CELL + pad
+    py = gy * CELL + pad
+    canvas_fill_rect(win, px, py, px + CELL - pad * 2, py + CELL - pad * 2)
+END
+
+# ── place_food: pick a random cell not occupied by the snake ──────────────────
+DEF place_food(sx, sy):
+    fx = rand.int(0, COLS)
+    fy = rand.int(0, ROWS)
+    ok = false
+    WHILE NOT ok:
+        ok = true
+        slen = list_len(sx)
+        i = 0
+        WHILE i < slen AND ok:
+            IF sx[i] == fx AND sy[i] == fy:
+                ok = false
+                fx = rand.int(0, COLS)
+                fy = rand.int(0, ROWS)
+            END
+            i = i + 1
+        END
+    END
+    RET.NOW({"x": fx, "y": fy})
+END
+
+# ── draw_grid: background + grid lines ───────────────────────────────────────
+DEF draw_grid():
+    SET_COLOR(COL_BG)
+    canvas_fill_rect(win, 0, 0, WIN_W, WIN_H)
+    SET_COLOR(COL_GRID)
+    r = 0
+    WHILE r <= ROWS:
+        y = r * CELL
+        canvas_fill_rect(win, 0, y, WIN_W, y + 1)
+        r = r + 1
+    END
+    c = 0
+    WHILE c <= COLS:
+        x = c * CELL
+        canvas_fill_rect(win, x, 0, x + 1, WIN_H)
+        c = c + 1
+    END
+END
+
+# ── draw_snake: draw all segments ─────────────────────────────────────────────
+DEF draw_snake(sx, sy, alive):
+    slen = list_len(sx)
+    # Draw body segments (tail → neck)
+    bi = slen - 1
+    WHILE bi > 0:
+        IF alive:
+            SET_COLOR(COL_BODY)
+        OTHERWISE:
+            SET_COLOR(COL_DEAD)
+        END
+        draw_cell(sx[bi], sy[bi], 2)
+        bi = bi - 1
+    END
+    # Draw head
+    IF alive:
+        SET_COLOR(COL_HEAD)
+    OTHERWISE:
+        SET_COLOR(COL_DEAD)
+    END
+    draw_cell(sx[0], sy[0], 1)
+END
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Main game loop — outer loop restarts on Enter after death
+# ══════════════════════════════════════════════════════════════════════════════
+running = true
+WHILE running AND window_poll(win):
+
+    # Initialise game state for this life using dict literal for food position
+    snake_x = [10, 9, 8]
+    snake_y = [10, 10, 10]
+    dir_x   = 1
+    dir_y   = 0
+    score   = 0
+
+    food = place_food(snake_x, snake_y)
+    food_x = dict_get(food, "x")
+    food_y = dict_get(food, "y")
+
+    alive = true
+    PRINT "Snake started — use arrow keys to steer"
+
+    # ── Inner game loop ───────────────────────────────────────────────────────
+    WHILE window_poll(win) AND alive:
+        fps_begin(SPEED)
+
+        # Input — prevent reversing direction
+        key = WINDOW_KEY(win)
+        IF key == "Up" AND dir_y != 1:
+            dir_x = 0
+            dir_y = -1
+        END
+        IF key == "Down" AND dir_y != -1:
+            dir_x = 0
+            dir_y = 1
+        END
+        IF key == "Left" AND dir_x != 1:
+            dir_x = -1
+            dir_y = 0
+        END
+        IF key == "Right" AND dir_x != -1:
+            dir_x = 1
+            dir_y = 0
+        END
+        IF key == "Escape":
+            running = false
+            alive   = false
+        END
+
+        # Calculate new head position
+        nx = snake_x[0] + dir_x
+        ny = snake_y[0] + dir_y
+
+        # Wall collision
+        IF nx < 0 OR nx >= COLS OR ny < 0 OR ny >= ROWS:
+            alive = false
+        END
+
+        # Self collision using LIST_CONTAINS alternative (check each segment)
+        IF alive:
+            slen = list_len(snake_x)
+            ci = 0
+            WHILE ci < slen AND alive:
+                IF snake_x[ci] == nx AND snake_y[ci] == ny:
+                    alive = false
+                END
+                ci = ci + 1
+            END
+        END
+
+        # Update snake position
+        IF alive:
+            eating = (nx == food_x AND ny == food_y)
+            snake_x = [nx] + snake_x
+            snake_y = [ny] + snake_y
+            IF eating:
+                score   = score + 1
+                food    = place_food(snake_x, snake_y)
+                food_x  = dict_get(food, "x")
+                food_y  = dict_get(food, "y")
+                PRINT "Score: " + str(score)
+            OTHERWISE:
+                slen    = list_len(snake_x)
+                snake_x = list_slice(snake_x, 0, slen - 1)
+                snake_y = list_slice(snake_y, 0, slen - 1)
+            END
+        END
+
+        # Render
+        draw_grid()
+
+        # Food
+        SET_COLOR(COL_FOOD)
+        draw_cell(food_x, food_y, 3)
+
+        # Snake
+        draw_snake(snake_x, snake_y, alive)
+
+        SWAP_BUFFER(win)
+        fps_end()
+        fps_tick()
+    END
+
+    # Game-over screen: wait for Enter to restart or Escape to quit
+    IF NOT alive AND running:
+        PRINT "Game over! Score: " + str(score) + " — press Enter to restart or Escape to quit"
+        WHILE window_poll(win):
+            key = WINDOW_KEY(win)
+            IF key == "Enter":
+                BREAK
+            END
+            IF key == "Escape":
+                running = false
+                BREAK
+            END
+            fps_begin(SPEED)
+            fps_end()
+        END
+    END
+
+END
+
+WINDOW_CLOSE(win)
+PRINT "Thanks for playing Pasta Snake! Final score: " + str(score)

@@ -1,0 +1,6 @@
+c = CANVAS(4, 2)
+DRAW_GRID(c, 2, 1)
+DRAW_GRID_RUNS(c, [
+    [1, 0, 1, 4294967295]
+])
+PRINT canvas_get_pixel(c, 2, 0)
