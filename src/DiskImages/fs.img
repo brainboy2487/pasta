@@ -1,15 +1,9 @@
 {
   "Dir": {
     "children": {
-      "test": {
+      "home": {
         "Dir": {
-          "children": {
-            "test2": {
-              "Dir": {
-                "children": {}
-              }
-            }
-          }
+          "children": {}
         }
       }
     }

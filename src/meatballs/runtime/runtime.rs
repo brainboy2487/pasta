@@ -73,13 +73,14 @@ impl MeatballManager {
         let task_queue = Arc::new((Mutex::new(Vec::new()), Condvar::new()));
         let shutdown_flag = Arc::new(Mutex::new(false));
 
-        // Start monitor thread
+        // Start monitor thread with backend access
         let registry_clone = Arc::clone(&registry);
         let shutdown_clone = Arc::clone(&shutdown_flag);
+        let backend_clone = Arc::clone(&backend);
         let monitor_handle = {
             let tq = Arc::clone(&task_queue);
             thread::spawn(move || {
-                Self::monitor_loop(registry_clone, tq, shutdown_clone);
+                Self::monitor_loop(registry_clone, tq, shutdown_clone, backend_clone);
             })
         };
 
@@ -172,7 +173,12 @@ impl MeatballManager {
     }
 
     /// Internal monitor loop: checks heartbeats, processes queued tasks, and performs periodic reconciliation.
-    fn monitor_loop(registry: Arc<Mutex<HashMap<String, MeatballMeta>>>, task_queue: Arc<(Mutex<Vec<RuntimeTask>>, Condvar)>, shutdown_flag: Arc<Mutex<bool>>) {
+    fn monitor_loop(
+        registry: Arc<Mutex<HashMap<String, MeatballMeta>>>,
+        task_queue: Arc<(Mutex<Vec<RuntimeTask>>, Condvar)>,
+        shutdown_flag: Arc<Mutex<bool>>,
+        backend: Arc<dyn Backend>,
+    ) {
         let heartbeat_interval = Duration::from_secs(5);
         let heartbeat_timeout = Duration::from_secs(15);
 
@@ -203,17 +209,57 @@ impl MeatballManager {
                 for t in tasks {
                     match t {
                         RuntimeTask::Spawn { resources, rootfs, flags } => {
-                            // In this skeleton we don't have access to backend here; real implementation would call backend.
                             eprintln!("monitor: spawn task requested (resources={:?})", resources);
-                            // TODO: call backend.spawn and update registry
+                            match backend.spawn(
+                                resources.clone(),
+                                rootfs.as_deref(),
+                                flags.as_deref(),
+                            ) {
+                                Ok(id) => {
+                                    let meta = MeatballMeta {
+                                        id: id.clone(),
+                                        resources,
+                                        status: RuntimeStatus::Running,
+                                        last_heartbeat: Instant::now(),
+                                        created_at: Instant::now(),
+                                    };
+                                    registry.lock().unwrap().insert(id.clone(), meta);
+                                    eprintln!("monitor: spawned meatball {}", id);
+                                }
+                                Err(e) => {
+                                    eprintln!("monitor: spawn failed: {}", e);
+                                }
+                            }
                         }
                         RuntimeTask::Exec { id, cmd, args } => {
                             eprintln!("monitor: exec task for {}: {} {:?}", id, cmd, args);
-                            // TODO: call backend.exec
+                            let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+                            match backend.exec(&id, &cmd, &args_refs) {
+                                Ok(exit_code) => {
+                                    eprintln!("monitor: exec completed for {} with exit code {}", id, exit_code);
+                                    // Update status if non-zero exit
+                                    if exit_code != 0 {
+                                        if let Some(meta) = registry.lock().unwrap().get_mut(&id) {
+                                            meta.status = RuntimeStatus::Exited(exit_code);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("monitor: exec failed for {}: {}", id, e);
+                                }
+                            }
                         }
                         RuntimeTask::Kill { id } => {
                             eprintln!("monitor: kill task for {}", id);
-                            // TODO: call backend.kill and cleanup registry
+                            match backend.kill(&id) {
+                                Ok(()) => {
+                                    registry.lock().unwrap().remove(&id);
+                                    eprintln!("monitor: killed meatball {}", id);
+                                }
+                                Err(e) => {
+                                    eprintln!("monitor: kill failed for {}: {}", id, e);
+                                }
+                            }
                         }
                     }
                 }
@@ -228,13 +274,23 @@ impl MeatballManager {
                     let elapsed = now.duration_since(meta.last_heartbeat);
                     if elapsed > heartbeat_timeout {
                         eprintln!("runtime monitor: meatball {} missed heartbeat ({}s)", id, elapsed.as_secs());
-                        // Mark as crashed for now; real implementation should query backend for status
-                        meta.status = RuntimeStatus::Crashed("heartbeat timeout".into());
-                        // Optionally schedule cleanup
-                        to_remove.push(id.clone());
+                        // Query backend for actual status before marking crashed
+                        match backend.status(id) {
+                            Ok(status) => {
+                                meta.status = status.clone();
+                                meta.last_heartbeat = Instant::now();
+                                if matches!(status, RuntimeStatus::Crashed(_) | RuntimeStatus::Exited(_)) {
+                                    to_remove.push(id.clone());
+                                }
+                            }
+                            Err(_) => {
+                                meta.status = RuntimeStatus::Crashed("heartbeat timeout".into());
+                                to_remove.push(id.clone());
+                            }
+                        }
                     }
                 }
-                // Best-effort cleanup of timed-out meatballs from registry (do not call backend here)
+                // Cleanup of timed-out/crashed meatballs from registry
                 for id in to_remove {
                     eprintln!("runtime monitor: removing stale meatball {}", id);
                     reg.remove(&id);

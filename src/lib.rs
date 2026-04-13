@@ -3,6 +3,10 @@
 //! This crate exposes the lexer, parser, interpreter ([`Executor`]),
 //! semantics engine, and runtime utilities.
 #![warn(missing_docs)]
+
+/// PASTA language version string
+pub const PASTA_VERSION: &str = "1.6.1";
+
 use std::sync::atomic::AtomicBool;
 /// Global verbose flags for diagnostics
 #[no_mangle]
@@ -19,7 +23,9 @@ pub mod parser;
 pub mod semantics;
 pub mod interpreter;
 pub mod stdlib;
+pub mod mod_loader;
 pub mod runtime;
+pub mod threading;
 
 #[cfg(feature = "scheduler")]
 pub mod scheduler;
@@ -78,3 +84,4 @@ set y = x + 5
         assert!(!program.statements.is_empty());
     }
 }
+pub mod error_logging;
