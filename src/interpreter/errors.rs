@@ -15,6 +15,7 @@
 use std::fmt;
 use crate::parser::parser::ParseError;
 use crate::parser::Span;
+use std::cell::RefCell;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Verbosity / debug level
@@ -100,6 +101,33 @@ impl Traceback {
         self.0.push(TraceFrame { span, context: ctx.into() });
     }
     pub fn is_empty(&self) -> bool { self.0.is_empty() }
+}
+
+thread_local! {
+    /// Ambient, thread-local copy of the current interpreter traceback.
+    ///
+    /// The executor maintains a `Traceback` instance on its `Executor`
+    /// struct and uses the `ex_frame` helpers to push/pop frames. To make
+    /// it possible for `RuntimeError::new` (which may be called from many
+    /// places) to capture the current interpreter frames without requiring
+    /// an `Executor` reference, we keep a mirrored ambient traceback here
+    /// that `ex_frame::push_frame` / `ex_frame::pop_frame` update.
+    static AMBIENT_TRACEBACK: RefCell<Traceback> = RefCell::new(Traceback::default());
+}
+
+/// Push a frame into the ambient traceback.
+pub fn ambient_push(span: Span, ctx: impl Into<String>) {
+    AMBIENT_TRACEBACK.with(|tb| tb.borrow_mut().push(span, ctx));
+}
+
+/// Pop the most-recent frame from the ambient traceback.
+pub fn ambient_pop() {
+    AMBIENT_TRACEBACK.with(|tb| { tb.borrow_mut().0.pop(); });
+}
+
+/// Return a clone of the ambient traceback for attaching to errors.
+pub fn ambient_traceback_clone() -> Traceback {
+    AMBIENT_TRACEBACK.with(|tb| tb.borrow().clone())
 }
 
 impl fmt::Display for Traceback {
@@ -477,7 +505,6 @@ impl RuntimeErrorKind {
             Self::WindowCreateFailed { .. } => Some("ensure a display is available; try headless mode"),
             Self::X11ConnectFailed { .. }   => Some("set DISPLAY=:0 or run in a desktop session"),
             Self::BackendUnavailable { .. } => Some("rebuild with: cargo build --features x11"),
-            Self::LoopLimitExceeded { .. }  => Some("use exec.set_while_limit(N) to raise the limit"),
             Self::ModuleNotFound { .. }     => Some("check that the .ph file exists in stdlib/ or headers/"),
             Self::TypeMismatch { .. }       => Some("use TYPEOF() to inspect value types at runtime"),
             Self::StackOverflow { .. }      => Some("check for unbounded recursion"),
@@ -506,7 +533,11 @@ pub struct RuntimeError {
 impl RuntimeError {
     pub fn new(kind: RuntimeErrorKind, span: Span) -> Self {
         let message = kind.message();
-        Self { kind, span, message, traceback: Traceback::default(), file: None, source_line: None }
+        // Initialize the error with the current ambient interpreter traceback
+        // (if any). This ensures errors created outside direct executor
+        // contexts still carry a useful call-site stack.
+        let tb = ambient_traceback_clone();
+        Self { kind, span, message, traceback: tb, file: None, source_line: None }
     }
 
     pub fn with_traceback(mut self, tb: Traceback) -> Self {
@@ -558,7 +589,7 @@ impl RuntimeError {
         }
         // traceback
         if !self.traceback.is_empty() {
-            out.push_str(&format!("{}\n{}", dimmed("traceback:"), self.traceback));
+            out.push_str(&format!("{}\n{}", dimmed("Traceback:"), self.traceback));
         }
         out
     }
@@ -573,7 +604,7 @@ impl fmt::Display for RuntimeError {
                 self.kind.code(), self.message,
                 self.span.start_line, self.span.start_col)?;
             if !self.traceback.is_empty() {
-                write!(f, "\n{}", self.traceback)?;
+                write!(f, "\nTraceback:\n{}", self.traceback)?;
             }
             Ok(())
         }

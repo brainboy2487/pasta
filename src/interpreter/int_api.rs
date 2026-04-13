@@ -139,7 +139,7 @@ impl ExecutorApiWrapper {
         F: FnOnce(&mut Executor) -> Result<R>
     {
         if let Some(exe_arc) = self.exe_weak.upgrade() {
-            let mut exe = exe_arc.lock().unwrap();
+            let mut exe: std::sync::MutexGuard<Executor> = exe_arc.lock().unwrap();
             f(&mut *exe)
         } else {
             Err(anyhow!("executor has been dropped"))

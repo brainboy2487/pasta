@@ -28,11 +28,13 @@ pub fn run_cli(vfs: &mut Vfs, verbose: bool) -> Result<(), String> {
     names.push("help");
     names.push("exit");
     names.push("pasta");
+    names.push("run");
 
     // Add built-ins
     commands.push(Box::new(HelpCommand { commands: names.clone() }));
     commands.push(Box::new(ExitCommand));
     commands.push(Box::new(PastaCommand));
+    commands.push(Box::new(RunCommand));
 
     loop {
         // Build prompt showing current working directory
@@ -50,6 +52,42 @@ pub fn run_cli(vfs: &mut Vfs, verbose: bool) -> Result<(), String> {
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
                     continue;
+                }
+
+                // --- Pipeline syntax: left.ps|right.ps  OR  pasta left.ps|right.ps
+                //     OR  ./bin args left.ps|right.ps  (binary invocation prefix stripped)
+                if trimmed.contains('|') && !trimmed.starts_with(':') {
+                    // Split on first '|' to get the raw left and right halves.
+                    let (raw_left, raw_right) = {
+                        let mut it = trimmed.splitn(2, '|');
+                        let l = it.next().unwrap_or("").trim();
+                        let r = it.next().unwrap_or("").trim();
+                        (l, r)
+                    };
+                    // From each half, extract the last whitespace-token that ends in ".ps".
+                    // This strips any leading binary path (e.g. "./target/release/pasta").
+                    fn extract_ps(side: &str) -> Option<&str> {
+                        side.split_whitespace().filter(|t| t.ends_with(".ps")).last()
+                    }
+                    if let (Some(left_script), Some(right_script)) = (extract_ps(raw_left), extract_ps(raw_right)) {
+                        let left = if std::path::Path::new(left_script).is_absolute() {
+                            left_script.to_string()
+                        } else {
+                            vfs.local_cwd.join(left_script).to_string_lossy().to_string()
+                        };
+                        let right = if std::path::Path::new(right_script).is_absolute() {
+                            right_script.to_string()
+                        } else {
+                            vfs.local_cwd.join(right_script).to_string_lossy().to_string()
+                        };
+                        let left_id  = crate::threading::thread_api::spawn_script_thread(&left,  format!("shell-pipeline-left-{}", left_script));
+                        let right_id = crate::threading::thread_api::spawn_script_thread(&right, format!("shell-pipeline-right-{}", right_script));
+                        match (left_id, right_id) {
+                            (Ok(l), Ok(r)) => println!("spawned pipeline: {} (THID:{}) | {} (THID:{})", left_script, l, right_script, r),
+                            (Err(e), _) | (_, Err(e)) => println!("failed to spawn pipeline: {}", e),
+                        }
+                        continue;
+                    }
                 }
 
                 let mut parts = trimmed.split_whitespace();
@@ -77,6 +115,26 @@ pub fn run_cli(vfs: &mut Vfs, verbose: bool) -> Result<(), String> {
                     }
 
                     if is_executable_file {
+                        // Restrict execution to safe directories to prevent privilege escalation.
+                        let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+                        let canonical_str = canonical.to_string_lossy();
+                        #[cfg(unix)]
+                        let allowed = canonical_str.starts_with("/bin/")
+                            || canonical_str.starts_with("/usr/bin/")
+                            || canonical_str.starts_with("/usr/local/bin/")
+                            || canonical_str.starts_with("/usr/sbin/")
+                            || canonical_str.starts_with("/sbin/")
+                            || canonical_str.starts_with("./")
+                            || !canonical_str.starts_with('/'); // relative paths allowed
+                        #[cfg(not(unix))]
+                        let allowed = true;
+
+                        if !allowed {
+                            println!("Permission denied: '{}' is not in an allowed directory", cmd_name);
+                            println!("Allowed: /bin, /usr/bin, /usr/local/bin, or relative paths (./...)");
+                            continue;
+                        }
+
                         // Spawn the executable the user typed (e.g., ./target/release/pasta)
                         let mut cmd = ProcessCommand::new(&path);
                         for a in &args {
@@ -129,7 +187,9 @@ pub fn run_cli(vfs: &mut Vfs, verbose: bool) -> Result<(), String> {
                     commands.iter().find(|c: &&Box<dyn ShellCommand>| c.name() == cmd_name)
                 {
                     match cmd.run(&args, vfs) {
-                        Ok(_) => {}
+                        Ok(_child) => {
+                            // internal command succeeded; nothing special to track here
+                        }
                         Err(e) => {
                             if e == "__RETURN_TO_PASTA__" {
                                 break;
@@ -143,6 +203,7 @@ pub fn run_cli(vfs: &mut Vfs, verbose: bool) -> Result<(), String> {
             }
 
             Ok(None) => {
+                // EOF / Ctrl-D — exit the CLI loop cleanly
                 println!("\nExiting.");
                 break;
             }
@@ -226,20 +287,142 @@ impl ShellCommand for ExitCommand {
     }
 
     fn run(&self, _args: &[&str], _vfs: &mut Vfs) -> Result<(), String> {
-        println!("Goodbye.");
-        std::process::exit(0);
-    }
-}
-
-struct PastaCommand;
-
-impl ShellCommand for PastaCommand {
-    fn name(&self) -> &'static str {
-        "pasta"
-    }
-
-    fn run(&self, _args: &[&str], _vfs: &mut Vfs) -> Result<(), String> {
         println!("Returning to Pasta interpreter...");
         Err("__RETURN_TO_PASTA__".into())
     }
 }
+
+struct PastaCommand;
+impl ShellCommand for PastaCommand {
+    fn name(&self) -> &'static str { "pasta" }
+    fn run(&self, args: &[&str], vfs: &mut Vfs) -> Result<(), String> {
+        if args.is_empty() {
+            eprintln!("usage: pasta <script.ps>");
+            return Ok(());
+        }
+        let bin = std::env::current_exe()
+            .unwrap_or_else(|_| std::path::PathBuf::from("pasta"));
+        // Resolve script path relative to the VFS local cwd
+        let resolved: Vec<String> = args.iter().enumerate().map(|(i, arg)| {
+            if i == 0 {
+                let p = std::path::Path::new(arg);
+                if p.is_absolute() {
+                    arg.to_string()
+                } else {
+                    vfs.local_cwd.join(p).to_string_lossy().to_string()
+                }
+            } else {
+                arg.to_string()
+            }
+        }).collect();
+        match std::process::Command::new(bin).args(&resolved).status() {
+            Ok(s) => {
+                if !s.success() { eprintln!("pasta exited with status {}", s); }
+                Ok(())
+            }
+            Err(e) => Err(format!("failed to run pasta: {}", e)),
+        }
+
+    }
+}
+
+/// `run` command - execute PASTA scripts directly
+/// Usage: run script.ps [args...]
+///        run script1.ps|script2.ps   (pipeline mode)
+struct RunCommand;
+impl ShellCommand for RunCommand {
+    fn name(&self) -> &'static str { "run" }
+    fn run(&self, args: &[&str], vfs: &mut Vfs) -> Result<(), String> {
+        if args.is_empty() {
+            println!("Usage: run <script.ps> [args...]");
+            println!("       run <script1.ps>|<script2.ps>   (pipeline mode)");
+            return Ok(());
+        }
+        
+        let first_arg = args[0];
+        
+        // Check for pipeline syntax: run script1.ps|script2.ps
+        if first_arg.contains('|') {
+            let parts: Vec<&str> = first_arg.split('|').collect();
+            if parts.len() == 2 {
+                let left_script = parts[0].trim();
+                let right_script = parts[1].trim();
+                
+                // Resolve paths relative to VFS local cwd
+                let left = if std::path::Path::new(left_script).is_absolute() {
+                    left_script.to_string()
+                } else {
+                    vfs.local_cwd.join(left_script).to_string_lossy().to_string()
+                };
+                let right = if std::path::Path::new(right_script).is_absolute() {
+                    right_script.to_string()
+                } else {
+                    vfs.local_cwd.join(right_script).to_string_lossy().to_string()
+                };
+                
+                // Spawn pipeline threads
+                let left_id = crate::threading::thread_api::spawn_script_thread(
+                    &left, 
+                    format!("run-pipeline-left-{}", left_script)
+                );
+                let right_id = crate::threading::thread_api::spawn_script_thread(
+                    &right, 
+                    format!("run-pipeline-right-{}", right_script)
+                );
+                
+                match (left_id, right_id) {
+                    (Ok(l), Ok(r)) => {
+                        println!("Pipeline started: {} (THID:{}) | {} (THID:{})", 
+                            left_script, l, right_script, r);
+                    }
+                    (Err(e), _) | (_, Err(e)) => {
+                        return Err(format!("Failed to spawn pipeline: {}", e));
+                    }
+                }
+                return Ok(());
+            }
+        }
+        
+        // Single script execution
+        let script_path = first_arg;
+        let script_args = &args[1..];
+        
+        // Resolve script path relative to VFS local cwd
+        let resolved_path = if std::path::Path::new(script_path).is_absolute() {
+            script_path.to_string()
+        } else {
+            vfs.local_cwd.join(script_path).to_string_lossy().to_string()
+        };
+        
+        // Check if file exists
+        if !std::path::Path::new(&resolved_path).exists() {
+            return Err(format!("Script not found: {}", resolved_path));
+        }
+        
+        // Get the pasta binary
+        let bin = std::env::current_exe()
+            .unwrap_or_else(|_| std::path::PathBuf::from("pasta"));
+        
+        // Build command: pasta <script> [args...]
+        let mut cmd = std::process::Command::new(bin);
+        cmd.arg(&resolved_path);
+        for arg in script_args {
+            cmd.arg(arg);
+        }
+        cmd.stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+        
+        match cmd.spawn() {
+            Ok(mut child) => {
+                if let Err(e) = child.wait() {
+                    return Err(format!("Failed to wait for script: {}", e));
+                }
+                Ok(())
+            }
+            Err(e) => Err(format!("Failed to run script '{}': {}", script_path, e)),
+        }
+    }
+}
+
+

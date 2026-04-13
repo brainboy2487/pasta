@@ -15,7 +15,8 @@
 //! share one root.
 
 use crate::interpreter::errors::{TraceFrame, Traceback};
-use crate::interpreter::environment::{Environment, Value};
+use crate::interpreter::errors::{ambient_push, ambient_pop};
+use crate::interpreter::environment::{Environment, ScopeKind, Value};
 use crate::parser::Span;
 
 // ── Re-export the public int_api handle so ex_eval can use one name ──────────
@@ -29,7 +30,12 @@ pub use crate::interpreter::int_api::ModuleEnvHandle;
 /// Called by the executor before entering any statement handler.
 #[inline]
 pub fn push_frame(tb: &mut Traceback, span: Span, ctx: impl Into<String>) {
-    tb.0.push(TraceFrame { span, context: ctx.into() });
+    let ctx_s = ctx.into();
+    tb.0.push(TraceFrame { span: span.clone(), context: ctx_s.clone() });
+    // Keep the ambient thread-local mirror in sync so errors created
+    // without direct access to the Executor can still capture the
+    // current call-stack.
+    ambient_push(span.clone(), ctx_s);
 }
 
 /// Pop the most-recent frame from a `Traceback`.
@@ -39,17 +45,18 @@ pub fn push_frame(tb: &mut Traceback, span: Span, ctx: impl Into<String>) {
 #[inline]
 pub fn pop_frame(tb: &mut Traceback) {
     tb.0.pop();
+    ambient_pop();
 }
 
 // ── Scope helpers ─────────────────────────────────────────────────────────────
 
-/// Push a new lexical scope onto `env` and return `Ok(())`.
+/// Push a new lexical scope of the given kind onto `env`.
 ///
-/// Thin wrapper that keeps the call-site in `ex_eval` free of direct
-/// `Environment` imports for this operation.
+/// Use [`ScopeKind::Function`] for function/lambda calls and
+/// [`ScopeKind::Block`] for IF bodies, loop bodies, and DO bodies.
 #[inline]
-pub fn push_scope(env: &mut Environment) {
-    env.push_scope();
+pub fn push_scope(env: &mut Environment, kind: ScopeKind) {
+    env.push_scope(kind);
 }
 
 /// Pop the innermost lexical scope from `env`, emitting a diagnostic string
@@ -84,4 +91,28 @@ pub fn get(env: &Environment, name: &str) -> Option<Value> {
 #[inline]
 pub fn assign(env: &mut Environment, name: &str, val: Value) {
     env.assign(name, val);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn pop_scope_safe_handling() {
+        let mut env = Environment::new();
+        let mut diags = Vec::new();
+        
+        // Attempting to pop global scope should generate warning, not crash
+        pop_scope(&mut env, "test context", &mut diags);
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].contains("Warning: pop_scope failed"));
+        assert!(diags[0].contains("test context"));
+        assert!(diags[0].contains("cannot pop global scope"));
+        
+        // Should work normally with proper scope
+        env.push_scope(ScopeKind::Block);
+        pop_scope(&mut env, "normal pop", &mut diags);
+        // Should not add another diagnostic entry
+        assert_eq!(diags.len(), 1);
+    }
 }

@@ -1,3 +1,4 @@
+#![allow(missing_docs)]
 // pasta/src/interpreter/mod.rs
 //! Interpreter module for PASTA
 //!
@@ -7,6 +8,7 @@
 //! - `ex_frame`      — frame & scope management helpers (used by executor + ex_eval)
 //! - `ex_eval`       — statement and expression evaluation
 //! - `errors`        — centralized error types and traceback
+//! - `exceptions`    — TRY/OTHERWISE exception handling
 //! - `int_api`       — stable external API for subsystems (module loader, REPL, tests)
 //! - `repl`          — interactive REPL loop
 //! - `shell`         — existing lightweight shell API
@@ -18,9 +20,13 @@ pub mod environment;
 pub mod executor;
 /// Frame and scope management helpers.
 pub mod ex_frame;
+/// Dedicated scope-management module (ScopeKind-aware assign, enter/leave).
+pub mod scope;
 /// Statement and expression evaluation.
 pub mod ex_eval;
 pub mod errors;
+/// Exception handling (TRY/OTHERWISE, ATTEMPT)
+pub mod exceptions;
 
 // Public interpreter API used by external subsystems (module loader, REPL, tests).
 pub mod int_api;
@@ -34,7 +40,7 @@ pub mod shell;     // existing lightweight shell API
 pub mod shell_os;  // imported shell_OS module (adapter + code)
 
 pub use executor::Executor;
-pub use environment::{Environment, ThreadMeta, Value};
+pub use environment::{Environment, ScopeKind, ThreadMeta, Value};
 
 // Re-export interpreter API types for external consumers (module loader, tests).
 pub use int_api::{InterpreterApi, ModuleEnvHandle, InterpreterSnapshot, default_interpreter_api};

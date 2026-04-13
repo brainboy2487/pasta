@@ -13,7 +13,27 @@ use std::collections::HashMap;
 use std::fmt;
 use anyhow::{anyhow, Result};
 
-use crate::parser::Statement;
+use crate::parser::{Identifier, Statement};
+use crate::runtime::pointer::PointerId;
+
+/// Trigger condition for a `RET.LATE` deferred return.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PendingTrigger {
+    /// Deliver the value at/after this absolute epoch-millisecond timestamp.
+    /// A value of `0` means deliver immediately (already resolved).
+    AtMs(u64),
+    /// Deliver the value when the named function has been called at least once.
+    WhenCalled(String),
+}
+
+impl fmt::Display for PendingTrigger {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PendingTrigger::AtMs(ms)        => write!(f, "due_ms={}", ms),
+            PendingTrigger::WhenCalled(fn_) => write!(f, "when={}()", fn_),
+        }
+    }
+}
 
 /// Runtime value representation used by the interpreter.
 #[derive(Debug, Clone, PartialEq)]
@@ -28,13 +48,23 @@ pub enum Value {
     List(Vec<Value>),
     /// A multi-dimensional tensor of `f64` values.
     Tensor(RuntimeTensor),
-    /// Deferred block of statements (callable).
-    Lambda(Vec<Statement>),
+    /// Deferred block of statements (callable). Stores (params, body).
+    Lambda(Vec<Identifier>, Vec<Statement>, std::collections::HashMap<String, Value>),
+    /// Lazy import binding: (module, symbol, optional alias)
+    LazyImport { module: String, name: String, alias: Option<String> },
     /// Opaque heap handle (GC-managed).
     Heap(crate::runtime::strainer::GcRef),
-    /// Pending deferred return (from RET.LATE). Holds snapshotted value + delivery info.
-    /// Full async machinery wired in a later session; for now this is a placeholder.
-    Pending(Box<Value>, u64), // (snapshotted_value, deliver_after_ms_from_epoch)
+    /// Pending deferred return (from RET.LATE). Holds snapshotted value + trigger condition.
+    Pending(Box<Value>, PendingTrigger),
+    /// A pointer reference (v1.4.4) — holds a PointerId into the registry.
+    Pointer(PointerId),
+    /// A family system node handle. Holds the FamilyId (u64) and mutable flag.
+    FamilyNode { id: crate::runtime::family::FamilyId, mutable: bool },
+    /// A reference to a native (Rust-level) builtin function by name.
+    /// Calling this value dispatches to `Executor::call_builtin`.
+    Builtin(String),
+    /// A key-value dictionary. Keys are stored as their string representation.
+    Dict(std::collections::HashMap<String, Value>),
     /// The absence of a value (analogous to `null` in other languages).
     None,
 }
@@ -62,9 +92,25 @@ impl fmt::Display for Value {
                 write!(f, "[{}]", inner.join(", "))
             }
             Value::Tensor(_) => write!(f, "<tensor>"),
-            Value::Lambda(_) => write!(f, "<lambda>"),
+            Value::Lambda(_, _, _) => write!(f, "<lambda>"),
+            Value::LazyImport { module, name, alias } => {
+                if let Some(a) = alias {
+                    write!(f, "<lazy:{}:{} as {}>", module, name, a)
+                } else {
+                    write!(f, "<lazy:{}:{}>", module, name)
+                }
+            }
             Value::Heap(_) => write!(f, "<heap>"),
-            Value::Pending(v, ms) => write!(f, "<pending:{} due_ms={}>", v, ms),
+            Value::Dict(map) => {
+                let mut pairs: Vec<(&String, &Value)> = map.iter().collect();
+                pairs.sort_by_key(|(k, _)| k.as_str());
+                let inner: Vec<String> = pairs.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                write!(f, "{{{}}}", inner.join(", "))
+            }
+            Value::Pending(v, trigger) => write!(f, "<pending:{} {}>", v, trigger),
+            Value::Pointer(id) => write!(f, "<pointer:{}>", id),
+            Value::FamilyNode { id, mutable } => write!(f, "<obj:{}{}>", id, if *mutable { ".MUT" } else { "" }),
+            Value::Builtin(name) => write!(f, "<builtin: {}>", name),
             Value::None => write!(f, "None"),
         }
     }
@@ -133,6 +179,7 @@ impl RuntimeTensor {
 }
 
 /// Metadata for a running DO thread.
+/// Mirrors the global PastaThread entry for local environment lookups.
 #[derive(Debug, Clone)]
 pub struct ThreadMeta {
     /// Unique numeric identifier assigned by the environment.
@@ -141,12 +188,14 @@ pub struct ThreadMeta {
     pub name: Option<String>,
     /// Scheduling weight (higher = more CPU time).
     pub priority_weight: f64,
+    /// Last known status string (kept in sync by executor).
+    pub status: String,
 }
 
 impl ThreadMeta {
     /// Construct thread metadata from its components.
     pub fn new(id: u64, name: Option<String>, priority_weight: f64) -> Self {
-        Self { id, name, priority_weight }
+        Self { id, name, priority_weight, status: "running".to_string() }
     }
 }
 
@@ -161,22 +210,40 @@ pub enum AssignTarget {
     Global,
 }
 
+/// Describes the purpose of a scope frame, used by scope-aware assignment.
+///
+/// - `Global`   — the root scope (index 0); variables created here persist forever.
+/// - `Function` — a function/lambda call frame; a hard boundary where new
+///                variables are created locally and do NOT escape to callers.
+/// - `Block`    — an if-body, loop-body, or other soft block; new variables
+///                escape to the nearest Function/Global scope so they persist.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ScopeKind {
+    Global,
+    Function,
+    Block,
+}
+
 /// Single lexical scope frame.
 #[derive(Debug, Clone)]
 pub struct Scope {
     vars: HashMap<String, Value>,
+    pub kind: ScopeKind,
 }
 
 impl Scope {
-    /// Create a new empty scope frame.
-    pub fn new() -> Self { Self { vars: HashMap::new() } }
+    /// Create a new scope frame with the given kind.
+    pub fn new_with_kind(kind: ScopeKind) -> Self { Self { vars: HashMap::new(), kind } }
+
+    /// Create a Global scope frame (used only for the root scope).
+    pub fn new() -> Self { Self::new_with_kind(ScopeKind::Global) }
 
     /// Read-only access to all variable bindings in this scope.
     pub fn get_vars(&self) -> &HashMap<String, Value> { &self.vars }
 
-    fn get(&self, name: &str) -> Option<Value> { self.vars.get(name).cloned() }
+    pub fn get(&self, name: &str) -> Option<Value> { self.vars.get(name).cloned() }
 
-    fn set(&mut self, name: impl Into<String>, val: Value) { self.vars.insert(name.into(), val); }
+    pub fn set(&mut self, name: impl Into<String>, val: Value) { self.vars.insert(name.into(), val); }
 
     fn remove(&mut self, name: &str) -> Option<Value> { self.vars.remove(name) }
 
@@ -186,10 +253,12 @@ impl Scope {
 /// Interpreter environment: lexical scopes + thread registry.
 #[derive(Debug, Clone)]
 pub struct Environment {
-    scopes: Vec<Scope>,
+    pub scopes: Vec<Scope>,
     threads: HashMap<u64, ThreadMeta>,
     thread_names: HashMap<String, u64>,
     next_thread_id: u64,
+    /// Names declared with CONST — assignment to these is an error.
+    consts: std::collections::HashSet<String>,
 }
 
 impl Default for Environment {
@@ -212,10 +281,11 @@ impl Environment {
     /// New environment with a single global scope.
     pub fn new() -> Self {
         Self {
-            scopes: vec![Scope::new()],
+            scopes: vec![Scope::new_with_kind(ScopeKind::Global)],
             threads: HashMap::new(),
             thread_names: HashMap::new(),
             next_thread_id: 1,
+            consts: std::collections::HashSet::new(),
         }
     }
 
@@ -240,13 +310,37 @@ impl Environment {
 
     // Scope management
 
-    /// Push a new empty scope frame (called on function/block entry).
-    pub fn push_scope(&mut self) { self.scopes.push(Scope::new()); }
+    /// Push a new scope frame with the given kind (called on function/block entry).
+    pub fn push_scope(&mut self, kind: ScopeKind) { self.scopes.push(Scope::new_with_kind(kind)); }
 
     /// Pop the innermost scope frame. Returns an error if the global scope would be popped.
     pub fn pop_scope(&mut self) -> Result<()> {
         if self.scopes.len() <= 1 { Err(anyhow!("cannot pop global scope")) } else { self.scopes.pop(); Ok(()) }
     }
+
+    /// Pop the innermost scope and hoist all its variables to the nearest enclosing
+    /// Function or Global scope. Used by BIND_SCOPE blocks.
+    pub fn pop_scope_hoist(&mut self) -> Result<()> {
+        if self.scopes.len() <= 1 { return Err(anyhow!("cannot pop global scope")); }
+        let popped = self.scopes.pop().unwrap();
+        // Find nearest Function or Global scope and merge variables into it.
+        for scope in self.scopes.iter_mut().rev() {
+            if scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Global {
+                for (k, v) in popped.get_vars() {
+                    scope.set(k.clone(), v.clone());
+                }
+                return Ok(());
+            }
+        }
+        // Fallback: merge into global
+        for (k, v) in popped.get_vars() {
+            self.scopes[0].set(k.clone(), v.clone());
+        }
+        Ok(())
+    }
+
+    /// Return the kind of the innermost scope.
+    pub fn current_scope_kind(&self) -> &ScopeKind { &self.scopes.last().unwrap().kind }
 
     // Variable access
 
@@ -283,7 +377,13 @@ impl Environment {
 
     /// Lookup variable from innermost outward.
     pub fn get(&self, name: &str) -> Option<Value> {
-        self.scopes.iter().rev().find_map(|s| s.get(name))
+        // Perform lookup from innermost -> outermost scope.
+        for scope in self.scopes.iter().rev() {
+            if let Some(v) = scope.get(name) {
+                return Some(v);
+            }
+        }
+        None
     }
 
     /// Remove variable from nearest scope that contains it.
@@ -294,10 +394,38 @@ impl Environment {
         None
     }
 
+    /// Capture variables from enclosing Function scopes only (not Global).
+    /// Global variables are always looked up dynamically, so they must NOT be
+    /// captured — otherwise DEF functions that mutate globals would silently
+    /// modify a local stale copy instead.
+    pub fn capture_scope(&self) -> HashMap<String, Value> {
+        let mut map = HashMap::new();
+        let mut inside_function = false;
+        // Iterate outermost→innermost; accumulate once we're past the global scope
+        // and inside at least one Function frame.
+        for scope in &self.scopes {
+            if scope.kind == ScopeKind::Function {
+                inside_function = true;
+            }
+            if inside_function {
+                for (k, v) in scope.get_vars() {
+                    map.insert(k.clone(), v.clone());
+                }
+            }
+        }
+        map
+    }
+
     /// Return `true` if `name` is bound in any scope.
     pub fn contains(&self, name: &str) -> bool {
         self.scopes.iter().any(|s| s.contains(name))
     }
+
+    /// Mark a variable name as a constant — future assignments will error.
+    pub fn mark_const(&mut self, name: &str) { self.consts.insert(name.to_string()); }
+
+    /// Return true if the name is a declared constant.
+    pub fn is_const(&self, name: &str) -> bool { self.consts.contains(name) }
 
     /// Merged view of variables (inner shadows outer).
     pub fn list_vars(&self) -> HashMap<String, Value> {
@@ -369,10 +497,10 @@ mod tests {
         let mut env = Environment::new();
         env.set_local("x", Value::Number(1.0));
         assert_eq!(env.get("x"), Some(Value::Number(1.0)));
-        env.push_scope();
+        env.push_scope(ScopeKind::Block);
         env.set_local("x", Value::Number(2.0));
         assert_eq!(env.get("x"), Some(Value::Number(2.0)));
-        env.pop_scope().unwrap();
+        env.pop_scope().expect("Should be able to pop non-global scope");
         assert_eq!(env.get("x"), Some(Value::Number(1.0)));
     }
 
@@ -380,7 +508,7 @@ mod tests {
     fn assign_prefers_existing_scope() {
         let mut env = Environment::new();
         env.set_local("a", Value::Number(1.0)); // global
-        env.push_scope();
+        env.push_scope(ScopeKind::Block);
         env.set_local("b", Value::Number(2.0)); // inner
         let t = env.assign("a", Value::Number(3.0));
         assert_eq!(t, AssignTarget::ExistingScope(0));
@@ -402,8 +530,8 @@ mod tests {
     fn lambda_value_roundtrip() {
         let mut env = Environment::new();
         let stmts: Vec<Statement> = vec![];
-        env.assign("f", Value::Lambda(stmts.clone()));
-        assert!(matches!(env.get("f"), Some(Value::Lambda(_))));
+        env.assign("f", Value::Lambda(vec![], stmts.clone(), Default::default()));
+        assert!(matches!(env.get("f"), Some(Value::Lambda(_, _, _))));
     }
 
     #[test]
@@ -459,5 +587,23 @@ mod tests {
     fn runtime_tensor_with_device() {
         let t = RuntimeTensor::with_device(vec![3], "float32", vec![0.0; 3], "gpu");
         assert_eq!(t.device, "gpu");
+    }
+
+    #[test]
+    fn global_scope_protection() {
+        let mut env = Environment::new();
+        // Should not be able to pop the global scope
+        let result = env.pop_scope();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cannot pop global scope"));
+        
+        // But should be able to pop after pushing
+        env.push_scope(ScopeKind::Block);
+        let result = env.pop_scope();
+        assert!(result.is_ok());
+        
+        // And should not be able to pop again (back to global)
+        let result = env.pop_scope();
+        assert!(result.is_err());
     }
 }
