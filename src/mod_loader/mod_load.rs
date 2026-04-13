@@ -14,7 +14,6 @@ use std::time::SystemTime;
 use anyhow::{Result, anyhow};
 use std::fs;
 
-use crate::interpreter::environment::Value;
 use crate::mod_loader::mod_api::{
     Module as ApiModule, ModuleMeta as ApiModuleMeta, ResolvedSymbol, LoaderConfig as ApiLoaderConfig,
     MatchKind, ModuleLoaderApi,
@@ -80,6 +79,7 @@ impl Default for ModLoaderConfig {
 }
 
 /// Internal module entry stored in the registry.
+#[allow(dead_code)]
 #[derive(Debug)]
 struct ModuleEntry {
     pub requested_key: String, // the key used to register (may be fuzzy)
@@ -143,6 +143,7 @@ impl ModuleLoader {
     }
 
     /// Attempt a simple exact resolution: if the requested key is registered, return it.
+    #[allow(dead_code)]
     fn lookup_registered(&self, key: &str) -> Option<&ModuleEntry> {
         self.registry.get(key)
     }
@@ -211,40 +212,51 @@ impl ModuleLoaderApi for ModuleLoader {
             }
         }
 
-        // 2) If registered but not loaded, attempt to load from entry.path
-        if let Some(entry) = self.registry.get_mut(module_key) {
+        // 2) If registered but not loaded, attempt to load from entry.path.
+        // To avoid mutable/immutable borrow conflicts, first read the necessary
+        // data from the registry immutably, perform operations that borrow `self`
+        // immutably, then re-borrow mutably to update the entry.
+        if self.registry.contains_key(module_key) {
+            // Snapshot the path so we can release the immutable borrow quickly.
+            let path_snapshot = {
+                let entry = self.registry.get(module_key).unwrap();
+                entry.path.clone()
+            };
+
             // Security checks: enforce allowed paths in Strict mode.
             if let Mode::Strict = self.config.mode {
                 let allowed = self.config.allowed_paths.iter().any(|ap| {
-                    // simple prefix check; canonicalization recommended in full impl
-                    entry.path.starts_with(ap)
+                    path_snapshot.starts_with(ap)
                 });
                 if !allowed {
-                    return Err(anyhow!("module path '{}' is not allowed by ALLOWED_PATHS", entry.path.display()));
+                    return Err(anyhow!("module path '{}' is not allowed by ALLOWED_PATHS", path_snapshot.display()));
                 }
             }
 
             // Check file size limit if file exists
-            if entry.path.exists() {
-                if let Ok(meta) = fs::metadata(&entry.path) {
+            if path_snapshot.exists() {
+                if let Ok(meta) = fs::metadata(&path_snapshot) {
                     let size_kb = meta.len() / 1024;
                     if self.config.max_module_size_kb > 0 && size_kb as usize > self.config.max_module_size_kb {
-                        return Err(anyhow!("module '{}' exceeds MAX_MODULE_SIZE_KB", entry.path.display()));
+                        return Err(anyhow!("module '{}' exceeds MAX_MODULE_SIZE_KB", path_snapshot.display()));
                     }
                 }
             }
 
             // Placeholder: in a full implementation we would parse and execute the module here.
             // For now create an empty module and mark loaded.
-            let canonical = if entry.path.exists() {
-                self.canonicalize_candidate(&entry.path).unwrap_or(entry.path.clone())
+            let canonical = if path_snapshot.exists() {
+                self.canonicalize_candidate(&path_snapshot).unwrap_or(path_snapshot.clone())
             } else {
-                entry.path.clone()
+                path_snapshot.clone()
             };
             let module = self.make_empty_module(canonical.clone(), MatchKind::Exact);
-            entry.module = Some(module.clone());
-            entry.loaded = true;
-            return Ok(module);
+
+            if let Some(entry) = self.registry.get_mut(module_key) {
+                entry.module = Some(module.clone());
+                entry.loaded = true;
+                return Ok(module);
+            }
         }
 
         // 3) Not registered: attempt fuzzy find if allowed by config.
@@ -256,8 +268,9 @@ impl ModuleLoaderApi for ModuleLoader {
             // register and load
             let requested = module_key.to_string();
             self.register_canonical(requested.clone(), path.clone());
+            // create module before taking a mutable borrow
+            let module = self.make_empty_module(path.clone(), match_kind.clone());
             if let Some(entry) = self.registry.get_mut(&requested) {
-                let module = self.make_empty_module(path.clone(), match_kind.clone());
                 entry.module = Some(module.clone());
                 entry.loaded = true;
                 return Ok(module);

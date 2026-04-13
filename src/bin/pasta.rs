@@ -8,9 +8,55 @@
 use std::env;
 use std::fs;
 use std::io::{self, IsTerminal, Read};
+use std::path::Path;
 use std::process;
 
-use pasta::{init_executor_with_auto_config, lexer::lexer::Lexer, parser::parser::Parser};
+use pasta::{
+    init_executor_with_auto_config, lexer::lexer::Lexer, mod_loader, parser::parser::Parser,
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Stdlib Compilation
+// ──────────────────────────────────────────────────────────────────────────────
+
+fn compile_stdlib_to_binary() {
+    println!("=== Compiling PASTA stdlib to binary format ===");
+
+    let stdlib_dir = Path::new("src/stdlib");
+    if !stdlib_dir.exists() {
+        eprintln!("Error: stdlib directory not found at src/stdlib");
+        return;
+    }
+
+    let mut compiled = 0;
+    let mut errors = 0;
+
+    for entry in fs::read_dir(stdlib_dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+
+        if path.extension().and_then(|e| e.to_str()) == Some("ph") {
+            let _stem = path.file_stem().unwrap().to_string_lossy();
+            let output_path = path.with_extension("phb");
+
+            print!("  Compiling {}... ", path.display());
+
+            match mod_loader::compile_file(&path, &output_path) {
+                Ok(()) => {
+                    println!("OK");
+                    compiled += 1;
+                }
+                Err(e) => {
+                    println!("FAILED: {}", e);
+                    errors += 1;
+                }
+            }
+        }
+    }
+
+    println!();
+    println!("=== Summary: {} compiled, {} errors ===", compiled, errors);
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Help
@@ -29,6 +75,7 @@ fn print_usage(prog: &str) {
     eprintln!("  -q, --quiet             Suppress all output except program prints");
     eprintln!("  -v, --verbose           Verbose diagnostics");
     eprintln!("      --verbose-debug      Full diagnostic traceback (super-verbose)");
+    eprintln!("      --compile-stdlib     Compile stdlib .ph files to binary .phb format");
     eprintln!("  -h, --help              Show this help");
 }
 
@@ -54,6 +101,7 @@ struct Args {
     quiet: bool,
     force_repl: bool,
     verbose: bool,
+    compile_stdlib: bool,
     // verbose_debug: bool, // duplicate removed
 }
 
@@ -68,6 +116,7 @@ fn parse_args(raw: &[String]) -> Args {
     let mut quiet = false;
     let mut force_repl = false;
     let mut verbose = false;
+    let mut compile_stdlib = false;
 
     let mut verbose_debug = false;
     let mut i = 1usize;
@@ -114,6 +163,9 @@ fn parse_args(raw: &[String]) -> Args {
                 verbose = true;
                 verbose_debug = true;
             }
+            "--compile-stdlib" => {
+                compile_stdlib = true;
+            }
             "-h" | "--help" => {
                 print_usage(prog);
                 process::exit(0);
@@ -144,6 +196,7 @@ fn parse_args(raw: &[String]) -> Args {
         force_repl,
         verbose,
         verbose_debug,
+        compile_stdlib,
     }
 }
 
@@ -222,7 +275,14 @@ fn run_source(source: &str, show_tokens: bool, show_ast: bool, quiet: bool, verb
     match result {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("Error: {e}");
+            // If the error contains a RuntimeError, print its pretty() formatted
+            // diagnostic (with source line and traceback) — otherwise fall back
+            // to the default anyhow formatting.
+            if let Some(re) = e.downcast_ref::<pasta::interpreter::errors::RuntimeError>() {
+                eprintln!("{}", re.pretty());
+            } else {
+                eprintln!("Error: {e}");
+            }
             // Print constraint / semantic diagnostics that explain the error.
             for d in &exe.diagnostics {
                 if d.contains("Constraint") || d.contains("validation") {
@@ -239,6 +299,56 @@ fn run_source(source: &str, show_tokens: bool, show_ast: bool, quiet: bool, verb
 // ──────────────────────────────────────────────────────────────────────────────
 
 fn main() {
+    // CLI pipeline handling: support quoted pipeline or --spawn-pipeline flag.
+    {
+        let args: Vec<String> = std::env::args().collect();
+        if args.len() == 4 && args[1] == "--spawn-pipeline" {
+            let left = &args[2];
+            let right = &args[3];
+            let mut exe = pasta::init_executor_with_auto_config();
+            let stages: Vec<&str> = vec![left.as_str(), right.as_str()];
+            match exe.spawn_pipeline_from_files(&stages) {
+                Ok(_) => {
+                    println!("spawned pipeline: {} | {}", left, right);
+                    if let Err(e) = exe.enter_shell() {
+                        eprintln!("REPL error: {}", e);
+                        std::process::exit(1);
+                    }
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("failed to spawn pipeline: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        if args.len() == 2 && args[1].contains('|') {
+            let s = args[1].clone();
+            let parts: Vec<&str> = s
+                .split('|')
+                .map(|p| p.trim())
+                .filter(|p| !p.is_empty())
+                .collect();
+            if parts.len() >= 2 && parts.len() <= 8 {
+                let mut exe = pasta::init_executor_with_auto_config();
+                match exe.spawn_pipeline_from_files(&parts) {
+                    Ok(_) => {
+                        println!("spawned pipeline ({}): {}", parts.len(), parts.join(" | "));
+                        if let Err(e) = exe.enter_shell() {
+                            eprintln!("REPL error: {}", e);
+                            std::process::exit(1);
+                        }
+                        std::process::exit(0);
+                    }
+                    Err(e) => {
+                        eprintln!("failed to spawn pipeline: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+            }
+        }
+    }
+
     let raw_args: Vec<String> = env::args().collect();
     let args = parse_args(&raw_args);
 
@@ -249,6 +359,12 @@ fn main() {
     }
     if args.verbose_debug {
         pasta::VERBOSE_DEBUG.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    // ── Compile stdlib if requested ─────────────────────────────────────────
+    if args.compile_stdlib {
+        compile_stdlib_to_binary();
+        process::exit(0);
     }
 
     // ── Determine mode ──────────────────────────────────────────────────────

@@ -6,9 +6,13 @@
 
 use crate::stdlib::graphics::canvas::Canvas;
 
+/// Common interface implemented by native graphics window backends.
 pub trait BackendWindow {
+    /// Present the provided canvas contents.
     fn blit(&mut self, canvas: &Canvas) -> Result<(), String>;
+    /// Poll whether the native window remains open.
     fn is_open(&mut self) -> bool;
+    /// Close the native window and release backend resources.
     fn close(&mut self);
 }
 

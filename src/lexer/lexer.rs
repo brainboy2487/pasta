@@ -130,6 +130,22 @@ impl Lexer {
         // Use the raw line for indentation so we preserve exact leading bytes.
         let normalized = normalize_unicode(raw);
 
+        // ── Strip leading whitespace and comments ────────────────────────────
+        let mut s = normalized.trim_start().to_string();
+
+        // Remove line comments: '#' only ('/' is now floor-division)
+        if let Some(idx) = s.find('#') {
+            s.truncate(idx);
+        }
+
+        // Blank or comment-only lines must NOT alter the indent stack — they
+        // carry no meaningful indentation and would otherwise emit spurious
+        // Dedent/Indent pairs that corrupt the parser's block structure.
+        if s.trim().is_empty() {
+            self.emit(TokenType::Newline, None);
+            return Ok(());
+        }
+
         // ── Indentation ──────────────────────────────────────────────────────
         // Count leading spaces; treat each tab as 4 spaces.
         let mut leading_spaces = 0usize;
@@ -160,21 +176,6 @@ impl Lexer {
 
         // ── DO-line context (for alias normalisation) ────────────────────────
         let is_do_line = raw.trim_start().to_lowercase().starts_with("do ");
-
-        // ── Strip leading whitespace and comments ────────────────────────────
-        let mut s = normalized.trim_start().to_string();
-
-        // Remove line comments: '#' or '//'
-        if let Some(idx) = s.find('#') {
-            s.truncate(idx);
-        } else if let Some(idx) = s.find("//") {
-            s.truncate(idx);
-        }
-
-        if s.trim().is_empty() {
-            self.emit(TokenType::Newline, None);
-            return Ok(());
-        }
 
         // ── Character-by-character scan ──────────────────────────────────────
         let mut chars = s.chars().peekable();
@@ -267,7 +268,10 @@ impl Lexer {
 
             if ch == '<' {
                 chars.next();
-                if chars.peek() == Some(&'=') {
+                if chars.peek() == Some(&'<') {
+                    chars.next(); self.col += 1;
+                    self.emit(TokenType::LShift, None);
+                } else if chars.peek() == Some(&'=') {
                     chars.next();
                     self.col += 1;
                     self.emit(TokenType::Lte, None);
@@ -279,7 +283,10 @@ impl Lexer {
 
             if ch == '>' {
                 chars.next();
-                if chars.peek() == Some(&'=') {
+                if chars.peek() == Some(&'>') {
+                    chars.next(); self.col += 1;
+                    self.emit(TokenType::RShift, None);
+                } else if chars.peek() == Some(&'=') {
                     chars.next();
                     self.col += 1;
                     self.emit(TokenType::Gte, None);
@@ -296,8 +303,7 @@ impl Lexer {
                     self.col += 1;
                     self.emit(TokenType::And, None);
                 } else {
-                    // bare '&' — emit as identifier
-                    self.emit(TokenType::Identifier, Some("&".to_string()));
+                    self.emit(TokenType::Ampersand, None);
                 }
                 continue;
             }
@@ -308,8 +314,12 @@ impl Lexer {
                     chars.next();
                     self.col += 1;
                     self.emit(TokenType::Or, None);
+                } else if chars.peek() == Some(&'>') {
+                    chars.next();
+                    self.col += 1;
+                    self.emit(TokenType::PipeArrow, None);
                 } else {
-                    self.emit(TokenType::Identifier, Some("|".to_string()));
+                    self.emit(TokenType::Pipe, None);
                 }
                 continue;
             }
@@ -457,6 +467,7 @@ impl Lexer {
                     self.emit(TokenType::Ampersand, None);
                     continue;
                 }
+                '.' => { chars.next(); self.emit(TokenType::Dot, None); continue; }
                 '@' => { chars.next(); self.emit(TokenType::At,       None); continue; }
                 '^' => { chars.next(); self.emit(TokenType::Caret,    None); continue; }
                 '\\' => { chars.next(); self.emit(TokenType::Backslash,None); continue; }
@@ -474,7 +485,6 @@ impl Lexer {
                     // accepts a "." when the buffer started with a digit and
                     // the dot is followed by another digit.
                     if c2.is_alphanumeric() || c2 == '_'
-                        || (c2 == '.' && !buf.chars().next().is_some_and(|c| c.is_ascii_digit()))
                     {
                         buf.push(c2);
                         chars.next();
@@ -522,22 +532,21 @@ impl Lexer {
                         continue;
                     }
 
-                    // hexadecimal, binary, octal integer literals
-                    // (underscores already removed in `cleaned`).
-                    let lower = cleaned.to_ascii_lowercase();
-                    let is_prefixed = if lower.starts_with("0x") {
-                        lower.chars().skip(2).all(|c| c.is_ascii_hexdigit())
-                    } else if lower.starts_with("0b") {
-                        lower.chars().skip(2).all(|c| c == '0' || c == '1')
-                    } else if lower.starts_with("0o") {
-                        lower.chars().skip(2).all(|c| ('0'..='7').contains(&c))
-                    } else {
-                        false
-                    };
-                    if is_prefixed {
-                        self.emit(TokenType::Number, Some(buf));
-                        continue;
+                    // Timed-duration suffix: `500ms` → Number(500) + Identifier(ms)
+                    // Split any `<digits>ms` token so `DO FOR 500ms` works without spaces.
+                    if c0.is_ascii_digit() {
+                        let lower_buf = cleaned.to_ascii_lowercase();
+                        if lower_buf.ends_with("ms") {
+                            let num_part = &cleaned[..cleaned.len() - 2];
+                            if !num_part.is_empty() && num_part.parse::<f64>().is_ok() {
+                                let orig_num = buf[..buf.len() - 2].to_string();
+                                self.emit(TokenType::Number, Some(orig_num));
+                                self.emit(TokenType::Identifier, Some("ms".to_string()));
+                                continue;
+                            }
+                        }
                     }
+
                 }
 
                 // ── Keyword / alias check ─────────────────────────────────────
@@ -545,6 +554,8 @@ impl Lexer {
                     let token_type = match canonical.as_str() {
                         "TRUE"      => TokenType::Bool,
                         "FALSE"     => TokenType::Bool,
+                        "NONE"      => TokenType::NoneVal,
+                        "NULL"      => TokenType::NoneVal,
                         "DEF"       => TokenType::Def,
                         "DO"        => TokenType::Do,
                         "AND"       => TokenType::And,
@@ -563,6 +574,7 @@ impl Lexer {
                         "WAIT"      => TokenType::Wait,
                         "SET"       => TokenType::Set,
                         "IF"        => TokenType::If,
+                        "THEN"      => TokenType::Then,
                         "TRY"       => TokenType::Try,
                         "OTHERWISE" => TokenType::Otherwise,
                         "GROUP"     => TokenType::Group,
@@ -578,6 +590,8 @@ impl Lexer {
                         "UNLESS"    => TokenType::Unless,
                         "UNTIL"     => TokenType::Until,
                         "PASS"      => TokenType::Pass,
+                        "BREAK"     => TokenType::Break,
+                        "CONTINUE"  => TokenType::Continue,
                         "ASSERT"    => TokenType::Assert,
                         "TYPEOF"    => TokenType::Typeof,
                         "YIELD"     => TokenType::Yield,
@@ -590,9 +604,20 @@ impl Lexer {
                         "EXPORT"    => TokenType::Export,
                         "AWAIT"     => TokenType::Await,
                         "DRAW"      => TokenType::Draw,
-                        "COLOR"     => TokenType::Color,
                         "FRAME"     => TokenType::Frame,
-                        "STEP"      => TokenType::Step,
+                        // v1.4.4 pointer system keywords
+                        "GOTO"      => TokenType::Goto,
+                        "LOOP"      => TokenType::Loop,
+                        "PULL"      => TokenType::Pull,
+                        "PUSH"      => TokenType::Push,
+                        "ALLOC"     => TokenType::Alloc,
+                        "FREE"      => TokenType::Free,
+                        "INFO"      => TokenType::Info,
+                        "REF"       => TokenType::Ref,
+                        "SEEK"      => TokenType::Seek,
+                        "SWAP"      => TokenType::Swap,
+                        "DOES_PARENT_EXIST" => TokenType::DoesParentExist,
+                        
 
                         _           => TokenType::Identifier,
                     };
@@ -692,17 +717,6 @@ mod tests {
         let numbers: Vec<_> = toks.iter().filter(|t| t.kind == TokenType::Number).collect();
         assert!(numbers.len() >= 2);
         assert_eq!(numbers[0].value.as_deref(), Some("1.2"));
-    }
-
-    #[test]
-    fn hex_bin_octal_literals() {
-        let toks = lex("0xFF 0xFF_00 0b1010_0011 0o755");
-        let nums: Vec<_> = toks.iter().filter(|t| t.kind == TokenType::Number).collect();
-        assert_eq!(nums.len(), 4);
-        assert_eq!(nums[0].value.as_deref(), Some("0xFF"));
-        assert_eq!(nums[1].value.as_deref(), Some("0xFF_00"));
-        assert_eq!(nums[2].value.as_deref(), Some("0b1010_0011"));
-        assert_eq!(nums[3].value.as_deref(), Some("0o755"));
     }
 
     #[test]
@@ -825,9 +839,11 @@ mod tests {
     }
 
     #[test]
-    fn slash_slash_comment_stripped() {
-        let toks = lex("x = 1 // comment");
-        assert!(toks.iter().all(|t| t.value.as_deref() != Some("comment")));
+    fn slash_slash_is_floor_div() {
+        // '//' is now floor-division, not a comment
+        let toks = lex("7 // 2");
+        let kinds: Vec<_> = toks.iter().map(|t| t.kind.clone()).collect();
+        assert!(kinds.contains(&TokenType::FloorDiv), "expected FloorDiv token");
     }
 
     // ── Punctuation ──────────────────────────────────────────────────────────

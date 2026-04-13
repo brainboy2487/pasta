@@ -1,21 +1,51 @@
-# stdlib/thread.ph — Concurrency primitives
+# ═══════════════════════════════════════════════════════════════════════════
+# stdlib/thread.ph — PASTA Threading Utilities
+# ═══════════════════════════════════════════════════════════════════════════
+# Version: 1.0
 #
-# PASTA-native concurrency uses DO blocks with OVER priorities.
-# thread.* provides lower-level access for interop and diagnostics.
+# Threading helpers and synchronization primitives.
+# Note: PASTA uses DO blocks for concurrent execution.
 #
-# Exports:
-#   thread.id()      -> number   OS thread ID of calling thread
-#   thread.count()   -> number   available logical CPUs
-#   thread.yield()              cooperative yield hint to scheduler
-#   thread.sleep(ms)            sleep ms milliseconds
-#   thread.spawn(fn)            spawn fn in new thread (stub)
-#   thread.join(h)              join thread handle (stub)
+# ═══════════════════════════════════════════════════════════════════════════
 
-set __header_thread = "thread loaded"
+set __header_thread = "thread v1.0 loaded"
 
-DEF thread.id():        RET.NOW(): thread.id()       END
-DEF thread.count():     RET.NOW(): thread.count()    END
-DEF thread.yield():     thread.yield()               END
-DEF thread.sleep(ms):   thread.sleep(ms)             END
-DEF thread.spawn(fn):   RET.NOW(): thread.spawn(fn)  END
-DEF thread.join(h):     RET.NOW(): thread.join(h)    END
+# ───────────────────────────────────────────────────────────────────────────
+# THREAD STATE CONSTANTS
+# ───────────────────────────────────────────────────────────────────────────
+
+set THREAD_RUNNING  = "running"
+set THREAD_PAUSED   = "paused"
+set THREAD_FINISHED = "finished"
+
+# ───────────────────────────────────────────────────────────────────────────
+# SYNCHRONIZATION HELPERS
+# ───────────────────────────────────────────────────────────────────────────
+
+# Simple busy-wait for a condition
+DEF th_wait_for(check_fn, timeout_ms):
+    set start = TIME_MS()
+    WHILE True:
+        IF check_fn():
+            RETURN True
+        END
+        IF TIME_MS() - start > timeout_ms:
+            RETURN False
+        END
+        SLEEP(10)
+    END
+END
+
+# Yield execution briefly
+DEF th_yield():
+    SLEEP(1)
+END
+
+# Sleep with interruptibility check
+DEF th_sleep(ms):
+    SLEEP(ms)
+END
+
+# ═══════════════════════════════════════════════════════════════════════════
+# END OF THREAD LIBRARY
+# ═══════════════════════════════════════════════════════════════════════════

@@ -23,6 +23,7 @@ pub fn handle_from_block(block: &str, rt: &mut Runtime) {
                     // Call the graphics import shim
                     crate::stdlib::imports::graphics_import::import_graphics(rt);
                 }
+                "tensor" => { crate::stdlib::imports::tensor_import::import_tensor(rt); }
                 _ => {
                     // Unknown module: ignore for now or log.
                 }

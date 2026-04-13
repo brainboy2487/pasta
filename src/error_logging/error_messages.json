@@ -1,0 +1,282 @@
+{
+  "meta": {
+    "version": "0.1",
+    "generated_by": "error_build.py",
+    "notes": "Canonical error messages keyed by code. Use placeholders {span}, {depth}, {expr}, {hint}."
+  },
+  "errors": {
+    "STACK_OVERFLOW": {
+      "code": "E001",
+      "severity": "fatal",
+      "message": "Stack overflow detected at depth {depth}. Expression/statement: {expr}.",
+      "explanation": "The interpreter exceeded the configured recursion/stack guard.",
+      "suggestion": "Refactor recursive code or increase the recursion guard via exec.set_stack_limit(N)."
+    },
+    "LOOP_LIMIT_EXCEEDED": {
+      "code": "E002",
+      "severity": "error",
+      "message": "Loop exceeded iteration limit ({limit}) in span {span}.",
+      "explanation": "A WHILE/DO loop ran more iterations than allowed by the executor's while_limit.",
+      "suggestion": "Ensure the loop has a reachable exit or raise the while limit with exec.set_while_limit(N)."
+    },
+    "ARITY_MISMATCH": {
+      "code": "E003",
+      "severity": "error",
+      "message": "Function '{name}' called with {got} args but expects {expected}.",
+      "explanation": "A function or lambda was invoked with the wrong number of arguments.",
+      "suggestion": "Check the function definition and call sites; consider providing default values."
+    },
+    "NOT_CALLABLE": {
+      "code": "E004",
+      "severity": "error",
+      "message": "Attempted to call a non-callable value: {got}.",
+      "explanation": "Only functions and lambdas are callable.",
+      "suggestion": "Ensure the value is a function or lambda before calling; use parentheses only on callables."
+    },
+    "NOT_ITERABLE": {
+      "code": "E005",
+      "severity": "error",
+      "message": "Attempted to iterate over non-iterable value: {got}.",
+      "explanation": "FOR IN requires a list, string, or numeric range.",
+      "suggestion": "Convert the value to a list or string, or use a numeric range."
+    },
+    "INDEX_OUT_OF_BOUNDS": {
+      "code": "E006",
+      "severity": "error",
+      "message": "Index {index} out of range (len {len}) at {span}.",
+      "explanation": "An index expression referenced an element outside the container bounds.",
+      "suggestion": "Check index arithmetic and container length; consider using safe accessors."
+    },
+    "FIELD_NOT_FOUND": {
+      "code": "E007",
+      "severity": "error",
+      "message": "Field '{field}' not found on object '{object}'.",
+      "explanation": "Attempted to access a missing field on an object instance.",
+      "suggestion": "Verify object fields or use a safe accessor; check module exports."
+    },
+    "MUTATION_NOT_ALLOWED": {
+      "code": "E008",
+      "severity": "error",
+      "message": "Mutation not allowed: cannot set '{field}' on '{object}'.",
+      "explanation": "The object or field is immutable or protected.",
+      "suggestion": "Use a mutable object or change the design to allow mutation."
+    },
+    "MODULE_NOT_FOUND": {
+      "code": "E009",
+      "severity": "error",
+      "message": "Module not found: '{name}'.",
+      "explanation": "A module import or require failed to locate the module.",
+      "suggestion": "Check module path and search paths; ensure the module is installed."
+    },
+    "SYMBOL_NOT_EXPORTED": {
+      "code": "E010",
+      "severity": "error",
+      "message": "Symbol '{symbol}' not exported from module '{module}'.",
+      "explanation": "Attempted to import a symbol that the module does not export.",
+      "suggestion": "Export the symbol or import a different one."
+    },
+    "DANGLING_HEAP_REF": {
+      "code": "E011",
+      "severity": "fatal",
+      "message": "Dangling heap reference detected (id {id}).",
+      "explanation": "A heap reference points to an object that was collected or invalidated.",
+      "suggestion": "Avoid holding raw heap ids across GC boundaries."
+    },
+    "NUMERIC_OVERFLOW": {
+      "code": "E012",
+      "severity": "error",
+      "message": "Numeric overflow during operation '{op}'.",
+      "explanation": "A numeric operation produced a value outside representable range.",
+      "suggestion": "Use a larger numeric type or validate inputs."
+    },
+    "NUMERIC_UNDERFLOW": {
+      "code": "E013",
+      "severity": "error",
+      "message": "Numeric underflow during operation '{op}'.",
+      "explanation": "A numeric operation produced a value too small to represent.",
+      "suggestion": "Use a larger numeric type or validate inputs."
+    },
+    "INVALID_NUMERIC_LITERAL": {
+      "code": "E014",
+      "severity": "error",
+      "message": "Invalid numeric literal: '{raw}'.",
+      "explanation": "Parser produced a numeric token that cannot be interpreted.",
+      "suggestion": "Fix the literal in source."
+    },
+    "THREAD_NOT_FOUND": {
+      "code": "E015",
+      "severity": "error",
+      "message": "Thread not found: '{id}'.",
+      "explanation": "An operation referenced a non-existent thread id.",
+      "suggestion": "Verify thread lifecycle and ids."
+    },
+    "DEADLOCK": {
+      "code": "E016",
+      "severity": "fatal",
+      "message": "Deadlock detected: {context}.",
+      "explanation": "Two or more threads are waiting on each other.",
+      "suggestion": "Review locking strategy and avoid circular waits."
+    },
+    "TIMEOUT": {
+      "code": "E017",
+      "severity": "error",
+      "message": "Operation timed out after {ms} ms.",
+      "explanation": "A blocking operation exceeded its allowed time.",
+      "suggestion": "Increase timeout or optimize the operation."
+    },
+    "CONSTRAINT_VIOLATION": {
+      "code": "E018",
+      "severity": "error",
+      "message": "Constraint violation: {message}.",
+      "explanation": "A constraint engine check failed.",
+      "suggestion": "Adjust constraints or inputs."
+    },
+    "TYPE_MISMATCH": {
+      "code": "E019",
+      "severity": "error",
+      "message": "Type mismatch: expected {expected}, found {found}.",
+      "explanation": "An operation received a value of the wrong type.",
+      "suggestion": "Coerce or convert the value to the expected type."
+    },
+    "INCOMPATIBLE_TYPES": {
+      "code": "E020",
+      "severity": "error",
+      "message": "Incompatible types for '{op}': {left} vs {right}.",
+      "explanation": "Binary operation cannot be applied to the operand types.",
+      "suggestion": "Convert operands to compatible types."
+    },
+    "COERCION_FAILED": {
+      "code": "E021",
+      "severity": "error",
+      "message": "Coercion failed: cannot convert {from} to {to}.",
+      "explanation": "Automatic type coercion was not possible.",
+      "suggestion": "Perform explicit conversion or change types."
+    },
+    "ASSERTION_FAILED": {
+      "code": "E022",
+      "severity": "error",
+      "message": "Assertion failed: {message}.",
+      "explanation": "An assert statement failed at runtime.",
+      "suggestion": "Check the asserted condition."
+    },
+    "INVALID_REPEAT_COUNT": {
+      "code": "E023",
+      "severity": "error",
+      "message": "Invalid repeat count: {got}.",
+      "explanation": "DO/REPEAT expects a non-negative integer repeat count.",
+      "suggestion": "Provide a valid integer repeat count."
+    },
+    "UNKNOWN": {
+      "code": "E999",
+      "severity": "fatal",
+      "message": "Unknown runtime error: {detail}.",
+      "explanation": "An unexpected error occurred.",
+      "suggestion": "Open an issue with a minimal repro and the traceback."
+    },
+    "TENSOR_SHAPE_MISMATCH": {
+      "code": "E030",
+      "severity": "error",
+      "message": "Tensor shape mismatch: left {left:?} vs right {right:?} for op '{op}'.",
+      "explanation": "An operation expected tensors with compatible shapes.",
+      "suggestion": "Check broadcasting rules or reshape tensors before the operation."
+    },
+    "TENSOR_DTYPE_MISMATCH": {
+      "code": "E031",
+      "severity": "error",
+      "message": "Tensor dtype mismatch: left {left} vs right {right}.",
+      "explanation": "An operation received tensors with incompatible dtypes.",
+      "suggestion": "Cast tensors to a common dtype before the operation."
+    },
+    "IO_ERROR": {
+      "code": "E040",
+      "severity": "error",
+      "message": "I/O error: {detail}.",
+      "explanation": "An underlying I/O operation failed (file, socket, device).",
+      "suggestion": "Check file paths, permissions, and device availability."
+    },
+    "PARSE_ERROR": {
+      "code": "E041",
+      "severity": "error",
+      "message": "Parse error at {span}: {detail}.",
+      "explanation": "The parser encountered invalid syntax or tokens.",
+      "suggestion": "Fix the source code at the reported location."
+    },
+    "IMPORT_CYCLE": {
+      "code": "E042",
+      "severity": "error",
+      "message": "Import cycle detected: {cycle}.",
+      "explanation": "Modules import each other in a cycle.",
+      "suggestion": "Refactor modules to remove circular dependencies."
+    },
+    "RESOURCE_EXHAUSTED": {
+      "code": "E050",
+      "severity": "fatal",
+      "message": "Resource exhausted: {resource} (limit {limit}).",
+      "explanation": "The process exceeded a configured resource limit.",
+      "suggestion": "Increase the resource limit or optimize usage."
+    },
+    "PERMISSION_DENIED": {
+      "code": "E051",
+      "severity": "error",
+      "message": "Permission denied: {operation} on {target}.",
+      "explanation": "The operation lacked required permissions.",
+      "suggestion": "Run with appropriate privileges or change permissions."
+    },
+    "SERDE_ERROR": {
+      "code": "E060",
+      "severity": "error",
+      "message": "Serialization/deserialization error: {detail}.",
+      "explanation": "Failed to serialize or deserialize data.",
+      "suggestion": "Check data formats and types."
+    },
+    "PTR_USE_AFTER_FREE": {
+      "code": "E070",
+      "severity": "error",
+      "message": "Use after free: pointer {id} was accessed after being freed.",
+      "explanation": "The pointer was freed with FREE but an operation (GOTO, PULL, PUSH, INFO) tried to use it.",
+      "suggestion": "Ensure pointer is not freed before all uses; use INFO to check 'alive' status."
+    },
+    "PTR_KIND_MISMATCH": {
+      "code": "E071",
+      "severity": "error",
+      "message": "Pointer kind mismatch: {operation} requires {expected} but got {got}.",
+      "explanation": "The operation is not supported for this pointer kind.",
+      "suggestion": "Use the correct pointer type for the operation (e.g., FILE for file I/O, MEM for memory)."
+    },
+    "PTR_NO_CONTEXT": {
+      "code": "E072",
+      "severity": "error",
+      "message": "No active pointer context: {operation} requires a GOTO block.",
+      "explanation": "PULL and PUSH operations require an active pointer context set by GOTO.",
+      "suggestion": "Wrap the operation in a GOTO block or use explicit pointer argument."
+    },
+    "PTR_NOT_FOUND": {
+      "code": "E073",
+      "severity": "error",
+      "message": "Pointer {id} not found in registry.",
+      "explanation": "The pointer ID does not exist or was already swept by GC.",
+      "suggestion": "Check that the pointer was allocated and not freed."
+    },
+    "PTR_INVALID_TYPE": {
+      "code": "E074",
+      "severity": "error",
+      "message": "Invalid pointer type: expected pointer value, got {got}.",
+      "explanation": "The expression did not evaluate to a pointer.",
+      "suggestion": "Use ALLOC or REF to create a pointer, or check variable assignment."
+    },
+    "PTR_METADATA_ERROR": {
+      "code": "E075",
+      "severity": "error",
+      "message": "Pointer metadata error: {detail}.",
+      "explanation": "Invalid metadata key or value in REF expression.",
+      "suggestion": "Ensure metadata keys are strings and values are valid PASTA values."
+    },
+    "ASSERTION_INTERNAL": {
+      "code": "E080",
+      "severity": "fatal",
+      "message": "Internal assertion failed: {detail}.",
+      "explanation": "An internal invariant was violated.",
+      "suggestion": "This indicates a bug; please open an issue with a repro."
+    }
+  }
+}

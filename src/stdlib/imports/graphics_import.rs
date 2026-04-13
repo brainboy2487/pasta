@@ -4,5 +4,6 @@
 use crate::interpreter::Runtime;
 
 pub fn import_graphics(rt: &mut Runtime) {
-    crate::stdlib::graphics::register_builtins(rt);
+    crate::stdlib::graphics::register_graphics_api(rt);
+    crate::stdlib::graphics::draw::register_color_palette(&mut rt.env);
 }

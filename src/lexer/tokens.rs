@@ -13,11 +13,16 @@ pub enum TokenType {
     Number,
     /// Double-quoted string literal. Value held in `Token::value` (unescaped).
     String,
+    /// Literal segment inside an interpolated string.
     StringFragment,
+    /// Opening interpolation marker inside a string.
     InterpStart,
+    /// Closing interpolation marker inside a string.
     InterpEnd,
     /// Boolean literal (`true` / `false`). Value held in `Token::value`.
     Bool,
+    /// None literal (`None` / `none` / `null`)
+    NoneVal,
 
     // ── Identifiers ─────────────────────────────────────────────────────────
     /// Any identifier not matched as a keyword or alias.
@@ -54,6 +59,8 @@ pub enum TokenType {
     Set,
     /// `IF` — conditional branch.
     If,
+    /// `THEN` — marks the start of the IF condition's true branch.
+    Then,
     /// `OTHERWISE` / `ELSE` — alternative branch of IF or ATTEMPT.
     Otherwise,
     /// `TRY` / `ATTEMPT` — begins an error-catching block.
@@ -84,6 +91,16 @@ pub enum TokenType {
     Obj,
     /// `SPAWN` keyword (explicit token for SPAWN blocks)
     Spawn,
+
+    // ── Pipeline tokens ─────────────────────────────────────────────────────
+    /// `|` single-stage pipeline
+    Pipe,
+    /// `||` concurrent pipeline (or "pipe-or")
+    PipeOr,
+    /// `|&|` both-streams pipeline
+    PipeBoth,
+    /// `|:|` indexed/map pipeline
+    PipeMap,
 
     // ── Operators ────────────────────────────────────────────────────────────
     /// `+`
@@ -148,7 +165,6 @@ pub enum TokenType {
     /// `&` (bitwise and)
     Ampersand,
     /// `|` (bitwise or)
-    Pipe,
     /// `~` (bitwise not)
     Tilde,
     /// `<<` (left shift)
@@ -187,6 +203,10 @@ pub enum TokenType {
     Until,
     /// `PASS`
     Pass,
+    /// `BREAK` — exits the enclosing loop immediately.
+    Break,
+    /// `CONTINUE` — skips to the next iteration of the enclosing loop.
+    Continue,
     /// `ASSERT`
     Assert,
     /// `TYPEOF`
@@ -211,10 +231,34 @@ pub enum TokenType {
     Await,
     /// `DRAW`
     Draw,
-    /// `COLOR`
-    Color,
     /// `FRAME`
     Frame,
+
+    // ── v1.4.4 Pointer System Keywords ──────────────────────────────────────
+    /// `GOTO` — jumps to a named LOOP block
+    Goto,
+    /// `LOOP` — begins a named loop block assigned via `name = LOOP ... END`
+    Loop,
+    /// `PULL` — reads from active pointer
+    Pull,
+    /// `PUSH` — writes to active pointer
+    Push,
+    /// `ALLOC` — allocates a new pointer resource
+    Alloc,
+    /// `FREE` — releases a pointer resource
+    Free,
+    /// `INFO` — returns pointer metadata
+    Info,
+    /// `REF` — creates a reference/pointer expression
+    Ref,
+    /// `SEEK` — sets pointer offset position
+    Seek,
+    /// `SWAP` — swaps two variables
+    Swap,
+
+    /// `DOES_PARENT_EXIST` keyword
+    DoesParentExist,
+
     /// `|>` (forward pipe)
     /// `\` (line continuation)
     /// `::` (namespace separator)

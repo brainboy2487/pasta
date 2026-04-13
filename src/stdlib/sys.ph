@@ -1,45 +1,45 @@
-# stdlib/sys.ph — System and environment access
-# Loaded automatically at interpreter startup from stdlib/
+# ═══════════════════════════════════════════════════════════════════════════
+# stdlib/sys.ph — PASTA System Utilities Library
+# ═══════════════════════════════════════════════════════════════════════════
+# Version: 1.0
 #
-# Exports:
-#   sys.env(name)      -> string   read environment variable
-#   sys.exit([code])              exit with optional code (default 0)
-#   sys.args()         -> list     command-line arguments as a List
-#   sys.platform()     -> string   "linux" | "macos" | "windows"
-#   sys.sleep(ms)                  sleep for ms milliseconds
-#   sys.getcwd()       -> string   current working directory
+# Provides system-level utilities and platform information.
+#
+# ═══════════════════════════════════════════════════════════════════════════
 
-set __header_sys = "sys loaded"
+set __header_sys = "sys v1.0 loaded"
 
-# ── constants ────────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────────────────────
+# PLATFORM CONSTANTS
+# ───────────────────────────────────────────────────────────────────────────
+
 set SYS_LINUX   = "linux"
 set SYS_MACOS   = "macos"
 set SYS_WINDOWS = "windows"
 
-# ── function wrappers ─────────────────────────────────────────────────────────
-# Each wrapper is a zero-boilerplate passthrough to the builtin.
-# Having named DEFs means callers get proper call-site errors.
+set sys.version = "1.4.4"
+set sys.name    = "PASTA"
 
-DEF sys.env(name):
-    RET.NOW(): sys.env(name)
+# ───────────────────────────────────────────────────────────────────────────
+# EXIT CODES
+# ───────────────────────────────────────────────────────────────────────────
+
+set EXIT_SUCCESS = 0
+set EXIT_FAILURE = 1
+set EXIT_ERROR   = 2
+
+# ───────────────────────────────────────────────────────────────────────────
+# UTILITY FUNCTIONS
+# ───────────────────────────────────────────────────────────────────────────
+
+DEF sys_print_version():
+    PRINT sys.name, "version", sys.version
 END
 
-DEF sys.args():
-    RET.NOW(): sys.args()
+DEF sys_delay(ms):
+    SLEEP(ms)
 END
 
-DEF sys.platform():
-    RET.NOW(): sys.platform()
-END
-
-DEF sys.getcwd():
-    RET.NOW(): sys.getcwd()
-END
-
-DEF sys.sleep(ms):
-    sys.sleep(ms)
-END
-
-DEF sys.exit(code):
-    sys.exit(code)
-END
+# ═══════════════════════════════════════════════════════════════════════════
+# END OF SYS LIBRARY
+# ═══════════════════════════════════════════════════════════════════════════

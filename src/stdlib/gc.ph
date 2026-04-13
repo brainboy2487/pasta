@@ -1,16 +1,29 @@
-# stdlib/gc.ph — Garbage collector hooks
+# ═══════════════════════════════════════════════════════════════════════════
+# stdlib/gc.ph — PASTA Garbage Collection Utilities
+# ═══════════════════════════════════════════════════════════════════════════
+# Version: 1.0
 #
-# Exports:
-#   gc.collect()   -> number   run GC; returns objects reclaimed
-#   gc.count()     -> number   currently live heap objects
-#   gc.stats()     -> string   human-readable GC status line
-#   gc.pause()               disable automatic GC (future)
-#   gc.resume()              re-enable automatic GC (future)
+# Memory management and garbage collection helpers.
+#
+# ═══════════════════════════════════════════════════════════════════════════
 
-set __header_gc = "gc loaded"
+set __header_gc = "gc v1.0 loaded"
 
-DEF gc.collect():  RET.NOW(): gc.collect()  END
-DEF gc.count():    RET.NOW(): gc.count()    END
-DEF gc.stats():    RET.NOW(): gc.stats()    END
-DEF gc.pause():    gc.pause()               END
-DEF gc.resume():   gc.resume()              END
+# ───────────────────────────────────────────────────────────────────────────
+# GC HINTS AND UTILITIES
+# ───────────────────────────────────────────────────────────────────────────
+
+# Suggest garbage collection (hint to runtime)
+DEF gc_collect():
+    # Placeholder - actual GC is automatic
+    PASS
+END
+
+# Free a pointer resource explicitly
+DEF gc_free(ptr):
+    FREE ptr
+END
+
+# ═══════════════════════════════════════════════════════════════════════════
+# END OF GC LIBRARY
+# ═══════════════════════════════════════════════════════════════════════════

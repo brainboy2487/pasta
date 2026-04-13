@@ -6,6 +6,7 @@
 
 pub mod mod_api;
 mod mod_load;
+pub mod binary;
 
 pub use mod_api::{
     MatchKind,
@@ -22,3 +23,15 @@ pub use mod_load::{
     default_loader_with_config, // concrete factory (same name as API factory)
     parse_config_from_file, // helper to read module_loader.conf into internal config
 };
+
+pub use binary::{
+    compile_to_binary,
+    load_from_binary,
+    compile_file,
+    load_file as load_binary_file,
+    load_module,
+    is_binary_current,
+    BinaryError,
+    BinaryResult,
+};
+

@@ -1,3 +1,61 @@
+// --- Memory management and GC integration (Strainer) ---
+// These are API stubs; wire to src/runtime/strainer.rs for real GC.
+use crate::runtime::strainer::{Strainer, GcRef};
+
+/// Global singleton for Saucey GC (prototype; replace with per-runtime if needed)
+static mut SAUCEY_STRAINER: Option<Strainer> = None;
+
+/// Initialize the Saucey GC (call once at startup)
+pub fn saucey_gc_init() {
+    unsafe {
+        SAUCEY_STRAINER = Some(Strainer::new());
+    }
+}
+
+/// Allocate a GC object and return its handle (GcRef)
+pub fn saucey_malloc(val: Value) -> GcRef {
+    unsafe {
+        if SAUCEY_STRAINER.is_none() { saucey_gc_init(); }
+        SAUCEY_STRAINER.as_mut().unwrap().allocate(val)
+    }
+}
+
+/// Free a GC object by handle (no-op for mark-sweep, but can unregister root)
+pub fn saucey_free(handle: GcRef) {
+    unsafe {
+        if let Some(gc) = SAUCEY_STRAINER.as_mut() {
+            gc.unregister_root(handle);
+            // Actual memory is reclaimed on next collect()
+        }
+    }
+}
+
+/// Mark a handle as a GC root (prevents collection)
+pub fn saucey_gc_root(handle: GcRef) {
+    unsafe {
+        if let Some(gc) = SAUCEY_STRAINER.as_mut() {
+            gc.register_root(handle);
+        }
+    }
+}
+
+/// Trigger a GC collection pass
+pub fn saucey_gc_collect() -> usize {
+    unsafe {
+        if let Some(gc) = SAUCEY_STRAINER.as_mut() {
+            gc.collect()
+        } else { 0 }
+    }
+}
+
+/// Get a Value from a GC handle
+pub fn saucey_gc_get(handle: GcRef) -> Option<Value> {
+    unsafe {
+        SAUCEY_STRAINER.as_ref()?.get(handle).cloned()
+    }
+}
+
+// --- End memory management API stubs ---
 // saucey.rs
 // Single-file core for Saucey: cross-language translation pipeline for Pasta.
 // Minimal dependencies assumed: serde, serde_json, thiserror, parking_lot, uuid, tokio (optional).
@@ -33,6 +91,8 @@ pub enum Primitive {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+/// Value: core runtime value type for Saucey.
+/// Now includes Pointer for smart pointer-like semantics.
 pub enum Value {
     Primitive(Primitive),
     List(Vec<Value>),
@@ -231,6 +291,7 @@ impl SauceyRuntime {
     }
 
     pub async fn dispatch_ir(&self, node: IRNode) -> ResultValue {
+        // --- Existing adapter/boundary dispatch ---
         if let Some(boundary) = &node.boundary {
             let adapters = self.adapters.adapters.read();
             if let Some(adapter) = adapters.get(boundary) {

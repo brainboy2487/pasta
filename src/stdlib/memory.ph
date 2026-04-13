@@ -1,21 +1,115 @@
-# stdlib/memory.ph — Low-level memory allocation helpers
+# ═══════════════════════════════════════════════════════════════════════════
+# stdlib/memory.ph — PASTA Memory and Pointer Utilities
+# ═══════════════════════════════════════════════════════════════════════════
+# Version: 1.0
 #
-# In the PASTA managed runtime, these are cooperative hints.
-# The GC handles actual reclamation; alloc/free guide layout.
+# Provides utilities for working with the PASTA pointer system.
+# Uses ALLOC.MEM, GOTO, PUSH, PULL, SEEK, FREE, SWAP builtins.
 #
-# Exports:
-#   memory.alloc(n)        -> handle string  allocate n bytes
-#   memory.free(handle)                      release handle
-#   memory.copy(src, dst)                    copy contents
-#   memory.set(handle, v)                    fill with byte value
-#   memory.size(handle)    -> number         size hint
-#   memory.buffer(n)       -> handle         typed byte buffer
+# ═══════════════════════════════════════════════════════════════════════════
 
-set __header_memory = "memory loaded"
+set __header_memory = "memory v1.0 loaded"
 
-DEF memory.alloc(n):         RET.NOW(): memory.alloc(n)        END
-DEF memory.free(handle):     memory.free(handle)               END
-DEF memory.copy(src, dst):   memory.copy(src, dst)             END
-DEF memory.set(handle, v):   memory.set(handle, v)             END
-DEF memory.size(handle):     RET.NOW(): memory.size(handle)    END
-DEF memory.buffer(n):        RET.NOW(): memory.buffer(n)       END
+# ───────────────────────────────────────────────────────────────────────────
+# BUFFER UTILITIES
+# ───────────────────────────────────────────────────────────────────────────
+
+# Create a zeroed buffer of size n
+DEF mem_zeros(size):
+    ALLOC.MEM(size) -> buf
+    GOTO buf:
+        FOR i IN range(size):
+            PUSH.BYTE 0
+        END
+    END
+    RETURN buf
+END
+
+# Create a buffer filled with a value
+DEF mem_fill(size, value):
+    ALLOC.MEM(size) -> buf
+    GOTO buf:
+        FOR i IN range(size):
+            PUSH.BYTE value
+        END
+    END
+    RETURN buf
+END
+
+# Copy data from one buffer to another
+DEF mem_copy(src, dst, size):
+    FOR i IN range(size):
+        GOTO src:
+            SEEK src, i
+            PULL.BYTE -> val
+        END
+        GOTO dst:
+            SEEK dst, i
+            PUSH.BYTE val
+        END
+    END
+END
+
+# ───────────────────────────────────────────────────────────────────────────
+# BUFFER READING
+# ───────────────────────────────────────────────────────────────────────────
+
+# Read a byte at offset
+DEF mem_get_byte(buf, offset):
+    GOTO buf:
+        SEEK buf, offset
+        PULL.BYTE -> val
+    END
+    RETURN val
+END
+
+# Write a byte at offset
+DEF mem_set_byte(buf, offset, value):
+    GOTO buf:
+        SEEK buf, offset
+        PUSH.BYTE value
+    END
+END
+
+# Read an int at offset
+DEF mem_get_int(buf, offset):
+    GOTO buf:
+        SEEK buf, offset
+        PULL.INT -> val
+    END
+    RETURN val
+END
+
+# Write an int at offset
+DEF mem_set_int(buf, offset, value):
+    GOTO buf:
+        SEEK buf, offset
+        PUSH.INT value
+    END
+END
+
+# ───────────────────────────────────────────────────────────────────────────
+# GRID/2D BUFFER UTILITIES (for Game of Life, etc.)
+# ───────────────────────────────────────────────────────────────────────────
+
+# Allocate a 2D grid as flat buffer
+DEF mem_grid(width, height):
+    set size = width * height
+    RETURN mem_zeros(size)
+END
+
+# Get value from 2D grid
+DEF mem_grid_get(grid, width, x, y):
+    set offset = y * width + x
+    RETURN mem_get_byte(grid, offset)
+END
+
+# Set value in 2D grid
+DEF mem_grid_set(grid, width, x, y, value):
+    set offset = y * width + x
+    mem_set_byte(grid, offset, value)
+END
+
+# ═══════════════════════════════════════════════════════════════════════════
+# END OF MEMORY LIBRARY
+# ═══════════════════════════════════════════════════════════════════════════
