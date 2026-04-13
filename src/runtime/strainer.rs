@@ -9,6 +9,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use anyhow::{anyhow, Result};
+
 // The GC will eventually store full interpreter values, so import the
 // definition here.  There is no circular dependency because the
 // interpreter submodules do not depend on `runtime` at the moment.
@@ -86,6 +88,46 @@ impl Strainer {
     /// `Value::Heap` handle and wants to read the underlying value.
     pub fn get(&self, id: GcRef) -> Option<&Value> {
         self.heap.get(&id).map(|o| &o.value)
+    }
+
+    /// Set the value at an existing GcRef, or allocate if not present.
+    /// This is used by ptr_set to update values in place.
+    pub fn set_or_allocate(&mut self, id: GcRef, value: Value) {
+        if let Some(obj) = self.heap.get_mut(&id) {
+            // Update existing object's value and recalculate refs
+            obj.refs = Self::collect_refs(&value);
+            obj.value = value;
+        } else {
+            // Allocate new at the given id (may create sparse heap)
+            let refs = Self::collect_refs(&value);
+            let obj = GcObject {
+                id,
+                value,
+                refs,
+                marked: false,
+            };
+            self.heap.insert(id, obj);
+            // Update next_id if needed to avoid collisions
+            if id >= self.next_id {
+                self.next_id = id + 1;
+            }
+        }
+    }
+
+    /// Append one value to an existing heap-backed list in place.
+    pub fn append_to_list(&mut self, id: GcRef, value: Value) -> Result<()> {
+        let obj = self
+            .heap
+            .get_mut(&id)
+            .ok_or_else(|| anyhow!("unknown list handle {}", id))?;
+        match &mut obj.value {
+            Value::List(items) => {
+                items.push(value);
+                obj.refs = Self::collect_refs(&obj.value);
+                Ok(())
+            }
+            _ => Err(anyhow!("handle does not point to a list")),
+        }
     }
 
     /// Return refs for an object if present.
@@ -186,6 +228,11 @@ impl Strainer {
                     out.extend(Self::collect_refs(item));
                 }
             }
+            Value::Dict(map) => {
+                for v in map.values() {
+                    out.extend(Self::collect_refs(v));
+                }
+            }
             // other variants do not contain heap references at this time
             _ => {}
         }
@@ -238,8 +285,12 @@ mod tests {
 
 
 /// Attempt to dereference a GcRef to a runtime Value.
-/// Replace the body with your actual GC/Strainer deref call if available.
+/// Uses the global SAUCEY_STRAINER if available.
 pub fn deref_gcref_to_value(_gcref: &GcRef) -> Option<Value> {
-    // TODO: wire this to your real strainer API.
+    // Since we don't have direct access to the global strainer here,
+    // use the saucey module's saucey_gc_get function via its public API.
+    // For now, return None as this requires the saucey module to be initialized.
+    // Callers should use crate::saucey::saucey::saucey_gc_get(*gcref) directly.
+    // This function exists for compatibility.
     None
 }

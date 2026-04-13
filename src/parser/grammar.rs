@@ -113,11 +113,13 @@ DefDoUntil ::=
 // DO / WHILE / FOR blocks
 // ---------------------------------------------------------------------------
 DoStatement ::=
-    "DO" [ TargetList ] [ "AS" Identifier ] [ "FOR" ExprList ] ":" NEWLINE
-    INDENT { Statement } DEDENT
+    "DO" [ TargetList ] [ "AS" Identifier ] [ "FOR" ExprList ] NEWLINE
+    INDENT { Statement } DEDENT "END"
 
 WhileStatement ::=
-    "DO" [ TargetList ] "WHILE" Condition ":" NEWLINE INDENT { Statement } DEDENT
+    "DO" [ TargetList ] NEWLINE
+    INDENT { Statement } DEDENT 
+    "WHILE" Condition "END"
 
 TargetList ::= Identifier { "," Identifier }
 ExprList ::= Expr { "," Expr }

@@ -17,11 +17,12 @@ pub use parser::Parser;
 
 // ── Core AST types ────────────────────────────────────────────────────────────
 pub use ast::{
-    Program, Statement, Expr, Identifier, Span, BinaryOp, RelationToken,
+    Program, Statement, Expr, Identifier, Span, BinaryOp, RelationToken, ScopeModifier,
 };
 
 // ── Sub-types needed by executor / parser internals ───────────────────────────
 pub use ast::{
+    ModuleDecl, ModuleImportGroup, UseItem,
     FieldDecl, MutEntry, MutBody,
     Constructor, MethodDecl,
     SpawnEntry, DefDoUntil,
@@ -49,5 +50,32 @@ mod tests {
         let mut p = Parser::new(tokens);
         let program = p.parse();
         assert!(!program.statements.is_empty());
+    }
+
+    #[test]
+    fn parser_accepts_if_brace_block() {
+        let src = "IF true {\n    PRINT 1\n}\n";
+        let tokens = Lexer::new(src).lex();
+        let mut p = Parser::new(tokens);
+        let program = p.parse();
+        assert!(matches!(program.statements.first(), Some(Statement::If { .. })));
+    }
+
+    #[test]
+    fn parser_accepts_for_brace_block() {
+        let src = "FOR x IN [1, 2] {\n    PRINT x\n}\n";
+        let tokens = Lexer::new(src).lex();
+        let mut p = Parser::new(tokens);
+        let program = p.parse();
+        assert!(matches!(program.statements.first(), Some(Statement::ForIn { .. })));
+    }
+
+    #[test]
+    fn parser_accepts_try_brace_block() {
+        let src = "TRY {\n    PRINT 1\n} OTHERWISE {\n    PRINT 2\n} END\n";
+        let tokens = Lexer::new(src).lex();
+        let mut p = Parser::new(tokens);
+        let program = p.parse();
+        assert!(matches!(program.statements.first(), Some(Statement::TryBlock { .. })));
     }
 }

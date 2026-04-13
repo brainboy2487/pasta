@@ -3,11 +3,14 @@
 //!
 //! Canonical AST used by the parser and executor. Nodes carry `Span`
 //! information for diagnostics and for RTX incremental compilation keys.
+//!
+//! All AST types derive Serialize/Deserialize for binary module support.
 
 use std::fmt;
+use serde::{Serialize, Deserialize};
 
 /// Source span for diagnostics and error messages.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Span {
     /// 1-based line where the node begins.
     pub start_line: usize,
@@ -29,7 +32,7 @@ impl Span {
 }
 
 /// Top-level AST node: a program is a sequence of statements.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Program {
     /// Top-level sequence of statements in the compiled program.
     pub statements: Vec<Statement>,
@@ -43,7 +46,7 @@ impl Program {
 }
 
 /// Simple identifier wrapper.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Identifier {
     /// The raw identifier string.
     pub name: String,
@@ -59,7 +62,7 @@ impl Identifier {
 }
 
 /// Field declaration inside an object family.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldDecl {
     /// Name of the declared field.
     pub name: Identifier,
@@ -70,7 +73,7 @@ pub struct FieldDecl {
 }
 
 /// Mutation table entry (a named mutation rule).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MutEntry {
     /// Name of this mutation rule.
     pub name: Identifier,
@@ -81,7 +84,7 @@ pub struct MutEntry {
 }
 
 /// Body of a mutation table entry — a block or a single expression.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MutBody {
     /// A `DO: ... END` block of statements.
     Block(Vec<Statement>),
@@ -90,7 +93,7 @@ pub enum MutBody {
 }
 
 /// Constructor node for object families.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Constructor {
     pub params: Vec<Identifier>,
     pub body: Vec<Statement>,
@@ -98,7 +101,7 @@ pub struct Constructor {
 }
 
 /// Method declaration inside an object family.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MethodDecl {
     /// Method name.
     pub name: Identifier,
@@ -111,7 +114,7 @@ pub struct MethodDecl {
 }
 
 /// Spawn entry (lhs @ rhs : actions END)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpawnEntry {
     pub father_expr: Expr,
     pub father_family: Option<String>,
@@ -121,8 +124,36 @@ pub struct SpawnEntry {
     pub span: Span,
 }
 
+/// Module import group used by FROM/USE blocks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModuleImportGroup {
+    /// Module name string (as identifier).
+    pub module: Identifier,
+    /// List of items imported from the module.
+    pub uses: Vec<UseItem>,
+    /// Source location.
+    pub span: Span,
+}
+
+/// Single item in a `USE:` list, with optional aliasing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UseItem {
+    pub name: Identifier,
+    pub alias: Option<Identifier>,
+    pub span: Span,
+}
+
+/// Top-level module declaration: `MOD Name:` ... `END`
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModuleDecl {
+    pub name: Identifier,
+    pub exports: Vec<Identifier>,
+    pub body: Vec<Statement>,
+    pub span: Span,
+}
+
 /// DEF DO ... UNTIL with optional LX annotation
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DefDoUntil {
     pub name: Identifier,
     pub until_condition: Expr,
@@ -131,16 +162,38 @@ pub struct DefDoUntil {
     pub span: Span,
 }
 
+/// Scope modifier for WHILE/FOR/IF blocks.
+///
+/// - `None` (default): no new scope is created; variables are visible in the enclosing scope.
+/// - `UnbindScope`: push a Block scope — variables die when the block exits.
+/// - `BindScope`: push a Block scope but hoist all new variables to the nearest Function/Global scope on exit.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ScopeModifier {
+    UnbindScope,
+    BindScope,
+}
+
 /// Statement kinds in PASTA.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Statement {
     /// Assignment: `x = expr` or `set x = expr`
     Assignment {
-        /// Target variable being assigned.
         target: Identifier,
-        /// Value expression being assigned.
         value: Expr,
-        /// Source location.
+        span: Span,
+    },
+
+    /// Constant declaration: `CONST x = expr` — immutable after first assignment.
+    ConstAssignment {
+        target: Identifier,
+        value: Expr,
+        span: Span,
+    },
+
+    /// Multi-label assignment: `a, b, c = expr` — assigns the same value to each target.
+    MultiAssignment {
+        targets: Vec<Identifier>,
+        value: Expr,
         span: Span,
     },
 
@@ -175,6 +228,9 @@ pub enum Statement {
         alias: Option<Identifier>,
         /// Optional repeat-count expression list.
         repeats: Option<Vec<Expr>>,
+        /// Optional timed duration in milliseconds (`DO x FOR 500ms END`).
+        /// When set, the block loops for this many milliseconds instead of a fixed count.
+        duration_ms: Option<Expr>,
         /// Body statements.
         body: Vec<Statement>,
         /// Source location.
@@ -199,6 +255,8 @@ pub enum Statement {
         condition: Expr,
         /// Body statements.
         body: Vec<Statement>,
+        /// Optional scope modifier (UNBIND_SCOPE / BIND_SCOPE).
+        scope_modifier: Option<ScopeModifier>,
         /// Source location.
         span: Span,
     },
@@ -211,6 +269,32 @@ pub enum Statement {
         iterable: Expr,
         /// Body statements executed once per element.
         body: Vec<Statement>,
+        /// Optional scope modifier (UNBIND_SCOPE / BIND_SCOPE).
+        scope_modifier: Option<ScopeModifier>,
+        /// Source location.
+        span: Span,
+    },
+
+    /// Module declaration: `MOD Name: ... END` with `export` declarations.
+    ModuleDecl {
+        /// Module name identifier.
+        name: Identifier,
+        /// Explicit export list (names exported by the module).
+        exports: Vec<Identifier>,
+        /// Module body statements.
+        body: Vec<Statement>,
+        /// Source location.
+        span: Span,
+    },
+
+    /// BREAK — exits the enclosing loop immediately.
+    Break {
+        /// Source location.
+        span: Span,
+    },
+
+    /// CONTINUE — skips to the next iteration of the enclosing loop.
+    Continue {
         /// Source location.
         span: Span,
     },
@@ -247,6 +331,14 @@ pub enum Statement {
         span: Span,
     },
 
+    /// FROM block for importing module symbols lazily.
+    FromBlock {
+        /// List of per-module import groups.
+        imports: Vec<ModuleImportGroup>,
+        /// Source location.
+        span: Span,
+    },
+
     /// PRINT statement
     Print {
         /// Expression whose value is printed.
@@ -263,6 +355,8 @@ pub enum Statement {
         then_body: Vec<Statement>,
         /// Optional alternative branch (OTHERWISE / ELSE).
         else_body: Option<Vec<Statement>>,
+        /// Optional scope modifier (UNBIND_SCOPE / BIND_SCOPE).
+        scope_modifier: Option<ScopeModifier>,
         /// Source location.
         span: Span,
     },
@@ -300,6 +394,133 @@ pub enum Statement {
         span: Span,
     },
 
+    /// TRY: <try_body> OTHERWISE: <else_body> END
+    /// Simple exception handling without error capture.
+    TryBlock {
+        try_body: Vec<Statement>,
+        else_body: Vec<Statement>,
+        span: Span,
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // v1.4.4 POINTER SYSTEM STATEMENTS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// `name = LOOP ... END` — named loop block; `GOTO name` jumps back to its top.
+    LoopBlock {
+        /// The label name assigned to this loop (from `name = LOOP`).
+        name: String,
+        /// Body statements executed on each iteration.
+        body: Vec<Statement>,
+        /// Source location.
+        span: Span,
+    },
+
+    /// `GOTO <label>` — jumps to the top of the named LoopBlock.
+    GotoLabel {
+        /// Name of the LoopBlock to jump to.
+        label: String,
+        /// Source location.
+        span: Span,
+    },
+
+    /// `GOTO <ptr>: ... END` — sets the active pointer context for the body.
+    GotoBlock {
+        /// Name of the variable holding the pointer.
+        name: String,
+        /// Body statements (run exactly once, unless GOTO name restarts).
+        body: Vec<Statement>,
+        /// Source location.
+        span: Span,
+    },
+
+    /// PULL.<TYPE> [ptr] -> target
+    /// Reads from active pointer context or an explicit pointer
+    Pull {
+        /// Data type (BYTE, INT, FLOAT, STR, BYTES)
+        dtype: String,
+        /// Explicit pointer expression (optional; uses context if absent)
+        explicit_ptr: Option<Box<Expr>>,
+        /// Optional arguments (e.g., length)
+        args: Vec<Expr>,
+        /// Variable to store result (if any)
+        target: Option<Identifier>,
+        /// Source location
+        span: Span,
+    },
+
+    /// PUSH.<TYPE> [ptr,] <expr>
+    /// Writes to active pointer context or an explicit pointer
+    Push {
+        /// Data type (BYTE, INT, FLOAT, STR, BYTES)
+        dtype: String,
+        /// Explicit pointer expression (optional; uses context if absent)
+        explicit_ptr: Option<Box<Expr>>,
+        /// Value to write
+        value: Expr,
+        /// Optional arguments
+        args: Vec<Expr>,
+        /// Source location
+        span: Span,
+    },
+
+    /// <var> = ALLOC.<KIND>(args)
+    /// Allocates a new pointer resource
+    Alloc {
+        /// Variable to store the pointer ID
+        target: Identifier,
+        /// Pointer kind (MEM, FILE, DEV, NET)
+        kind: String,
+        /// Allocation arguments (size, path, etc.)
+        args: Vec<Expr>,
+        /// Optional WITH metadata block
+        metadata: Vec<(String, Expr)>,
+        /// Source location
+        span: Span,
+    },
+
+    /// FREE <expr>
+    /// Releases a pointer resource
+    Free {
+        /// Expression evaluating to pointer ID
+        pointer_expr: Expr,
+        /// Source location
+        span: Span,
+    },
+
+    /// INFO <expr>
+    /// Returns metadata about a pointer
+    Info {
+        /// Expression evaluating to pointer ID
+        pointer_expr: Expr,
+        /// Variable to store result
+        target: Option<Identifier>,
+        /// Source location
+        span: Span,
+    },
+
+    /// SEEK <pointer>, <offset>
+    /// Sets the read/write offset for a pointer
+    Seek {
+        /// Expression evaluating to pointer ID
+        pointer_expr: Expr,
+        /// Offset expression (integer)
+        offset_expr: Expr,
+        /// Source location
+        span: Span,
+    },
+
+    /// SWAP <var1>, <var2>
+    /// Swaps the values of two variables
+    Swap {
+        /// First variable name
+        var1: Identifier,
+        /// Second variable name
+        var2: Identifier,
+        /// Source location
+        span: Span,
+    },
+
     /// Catch-all for unimplemented or future statement kinds.
     Other {
         /// String tag identifying the statement kind.
@@ -309,19 +530,25 @@ pub enum Statement {
         /// Source location.
         span: Span,
     },
+
+    /// ::USE UNSAFE-READ:: or ::USE UNSAFE-WRITE:: pragma
+    UseUnsafe {
+        write_access: bool,  // false = READ only, true = READ+WRITE
+        span: Span,
+    },
 }
 
 /// Condition for a RET.LATE statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RetLateCondition {
     /// Fire after N milliseconds (wall clock).
     AfterMs(Expr),
-    /// Fire when this expression evaluates truthy (polled at resolve time).
-    WhenTrue(Expr),
+    /// Fire when the named function is called.
+    WhenCalled(String),
 }
 
 /// Expression kinds used in statements and constraints.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Expr {
     /// A numeric literal.
     Number(f64, Span),
@@ -329,6 +556,8 @@ pub enum Expr {
     String(String, Span),
     /// A boolean literal.
     Bool(bool, Span),
+    /// A None/null literal.
+    None(Span),
     /// A variable or name reference.
     Identifier(Identifier),
 
@@ -412,6 +641,45 @@ pub enum Expr {
         /// Source location.
         span: Span,
     },
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // v1.4.4 POINTER SYSTEM EXPRESSIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// REF.<KIND>(target) WITH { metadata }
+    /// Creates a reference/pointer expression
+    Ref {
+        /// Pointer kind (MEM, FILE, DEV, NET)
+        kind: String,
+        /// Target expression (size for MEM, path for FILE, etc.)
+        target: Box<Expr>,
+        /// Optional metadata key-value pairs
+        metadata: Vec<(String, Expr)>,
+        /// Source location
+        span: Span,
+    },
+
+    /// OBJ.GROUP[.MUT](parentA, parentB) — create a family node
+    ObjFamNew {
+        group:    String,  // "LST", "DICT", "TNSR", "NRML", "CSM"
+        mutable:  bool,
+        parent_a: Box<Expr>,
+        parent_b: Box<Expr>,
+        span:     Span,
+    },
+    /// DOES_PARENT_EXIST expr — boolean check
+    DoesParentExist {
+        target: Box<Expr>,
+        span:   Span,
+    },
+
+    /// Dict literal: `{"key": expr, ...}`
+    Dict {
+        /// Key-value pairs; keys are typically string literal exprs.
+        pairs: Vec<(Expr, Expr)>,
+        /// Source location.
+        span: Span,
+    },
 }
 
 impl Expr {
@@ -421,6 +689,7 @@ impl Expr {
             Expr::Number(_, s) => s.clone(),
             Expr::String(_, s) => s.clone(),
             Expr::Bool(_, s) => s.clone(),
+            Expr::None(s) => s.clone(),
             Expr::Identifier(id) => id.span.clone(),
             Expr::ConstructorCall { span, .. } => span.clone(),
             Expr::Combine { span, .. } => span.clone(),
@@ -432,12 +701,16 @@ impl Expr {
             Expr::Lambda(_, s) => s.clone(),
             Expr::TensorBuilder { span, .. } => span.clone(),
             Expr::Index { span, .. } => span.clone(),
+            Expr::Ref { span, .. } => span.clone(),
+            Expr::ObjFamNew { span, .. } => span.clone(),
+            Expr::DoesParentExist { span, .. } => span.clone(),
+            Expr::Dict { span, .. } => span.clone(),
         }
     }
 }
 
 /// Binary operators.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BinaryOp {
     /// `+` — addition or object combine.
     Add,
@@ -477,6 +750,18 @@ pub enum BinaryOp {
     Or,
     /// `NOT` / `!` — logical negation.
     Not,
+    // pipeline operators
+    Pipe,       // |
+    PipeOr,     // ||
+    PipeBoth,   // |&|
+    PipeMap,    // |:|
+    PipeArrow,  // |>
+    FloorDiv,   // //
+    TruncDiv,   // \  (truncates toward zero)
+    Shl,        // <<
+    Shr,        // >>
+    BitAnd,     // &
+
 }
 
 impl fmt::Display for BinaryOp {
@@ -489,13 +774,23 @@ impl fmt::Display for BinaryOp {
             Lte => "<=", Gte => ">=",
             Approx => "≈", NotEq => "≠", StrictEq => "≡",
             And => "and", Or => "or", Not => "not",
+            Pipe => "|",
+            PipeOr => "||",
+            PipeBoth => "|&|",
+            PipeMap => "|:|",
+            PipeArrow => "|>",
+            FloorDiv => "//",
+            TruncDiv => "\\",
+            Shl => "<<",
+            Shr => ">>",
+            BitAnd => "&",
         };
         write!(f, "{}", s)
     }
 }
 
 /// Relation token used in constraint expressions.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RelationToken {
     /// The relation keyword text, e.g. `"approaches"` or `"in"`.
     pub text: String,
@@ -587,8 +882,8 @@ mod tests {
         let span = Span::dummy();
         let c = RetLateCondition::AfterMs(Expr::Number(500.0, span.clone()));
         assert!(matches!(c, RetLateCondition::AfterMs(_)));
-        let c2 = RetLateCondition::WhenTrue(Expr::Bool(true, span.clone()));
-        assert!(matches!(c2, RetLateCondition::WhenTrue(_)));
+        let c2 = RetLateCondition::WhenCalled("on_complete".to_string());
+        assert!(matches!(c2, RetLateCondition::WhenCalled(_)));
     }
 
     #[test]

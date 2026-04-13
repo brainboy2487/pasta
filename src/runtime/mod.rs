@@ -5,6 +5,7 @@
 //! - `asm`: sandboxed inline ASM blocks and executor
 //! - `bitwise`: bitwise primitives (optional asm-backed on x86_64)
 //! - `devices`: device architecture registry and auto-configuration
+//! - `pointer`: unified pointer/reference system (v1.4.4)
 //!
 //! Public API re-exports the primary types used by the interpreter and other
 //! runtime components so callers can `use crate::runtime::*`.
@@ -12,9 +13,12 @@
 pub mod asm;
 pub mod bitwise;
 pub mod devices;
+pub mod family;
 pub mod meatball;
 pub mod strainer;
 pub mod rng;
+pub mod module_registry;
+pub mod pointer;
 
 pub use asm::{AsmBlock, AsmRuntime};
 pub use bitwise::{
@@ -25,6 +29,8 @@ pub use devices::{auto_configure, detect_host_arch, find_device_by_id, find_devi
 pub use meatball::{Meatball, MeatballConfig, MeatballHandle, Saucepan, Message, MeatballID};
 pub use strainer::{Strainer, GcRef};
 pub use rng::Rng;
+pub use module_registry::ModuleRegistry;
+pub use pointer::{Pointer, PointerKind, PointerRegistry, PointerContext, PointerId, PointerGcTracker};
 
 #[cfg(test)]
 mod tests {
