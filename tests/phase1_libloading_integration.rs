@@ -20,9 +20,9 @@ fn test_phase1_x11_is_conditional() {
     /// Verify x11 is now platform-conditional
     let cargo_toml = include_str!("../Cargo.toml");
     
-    // Should have conditional unix dependency section
-    assert!(cargo_toml.contains("[target.'cfg(unix)'.dependencies]"),
-        "Should have conditional Unix dependencies section");
+    // Should have a Linux-only dependency section.
+    assert!(cargo_toml.contains("[target.'cfg(target_os = \"linux\")'.dependencies]"),
+        "Should have conditional Linux dependencies section");
     
     // x11 should NOT be in top-level dependencies
     let top_deps_section = cargo_toml
@@ -32,8 +32,8 @@ fn test_phase1_x11_is_conditional() {
         .collect::<Vec<_>>()
         .join("\n");
     
-    // On Unix platforms, x11 should be in conditional section, not top-level
-    if cfg!(unix) {
+    // On Linux, x11 should be in the conditional section, not top-level.
+    if cfg!(target_os = "linux") {
         assert!(!top_deps_section.contains("x11 = "),
             "x11 should NOT be in top-level [dependencies]");
     }

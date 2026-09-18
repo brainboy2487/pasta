@@ -187,7 +187,7 @@ pub struct Executor {
     pub gfx_handles: std::collections::HashMap<String, (usize, usize, bool)>,
     /// Live X11 windows keyed by the same handle string as canvases.
     /// Only populated when the x11 feature is enabled and a display is available.
-    #[cfg(feature = "x11")]
+    #[cfg(all(target_os = "linux", feature = "x11"))]
     pub x11_windows:
         std::collections::HashMap<String, crate::stdlib::graphics::backend::x11::X11Window>,
     pub next_window_id: usize,
@@ -289,7 +289,7 @@ impl Executor {
             diagnostics: Vec::new(),
             next_canvas_id: 1,
             gfx_handles: std::collections::HashMap::new(),
-            #[cfg(feature = "x11")]
+            #[cfg(all(target_os = "linux", feature = "x11"))]
             x11_windows: std::collections::HashMap::new(),
             next_window_id: 1,
             canvases: std::collections::HashMap::new(),
@@ -1261,7 +1261,7 @@ impl Executor {
     }
 
     fn cleanup_graphics(&mut self) {
-        #[cfg(feature = "x11")]
+        #[cfg(all(target_os = "linux", feature = "x11"))]
         {
             for (_, mut xwin) in self.x11_windows.drain() {
                 xwin.close();
@@ -1570,7 +1570,7 @@ impl Executor {
                         );
                         self.gfx_handles
                             .insert(handle.clone(), (width, height, true));
-                        #[cfg(feature = "x11")]
+                        #[cfg(all(target_os = "linux", feature = "x11"))]
                         {
                             match crate::stdlib::graphics::backend::x11::X11Window::new(
                                 title, width, height,
@@ -1638,7 +1638,7 @@ impl Executor {
                         );
                         self.gfx_handles
                             .insert(handle.clone(), (width, height, true));
-                        #[cfg(feature = "x11")]
+                        #[cfg(all(target_os = "linux", feature = "x11"))]
                         {
                             match crate::stdlib::graphics::backend::x11::X11Window::new(
                                 title, width, height,
@@ -2112,7 +2112,7 @@ impl Executor {
                 }
                 match &args[0] {
                     Value::String(win_h) => {
-                        #[cfg(feature = "x11")]
+                        #[cfg(all(target_os = "linux", feature = "x11"))]
                         {
                             let canvas_clone = self.canvases.get(win_h).cloned();
                             if let Some(canvas) = canvas_clone {
@@ -2143,7 +2143,7 @@ impl Executor {
                 }
                 match (&args[0], &args[1]) {
                     (Value::String(win_h), Value::String(canvas_h)) => {
-                        #[cfg(feature = "x11")]
+                        #[cfg(all(target_os = "linux", feature = "x11"))]
                         {
                             let canvas_clone = self.canvases.get(canvas_h).cloned();
                             if let Some(canvas) = canvas_clone {
@@ -2200,7 +2200,7 @@ impl Executor {
                             Some((w, h, _)) => (*w, *h),
                             None => return Err(anyhow!("SWAP_BUFFER: unknown window handle")),
                         };
-                        #[cfg(feature = "x11")]
+                        #[cfg(all(target_os = "linux", feature = "x11"))]
                         {
                             if src_x == 0 && src_y == 0 {
                                 if let Some(back) = self.back_buffers.get(&win_h) {
@@ -2226,7 +2226,7 @@ impl Executor {
                             front.copy_region_from(back, src_x, src_y, win_w, win_h_dim, 0, 0);
                         }
 
-                        #[cfg(feature = "x11")]
+                        #[cfg(all(target_os = "linux", feature = "x11"))]
                         {
                             if let Some(canvas) = self.canvases.get(&win_h) {
                                 if let Some(xwin) = self.x11_windows.get_mut(&win_h) {
@@ -2973,7 +2973,7 @@ impl Executor {
                 }
                 match &args[0] {
                     Value::String(win_h) => {
-                        #[cfg(feature = "x11")]
+                        #[cfg(all(target_os = "linux", feature = "x11"))]
                         {
                             if let Some(xwin) = self.x11_windows.get_mut(win_h) {
                                 let open = xwin.poll();
@@ -3015,7 +3015,7 @@ impl Executor {
                 }
                 match &args[0] {
                     Value::String(win_h) => {
-                        #[cfg(feature = "x11")]
+                        #[cfg(all(target_os = "linux", feature = "x11"))]
                         {
                             if let Some(mut xwin) = self.x11_windows.remove(win_h) {
                                 xwin.close();
@@ -3042,7 +3042,7 @@ impl Executor {
                 }
                 match &args[0] {
                     Value::String(win_h) => {
-                        #[cfg(feature = "x11")]
+                        #[cfg(all(target_os = "linux", feature = "x11"))]
                         {
                             if let Some(xwin) = self.x11_windows.get_mut(win_h) {
                                 let _open = xwin.poll();
@@ -3062,7 +3062,7 @@ impl Executor {
                 }
                 match &args[0] {
                     Value::String(h) => {
-                        #[cfg(feature = "x11")]
+                        #[cfg(all(target_os = "linux", feature = "x11"))]
                         {
                             if let Some(xwin) = self.x11_windows.get_mut(h) {
                                 let open = xwin.poll();
@@ -3099,7 +3099,7 @@ impl Executor {
                             return Ok(Value::None);
                         }
 
-                        #[cfg(feature = "x11")]
+                        #[cfg(all(target_os = "linux", feature = "x11"))]
                         {
                             if let Some(mut xwin) = self.x11_windows.remove(h) {
                                 xwin.close();
@@ -6597,7 +6597,7 @@ impl Executor {
                             remaining = remaining.saturating_sub(sleep_time);
 
                             // Poll all X11 windows to process events during sleep
-                            #[cfg(feature = "x11")]
+                            #[cfg(all(target_os = "linux", feature = "x11"))]
                             {
                                 for xwin in self.x11_windows.values_mut() {
                                     xwin.poll();
