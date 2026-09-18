@@ -1,0 +1,278 @@
+# src/mod_loader/mod_load.ps
+# Translation scaffold of src/mod_loader/mod_load.rs into Pasta script.
+# This file provides the concrete ModuleLoader implementation in Pasta.
+# Many behaviors are preserved at a high level; some IO and canonicalization
+# steps are left as placeholders to be implemented using the runtime's FS API.
+
+# --- Config & helpers ---
+DEF ModLoaderConfig_default():
+    RETURN({
+        "version": "1.1",
+        "mode": "Fuzzy",           # Normal|Strict|Fuzzy
+        "tree_depth": 0,
+        "load_type": "Lazy",      # Normal|Lazy
+        "caching": true,
+        "load_state": "Once",     # Once|Continuous|Called
+        "fuzz_match": 75,
+        "search_paths": ["src/stdlib", "stdlib"],
+        "allowed_paths": [".", "src", "libs"],
+        "verbose": false,
+        "sandbox_io": false,
+        "max_module_size_kb": 512,
+        "reload_on_change": false,
+        "export_policy": "Explicit",
+        "symbol_aliasing": true,
+        "auto_use_on_from": true,
+        "strict_name_normalization": false,
+        "log_level": "Info",
+    })
+END
+
+DEF ModuleEntry_new(requested_key, path):
+    RETURN({
+        "requested_key": requested_key,
+        "path": path,
+        "loaded": false,
+        "module": None,
+        "registered_at": now_ms(),
+    })
+END
+
+# Create an empty ApiModule placeholder
+DEF make_empty_module(canonical_path, match_kind):
+    meta = {"canonical_path": canonical_path, "loaded_at": now_ms(), "source_hash": None, "match_kind": match_kind}
+    RETURN({"meta": meta, "exports": {}})
+END
+
+# ModuleLoader constructor
+DEF ModuleLoader_new(config=None):
+    IF config == None:
+        cfg = ModLoaderConfig_default()
+    ELSE:
+        cfg = config
+    END
+    RETURN({"config": cfg, "registry": {}})
+END
+
+# Convert internal config to public snapshot
+DEF ModuleLoader_to_public_config(loader):
+    cfg = loader["config"]
+    RETURN({
+        "version": cfg["version"],
+        "mode": cfg["mode"],
+        "fuzz_match": cfg["fuzz_match"],
+        "caching": cfg["caching"],
+        "load_type": cfg["load_type"],
+    })
+END
+
+# Internal: canonicalize candidate path (placeholder)
+DEF canonicalize_candidate(candidate):
+    # In Rust this uses fs::canonicalize. Here we return candidate unchanged
+    # or attempt a runtime canonicalization if available.
+    TRY:
+        # If runtime provides canonicalize_path, use it
+        IF has_global("canonicalize_path"):
+            RETURN(canonicalize_path(candidate))
+        END
+    EXCEPT:
+        PASS
+    END
+    RETURN(candidate)
+END
+
+# register canonical path
+DEF register_canonical(loader, requested_key, canonical):
+    entry = ModuleEntry_new(requested_key, canonical)
+    loader["registry"][requested_key] = entry
+    RETURN(None)
+END
+
+# lookup registered
+DEF lookup_registered(loader, key):
+    IF has_key(loader["registry"], key):
+        RETURN(loader["registry"][key])
+    END
+    RETURN(None)
+END
+
+# Ensure loaded (simplified): returns ApiModule or raises
+DEF ensure_loaded(loader, module_key):
+    # 1) If registered and loaded, return cached
+    entry = lookup_registered(loader, module_key)
+    IF entry != None:
+        IF entry["loaded"]:
+            IF entry["module"] != None:
+                RETURN(entry["module"]) 
+            END
+        END
+    END
+
+    # 2) If registered but not loaded, attempt to load
+    IF has_key(loader["registry"], module_key):
+        path_snapshot = loader["registry"][module_key]["path"]
+
+        # Security checks in Strict mode
+        IF loader["config"]["mode"] == "Strict":
+            allowed = false
+            FOR ap IN loader["config"]["allowed_paths"]:
+                # simplistic startswith check
+                IF path_snapshot.startswith(ap): allowed = true; BREAK END
+            END
+            IF NOT allowed:
+                RAISE("module path not allowed by ALLOWED_PATHS: %s" % path_snapshot)
+            END
+        END
+
+        # Size check (placeholder - runtime file ops required)
+        # In a full implementation, use fs metadata to check size
+
+        # Create an empty module placeholder for now
+        canonical = canonicalize_candidate(path_snapshot)
+        module = make_empty_module(canonical, "Exact")
+        loader["registry"][module_key]["module"] = module
+        loader["registry"][module_key]["loaded"] = true
+        RETURN(module)
+    END
+
+    # 3) Not registered: fuzzy find if allowed
+    IF loader["config"]["mode"] == "Strict":
+        RAISE("module '%s' not registered and strict mode forbids fuzzy lookup" % module_key)
+    END
+
+    found = fuzzy_find(loader, module_key)
+    IF found != None:
+        path, match_kind = found[0], found[1]
+        register_canonical(loader, module_key, path)
+        module = make_empty_module(path, match_kind)
+        loader["registry"][module_key]["module"] = module
+        loader["registry"][module_key]["loaded"] = true
+        RETURN(module)
+    END
+
+    RAISE("module '%s' not found" % module_key)
+END
+
+# Resolve symbol within a module
+DEF resolve_symbol(loader, module_key, symbol):
+    module = ensure_loaded(loader, module_key)
+    exports = module["exports"]
+    IF has_key(exports, symbol):
+        RETURN({"value": exports[symbol], "module_meta": module["meta"]})
+    ELSE:
+        # Handle export policy
+        IF loader["config"]["export_policy"] == "All":
+            RAISE("symbol '%s' not found in module '%s' (exports policy=All but symbol missing)" % (symbol, module_key))
+        ELSE:
+            RAISE("symbol '%s' not found in module '%s'" % (symbol, module_key))
+        END
+    END
+END
+
+# Minimal fuzzy finder: try filename with extensions in search_paths
+DEF fuzzy_find(loader, name):
+    candidates = [name, name + ".ps", name + ".pa", name + ".ph"]
+    FOR sp IN loader["config"]["search_paths"]:
+        FOR cand IN candidates:
+            p = sp + "/" + cand
+            # if runtime provides file_exists, use it
+            IF has_global("file_exists"):
+                IF file_exists(p):
+                    RETURN([p, "Exact"]) 
+                END
+            ELSE:
+                # best-effort: assume not found
+                PASS
+            END
+        END
+    END
+    RETURN(None)
+END
+
+# Clear cache
+DEF clear_cache(loader):
+    FOR k IN dict_keys(loader["registry"]):
+        loader["registry"][k]["loaded"] = false
+        loader["registry"][k]["module"] = None
+    END
+    RETURN(None)
+END
+
+# List registered
+DEF list_registered(loader):
+    res = []
+    FOR k IN dict_keys(loader["registry"]):
+        res = list_concat(res, [{"key": k, "loaded": loader["registry"][k]["loaded"]}])
+    END
+    RETURN(res)
+END
+
+# Factory: default_loader_with_config
+DEF default_loader_with_config(config_path=None):
+    cfg = None
+    IF config_path != None:
+        cfg = parse_config_from_file(config_path)
+    ELSE:
+        cfg = ModLoaderConfig_default()
+    END
+    RETURN(ModuleLoader_new(cfg))
+END
+
+# Parse a textual config file into ModLoaderConfig (simple tolerant parser)
+DEF parse_config_from_file(path):
+    cfg = ModLoaderConfig_default()
+    IF NOT has_global("read_file"):
+        RETURN(cfg)
+    END
+    TRY:
+        s = read_file(path)
+    EXCEPT:
+        RETURN(cfg)
+    END
+    FOR raw IN s.split("\n"):
+        line = str.strip(raw)
+        IF line == "" OR line.startswith('#'): CONTINUE END
+        idx = str.find(line, ':')
+        IF idx == -1: CONTINUE END
+        key = str.lower(str.strip(line[:idx]))
+        val = str.strip(line[idx+1:])
+        IF key == "version": cfg["version"] = val
+        ELSEIF key == "mode":
+            IF str.lower(val).startswith('s'): cfg["mode"] = "Strict"
+            ELSEIF str.lower(val).startswith('f'): cfg["mode"] = "Fuzzy"
+            ELSE: cfg["mode"] = "Normal"
+            END
+        ELSEIF key == "fuzz_match":
+            TRY:
+                n = int(val.strip('%'))
+                cfg["fuzz_match"] = max(50, min(100, n))
+            EXCEPT:
+                PASS
+            END
+        ELSEIF key == "search_paths":
+            cfg["search_paths"] = [p.strip() for p in val.split(';')]
+        ELSEIF key == "allowed_paths":
+            cfg["allowed_paths"] = [p.strip() for p in val.split(';')]
+        ELSEIF key == "max_module_size_kb":
+            TRY: cfg["max_module_size_kb"] = int(val) EXCEPT: PASS END
+        ELSE:
+            # ignore unknown keys
+            PASS
+        END
+    END
+    RETURN(cfg)
+END
+
+# Helper: simple now_ms()
+DEF now_ms():
+    IF has_global("now_ms"):
+        RETURN(now_ms())
+    ELSE:
+        RETURN(0)
+    END
+END
+
+# Exported API names (for the linker to discover)
+DEF mod_load_exports():
+    RETURN(["ModuleLoader", "default_loader_with_config", "parse_config_from_file", "ModuleLoader_new", "ensure_loaded", "resolve_symbol"])
+END

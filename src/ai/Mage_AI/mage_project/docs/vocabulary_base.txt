@@ -1,0 +1,297 @@
+Large Base Vocabulary file
+
+format this file to a format the ai can use to respond to user prompt.
+
+
+Format and Usage Notes
+
+    Trigger: a single word or short phrase the AI should recognize in user input.
+
+    Response: a short reply the AI can return verbatim or use as a template.
+
+    Matching: triggers can be matched exactly, by substring, or via fuzzy matching depending on your recognizer.
+
+    Customization: replace placeholders like [time], [date], [location], [name] with dynamic values from context.
+
+    Priority: when multiple triggers match, prefer the longest or highest-priority intent.
+
+    Extensibility: add synonyms, alternate phrasings, and language variants as needed.
+
+Vocabulary Entries and Responses
+
+    hello: Hello — how can I help you today?
+
+    hi: Hi there — what would you like to do?
+
+    hey: Hey — I’m listening.
+
+    good morning: Good morning — how can I make your day easier?
+
+    good afternoon: Good afternoon — what can I do for you?
+
+    good evening: Good evening — need anything before the day ends?
+
+    thanks: You’re welcome — glad I could help.
+
+    thank you: My pleasure — happy to help.
+
+    please: Sure — what would you like me to do?
+
+    sorry: No problem — we can fix that together.
+
+    help: I can help — tell me what you need.
+
+    support: I’m here to support you — what’s the issue?
+
+    problem: I’m sorry you’re having trouble — describe the problem and I’ll assist.
+
+    issue: Let’s troubleshoot this — what happened?
+
+    question: Ask away — I’ll do my best to answer.
+
+    how: Could you give me a bit more detail so I can explain?
+
+    what: What specifically would you like to know?
+
+    why: I can explain the reasons — which part should I start with?
+
+    when: I can check the schedule — which date or time do you mean?
+
+    where: I can look that up — which location are you referring to?
+
+    who: I can find that — who or which person do you mean?
+
+    status: I’ll check the current status and report back.
+
+    progress: Here’s the latest progress update I have.
+
+    update: I’ll fetch the latest update now.
+
+    cancel: Okay — I’ll cancel that for you. Confirm if you want me to proceed.
+
+    stop: Stopping now — let me know if you want to resume.
+
+    pause: Paused — tell me when to continue.
+
+    resume: Resuming now — picking up where we left off.
+
+    restart: Restarting the process — one moment.
+
+    reset: I’ll reset that setting — confirm if you want to continue.
+
+    save: I’ll save your changes now.
+
+    delete: I’m ready to delete that — confirm and I’ll proceed.
+
+    remove: I can remove it — please confirm which item.
+
+    add: What would you like to add? Give me the details.
+
+    create: I can create that for you — what should I name it?
+
+    new: Great — tell me what new item you want to make.
+
+    open: Opening it now — which file or app?
+
+    close: Closing that now.
+
+    send: I’ll send it — who should receive it?
+
+    share: I can share this — who should I share with?
+
+    email: I can draft an email — what should it say?
+
+    message: I’ll prepare a message — who is the recipient?
+
+    call: I can place a call — who should I call and when?
+
+    schedule: I’ll add that to your calendar — what date and time?
+
+    remind: I’ll set a reminder — when would you like it?
+
+    alarm: Alarm set — what time should it go off?
+
+    timer: Timer started — how long should it run?
+
+    meeting: I’ll schedule the meeting — who should attend?
+
+    appointment: I’ll book the appointment — preferred date and time?
+
+    travel: I can help with travel plans — where are you going?
+
+    flight: I’ll look up flights — what are your travel dates?
+
+    hotel: I’ll search hotels — what city and dates?
+
+    directions: I’ll get directions — where are you starting from?
+
+    map: Showing the map now — which area do you want?
+
+    weather: I’ll fetch the weather for your location.
+
+    forecast: Here’s the forecast for the next few days.
+
+    news: I’ll pull the latest headlines for you.
+
+    headline: Here’s a summary of the top headline.
+
+    search: What should I search for?
+
+    find: Tell me what you want me to find.
+
+    lookup: I’ll look that up and return results.
+
+    translate: Which language should I translate to?
+
+    define: I’ll provide a definition — which word?
+
+    synonym: I’ll list synonyms — which word do you want alternatives for?
+
+    antonym: I’ll list antonyms — which word do you mean?
+
+    spell: I’ll spell that word for you.
+
+    calculate: What calculation do you need? Provide the numbers.
+
+    convert: I can convert units — which units and value?
+
+    math: Tell me the math problem and I’ll solve it.
+
+    sum: I’ll compute the sum — give me the numbers.
+
+    average: I’ll calculate the average — provide the dataset.
+
+    percent: I’ll compute the percentage — give me the values.
+
+    currency: Which currencies should I convert between?
+
+    price: I’ll check the current price for that item.
+
+    buy: I can help you buy that — do you want recommendations?
+
+    sell: I can list it for sale — what’s the item and price?
+
+    order: I’ll place the order — confirm the details.
+
+    track: I’ll track the shipment and update you.
+
+    status order: I’ll check the order status now.
+
+    invoice: I’ll prepare an invoice — what should it include?
+
+    receipt: I’ll retrieve the receipt for that purchase.
+
+    budget: I can help set a budget — what’s the timeframe?
+
+    expense: Log the expense — what amount and category?
+
+    report: I’ll generate a report — which metrics do you want?
+
+    summary: Here’s a concise summary of the information.
+
+    details: I’ll show the full details now.
+
+    example: Here’s an example you can use.
+
+    template: I’ll provide a template — what type do you need?
+
+    draft: I’ll draft that document for you.
+
+    edit: What changes would you like me to make?
+
+    revise: I’ll revise it according to your instructions.
+
+    format: I’ll format the text — which style should I use?
+
+    style: Choose a style and I’ll apply it.
+
+    tone: What tone do you prefer — formal, casual, or friendly?
+
+    proofread: I’ll proofread and suggest corrections.
+
+    grammar: I’ll check grammar and offer fixes.
+
+    summary email: I’ll draft a summary email — who is the recipient?
+
+    follow up: I’ll prepare a follow-up message.
+
+    feedback: I’ll collect feedback and summarize it.
+
+    rating: Please provide a rating and I’ll record it.
+
+    review: I’ll write a review draft — what points should I include?
+
+    recommend: I can recommend options — what’s your priority?
+
+    compare: I’ll compare the choices side by side.
+
+    pros: Here are the pros for that option.
+
+    cons: Here are the cons for that option.
+
+    best: I’ll identify the best option based on your criteria.
+
+    cheapest: I’ll find the most cost-effective option.
+
+    fastest: I’ll find the quickest option available.
+
+    secure: I’ll prioritize secure choices.
+
+    private: I’ll treat this as private and avoid sharing.
+
+    settings: I’ll open your settings menu.
+
+    preferences: I’ll update your preferences.
+
+    profile: I’ll show your profile details.
+
+    account: I’ll access your account information.
+
+    billing: I’ll show billing and payment options.
+
+    subscription: I’ll manage your subscription settings.
+
+    logout: I’ll log you out when you confirm.
+
+    login: I’ll help you sign in — do you need a password reset?
+
+    password: I can guide you through a password reset.
+
+    security: I’ll review your security settings.
+
+    privacy: I’ll show privacy options and controls.
+
+    terms: I’ll display the terms and conditions.
+
+    help center: I’ll open the help center resources.
+
+    contact: I’ll provide contact options for support.
+
+    feedback submit: I’ll submit your feedback now.
+
+    bug: I’ll log a bug report with the details you provide.
+
+    feature request: I’ll record your feature request for review.
+
+    idea: I’ll save your idea and tag it for follow-up.
+
+    goodbye: Goodbye — talk soon.
+
+    bye: Bye — take care.
+
+    see you: See you later — I’ll be here when you return.
+
+    end: Ending the session now — you can reopen anytime.
+
+Implementation Tips
+
+    Normalization: lowercase triggers and strip punctuation before matching.
+
+    Synonyms: map synonyms to the same trigger to reduce duplication.
+
+    Context: use session context to disambiguate short triggers like open or close.
+
+    Confidence thresholds: require higher confidence for destructive actions like delete or cancel.
+
+    Confirmation: for actions that change data, ask for explicit confirmation before executing.
+

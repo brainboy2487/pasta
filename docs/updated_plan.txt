@@ -1,0 +1,230 @@
+
+## Phase 1 — Prepare for v1.7 (Initial Self-Hosting)
+
+### 1. Freeze Rust as the Oracle
+- [ ] Stop adding new language features to Pasta until v1.7 is self-hosting.
+- [ ] Only allow bug fixes that can be mirrored in both Rust and Pasta.
+- [ ] Document that the Rust compiler is the canonical implementation for v1.7.
+
+### 2. Stabilize Intermediate Representations
+- [ ] Define a stable textual format for:
+  - [ ] AST dumps
+  - [ ] IR dumps
+  - [ ] Error reports
+- [ ] Implement serialization in the Rust compiler for:
+  - [ ] AST
+  - [ ] IR
+  - [ ] Errors
+- [ ] Add tests that:
+  - [ ] Generate these artifacts for existing programs
+  - [ ] Store them as golden files
+
+### 3. Build the Differential Test Harness
+- [ ] Create a `tests/programs/` directory with:
+  - [ ] Core language feature programs
+  - [ ] Edge-case programs
+  - [ ] Error-case programs
+- [ ] Write a script (Python recommended) that:
+  - [ ] Compiles each program with the Rust compiler
+  - [ ] Compiles each program with the Pasta compiler (when available)
+  - [ ] Runs both binaries
+  - [ ] Captures exit code, stdout, stderr
+  - [ ] Diffs outputs and reports PASS/FAIL
+- [ ] Extend the harness to:
+  - [ ] Dump and compare ASTs
+  - [ ] Dump and compare IR
+  - [ ] Dump and compare error outputs
+
+### 4. Translate Compiler Subsystems Rust → Pasta (for v1.7)
+For each subsystem:
+
+Subsystems:
+- Lexer
+- Parser
+- AST builder
+- Type checker
+- IR generator
+- Code generator
+- Runtime helpers
+
+For each subsystem:
+- [ ] Keep Rust implementation intact.
+- [ ] Implement the same subsystem in Pasta.
+- [ ] Add a runtime flag/env var: `PASTA_IMPL=rust|pasta` for that subsystem.
+- [ ] Run unit-level equivalence tests:
+  - [ ] Call Rust and Pasta versions with the same inputs.
+  - [ ] Compare outputs and observable side effects.
+- [ ] Run integration tests:
+  - [ ] Compare AST/IR/error outputs for affected stages.
+- [ ] Run full differential compiler tests:
+  - [ ] Rust compiler vs Pasta compiler (mixed Rust/Pasta subsystems).
+- [ ] Only move to the next subsystem when all tests pass.
+
+### 5. Produce the First Self-Hosted Compiler (v1.7)
+- [ ] Use the Rust compiler to compile the Pasta compiler source:
+  - [ ] Produce `pasta_p1` (Pasta compiler binary compiled by Rust).
+- [ ] Use `pasta_p1` to compile the same Pasta compiler source:
+  - [ ] Produce `pasta_p2`.
+- [ ] Use `pasta_p2` to compile the same source again:
+  - [ ] Produce `pasta_p3`.
+- [ ] Compare:
+  - [ ] `pasta_p1` vs `pasta_p2` (behaviorally, and bitwise if possible).
+  - [ ] `pasta_p2` vs `pasta_p3` (fixed-point check).
+- [ ] Run full test suite with:
+  - [ ] Rust-compiled Pasta compiler.
+  - [ ] Pasta-compiled Pasta compiler.
+- [ ] Declare v1.7 when:
+  - [ ] Self-hosting works end-to-end.
+  - [ ] All tests pass under both compilers.
+  - [ ] `pasta_p2` and `pasta_p3` are identical or behaviorally equivalent.
+
+---
+
+## Phase 2 — v1.7.1–v1.9.9 (Feature Expansion Under Dual Compilers)
+
+### 6. Enforce the Feature Addition Rule
+For every new feature:
+- [ ] Implement the feature in Rust first.
+- [ ] Do not implement any feature only in Pasta.
+- [ ] Document the feature’s:
+  - [ ] Syntax
+  - [ ] Type rules
+  - [ ] IR/codegen behavior
+  - [ ] Runtime behavior
+
+### 7. Add Tests for Each New Feature
+For each feature:
+- [ ] Parser tests:
+  - [ ] Valid syntax cases.
+  - [ ] Invalid syntax cases.
+- [ ] Type checker tests:
+  - [ ] Valid typing cases.
+  - [ ] Error cases with locations.
+- [ ] IR/codegen tests:
+  - [ ] Serialized IR for representative programs.
+- [ ] Runtime tests:
+  - [ ] Behavior of compiled programs using the feature.
+- [ ] Whole-program tests:
+  - [ ] Programs that exercise the feature end-to-end.
+
+### 8. Rebuild the Pasta Compiler with Updated Rust
+For each feature (or batch of features):
+- [ ] Rebuild the Pasta compiler using the updated Rust compiler:
+  - [ ] Produce new `pasta_p1`.
+- [ ] Confirm:
+  - [ ] `pasta_p1` can compile all existing tests.
+  - [ ] New feature tests pass under `pasta_p1`.
+
+### 9. Translate the Feature to Pasta
+For each feature:
+- [ ] Port parser changes from Rust → Pasta.
+- [ ] Port type checker changes from Rust → Pasta.
+- [ ] Port IR/codegen changes from Rust → Pasta.
+- [ ] Port runtime helpers from Rust → Pasta.
+- [ ] Keep Rust implementation available behind a feature flag if needed.
+
+### 10. Run Differential Tests for Each Feature
+For each feature:
+- [ ] Run unit-level equivalence tests for new/changed functions.
+- [ ] Run integration tests:
+  - [ ] AST diffs for feature programs.
+  - [ ] IR diffs for feature programs.
+  - [ ] Error diffs for feature error cases.
+- [ ] Run whole-compiler differential tests:
+  - [ ] Rust compiler vs Pasta compiler (stage1).
+  - [ ] Pasta compiler (stage1) vs Pasta compiler (stage2).
+- [ ] Confirm:
+  - [ ] Exit codes match.
+  - [ ] Stdout matches.
+  - [ ] Stderr matches (or is semantically equivalent).
+
+### 11. Bootstrap After Feature Translation
+For each feature batch:
+- [ ] Use Rust-compiled Pasta compiler (`pasta_p1`) to compile the Pasta compiler:
+  - [ ] Produce `pasta_p2`.
+- [ ] Use `pasta_p2` to compile the Pasta compiler:
+  - [ ] Produce `pasta_p3`.
+- [ ] Check:
+  - [ ] `pasta_p2` == `pasta_p3` (bitwise or behaviorally).
+- [ ] Run full test suite under:
+  - [ ] `pasta_p1`.
+  - [ ] `pasta_p2`.
+- [ ] Only then:
+  - [ ] Tag a new version (e.g., v1.7.1, v1.8.0, …, v1.9.x).
+
+---
+
+## Phase 3 — v2.0.0 (Fully Self-Hosted Fixed Point)
+
+### 12. Define v2.0.0 Readiness Criteria
+- [ ] All core subsystems implemented in Pasta:
+  - [ ] Lexer
+  - [ ] Parser
+  - [ ] AST builder
+  - [ ] Type checker
+  - [ ] IR generator
+  - [ ] Optimizer (if any)
+  - [ ] Code generator
+  - [ ] Module loader
+  - [ ] Runtime helpers
+- [ ] All language features implemented in both:
+  - [ ] Rust compiler
+  - [ ] Pasta compiler
+- [ ] Full test suite passes under:
+  - [ ] Rust-compiled Pasta compiler.
+  - [ ] Pasta-compiled Pasta compiler.
+- [ ] Fixed-point bootstrap is stable:
+  - [ ] `pasta_p2` == `pasta_p3` across multiple runs and environments.
+- [ ] Builds are deterministic:
+  - [ ] Same source → same binary → same behavior.
+
+### 13. Final Bootstrap Cycle for v2.0.0
+- [ ] Rebuild Pasta compiler with Rust one last time:
+  - [ ] Produce `pasta_p1`.
+- [ ] Use `pasta_p1` to compile the Pasta compiler:
+  - [ ] Produce `pasta_p2`.
+- [ ] Use `pasta_p2` to compile the Pasta compiler:
+  - [ ] Produce `pasta_p3`.
+- [ ] Verify:
+  - [ ] `pasta_p2` == `pasta_p3` (bitwise if possible).
+- [ ] Run full test suite under:
+  - [ ] `pasta_p2`.
+- [ ] Archive:
+  - [ ] Binary hashes for `pasta_p2`.
+  - [ ] AST/IR/error golden artifacts.
+  - [ ] Test suite snapshot.
+
+### 14. Declare v2.0.0 and Adjust Workflow
+- [ ] Tag v2.0.0 as:
+  - [ ] Fully self-hosted.
+  - [ ] Fixed-point.
+- [ ] Update documentation:
+  - [ ] Pasta compiler is now the canonical implementation.
+  - [ ] Rust compiler is optional/historical.
+- [ ] Update development workflow:
+  - [ ] Future features may be implemented directly in Pasta.
+  - [ ] Rust implementation no longer required for new features.
+  - [ ] Test suite + Pasta compiler define the language spec.
+
+---
+
+## Phase 4 — Post-2.0.0 (Future Features in Pure Pasta)
+
+### 15. New Feature Workflow After v2.0.0
+- [ ] Implement new features directly in Pasta.
+- [ ] Extend test suite:
+  - [ ] Parser, type checker, IR, runtime, whole-program tests.
+- [ ] Rebuild Pasta compiler with the current Pasta compiler.
+- [ ] Run full test suite.
+- [ ] Ensure:
+  - [ ] Deterministic builds.
+  - [ ] No regressions in existing behavior.
+
+### 16. Optional: Retain Rust as a Long-Term Oracle
+- [ ] Keep Rust compiler buildable for some time (optional).
+- [ ] Occasionally:
+  - [ ] Rebuild with Rust.
+  - [ ] Run differential tests for sanity.
+- [ ] Eventually:
+  - [ ] Archive Rust implementation as historical reference only.
+

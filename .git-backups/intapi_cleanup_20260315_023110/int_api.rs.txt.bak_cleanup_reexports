@@ -1,0 +1,118 @@
+// src/interpreter/int_api_impl.rs
+
+// Added by make_int_api_public.py: public re-exports for external modules
+pub use self::InterpreterApi as InterpreterApi;
+pub use self::InterpreterSnapshot as InterpreterSnapshot;
+pub use self::ModuleEnvHandle as ModuleEnvHandle;
+pub use self::ModuleEnvOps as ModuleEnvOps;
+pub use self::default_interpreter_api as default_interpreter_api;
+
+use std::path::PathBuf;
+use std::sync::{Arc, Weak, Mutex};
+use anyhow::{Result, anyhow};
+
+use crate::interpreter::int_api::{
+    InterpreterApi, InterpreterSnapshot, ModuleEnvHandle, ModuleEnvOps,
+};
+use crate::interpreter::environment::{Environment, Value};
+use crate::interpreter::Executor;
+
+/// Thin ModuleEnvOps implementation that delegates to an Environment instance.
+/// The concrete executor should create an Environment and hand an Arc<Mutex<Environment>> here.
+#[derive(Clone)]
+struct ModuleEnvOpsImpl {
+    env: Arc<Mutex<Environment>>,
+}
+
+impl ModuleEnvOps for ModuleEnvOpsImpl {
+    fn get_symbol(&self, name: &str) -> Option<Value> {
+        let e = self.env.lock().unwrap();
+        e.get(name)
+    }
+
+    fn set_symbol(&self, name: &str, val: Value) {
+        let mut e = self.env.lock().unwrap();
+        e.set(name.to_string(), val);
+    }
+
+    fn execute_top_level(&self, source: &str) -> Result<()> {
+        // Delegate to executor's top-level execution path.
+        // The real implementation should parse+execute `source` inside this env.
+        // For now, return an error placeholder to force you to implement the call site.
+        Err(anyhow!("ModuleEnvOpsImpl::execute_top_level not implemented; wire to executor"))
+    }
+}
+
+/// Wrapper that implements InterpreterApi by delegating to a running Executor.
+/// Use Weak to avoid strong cycles; upgrade() to call into executor when needed.
+pub struct ExecutorApiWrapper {
+    exe_weak: Weak<Mutex<Executor>>,
+}
+
+impl ExecutorApiWrapper {
+    /// Construct from a strong Arc to the Executor.
+    pub fn new(exe_arc: &Arc<Mutex<Executor>>) -> Self {
+        Self { exe_weak: Arc::downgrade(exe_arc) }
+    }
+
+    /// Helper to get a locked Executor reference or return an error.
+    fn with_executor<F, R>(&self, f: F) -> Result<R>
+    where
+        F: FnOnce(&mut Executor) -> Result<R>
+    {
+        if let Some(exe_arc) = self.exe_weak.upgrade() {
+            let mut exe = exe_arc.lock().unwrap();
+            f(&mut *exe)
+        } else {
+            Err(anyhow!("executor has been dropped"))
+        }
+    }
+}
+
+impl InterpreterApi for ExecutorApiWrapper {
+    fn snapshot(&self) -> InterpreterSnapshot {
+        // Best-effort snapshot; avoid holding long borrows.
+        // Use with_executor to copy minimal state.
+        if let Ok(res) = self.with_executor(|exe| {
+            let cwd = exe.cwd.clone(); // adapt to your Executor field names
+            let globals = exe.globals_snapshot()?; // implement a small helper on Executor
+            Ok(InterpreterSnapshot { cwd, globals })
+        }) {
+            res
+        } else {
+            // Fallback empty snapshot
+            InterpreterSnapshot { cwd: PathBuf::from("."), globals: std::collections::HashMap::new() }
+        }
+    }
+
+    fn create_module_env(&self, canonical_path: PathBuf) -> Result<ModuleEnvHandle> {
+        // Ask executor to allocate a fresh Environment for the module and return a handle.
+        self.with_executor(|exe| {
+            // Executor should provide a helper that returns Arc<Mutex<Environment>>
+            let env_arc: Arc<Mutex<Environment>> = exe.create_module_environment(canonical_path.clone())?;
+            let ops = Arc::new(ModuleEnvOpsImpl { env: env_arc });
+            Ok(ModuleEnvHandle { canonical_path, inner: ops })
+        })
+    }
+
+    fn bind_global(&self, name: &str, val: Value) -> Result<()> {
+        self.with_executor(|exe| {
+            exe.bind_global(name.to_string(), val);
+            Ok(())
+        })
+    }
+
+    fn bind_local(&self, name: &str, val: Value) -> Result<()> {
+        self.with_executor(|exe| {
+            exe.bind_local(name.to_string(), val)?;
+            Ok(())
+        })
+    }
+
+    fn call_value(&self, callable: Value, args: Vec<Value>) -> Result<Value> {
+        self.with_executor(|exe| {
+            // Delegate to Executor's call dispatch; implement `call_value_from_api` on Executor.
+            exe.call_value_from_api(callable, args)
+        })
+    }
+}

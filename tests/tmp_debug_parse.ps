@@ -1,0 +1,23 @@
+MOD debug_parse:
+    export test
+
+    DEF f():
+        i = 0
+        buf = ""
+        WHILE i < 3:
+            ch = "a"
+            IF ch == '"':
+                res = {}
+                res["val"] = buf
+                res["i"] = i+1
+                RETURN(res)
+            END
+            buf = buf + ch
+            i = i + 1
+        END
+        RAISE('err')
+    END
+
+    DEF test():
+        RETURN(f())
+    END

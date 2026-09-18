@@ -1,0 +1,32 @@
+# bubble_sort.ps
+# Bubble sort without function parameters (compatible with your current interpreter)
+
+# Global array
+arr = [5, 1, 4, 2, 8, 3]
+n = 6
+
+# Swap using globals
+def.swap():
+    temp = arr[i]
+    arr[i] = arr[j]
+    arr[j] = temp
+end
+
+# Bubble sort using globals
+def.bubble_sort():
+    i = 0
+    while i < n {
+        j = 0
+        while j < n - 1 {
+            if arr[j] > arr[j+1] {
+                swap()
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+end
+
+PRINT("Before:", arr)
+bubble_sort()
+PRINT("After:", arr)

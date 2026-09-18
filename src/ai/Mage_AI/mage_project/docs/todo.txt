@@ -1,0 +1,73 @@
+MAGE Project TODOs
+===================
+
+HIGHEST PRIORITY: Stack-Layered Full-Stack Implementation
+- The contents of `stack_layered.txt` are the top implementation priority.
+- Goals: implement API endpoints, storage layout (`vectors.bin`, `meta.db`, `indices/`), deterministic vectorizer, TAP parsing, MPHF and lookup tables, mmapped index, tiered generators, retrieval, FFI, and CLI.
+- Start deliverables: OpenAPI scaffold, `io/mmappedindex.c` (scaffold implemented), Python FFI scaffold, and unit tests.
+
+
+High priority (Phase 0 - Foundation)
+- Implement MPHF (CHD/BMZ) in `src/utils/mphf.c` and expose generation utilities.
+- Complete TAP internals in `src/core/tap.c`: MPHF lookup, heap-based shortlist (O(K log S)), confidence check, early commit, and budget counters.
+- Implement full cooccurrence (`src/core/cooc.c`) with Robin-Hood hashing and robust memory management.
+- Finalize `src/core/contract.c` lazy block contraction: implement optimized low-rank and separable Cold generators and block copy.
+- Replace ad-hoc JSONL parsing with a small, tested JSON parser or robust line scanner; add validation hooks.
+
+Medium priority (Phase 1 - Tuning)
+- Optimize Warm inner loop: store U row-major and V packed-transposed; add SIMD intrinsics and unrolled kernels in `src/generators/warm_generator.c`.
+- Add block LRU cache for BxB blocks in `src/core/contract.c`.
+- Add numeric-path variants (float32 fast path + double accumulation) and unit tests.
+- Add microbenchmark harnesses and collect `ns/element` numbers for tier cost table.
+
+Integration (Phase 2)
+- Implement `io/mmappedindex.c` for `vectors.bin` memory-mapped indexing and robust IO in `src/io/io.c`.
+- Complete `src/core/rp.c` deterministic `hash_sign64` projection and test against Python golden tests.
+- Implement deterministic parallel reductions and thread-safe LRU cache with fixed reduction order.
+- Flesh out Python FFI (`python/mage/ffi.py`) to call into C TAP/forwardfeed and add golden tests.
+
+Phase 2 status: STARTED — orchestration item created and marked in-progress.
+
+Phase 2 actionable sub-tasks:
+- Implement `io/mmappedindex.c` (not-started) — memory-mapped vector indexing.
+- Complete `src/core/rp.c` `hash_sign64` (not-started) — deterministic projection.
+- Implement deterministic parallel reductions & thread-safe LRU (not-started).
+- Flesh out Python FFI `python/mage/ffi.py` (not-started).
+
+Hardening (Phase 3)
+- Add SIMD intrinsics, widen target support (fallback scalar), tune compiler flags and CI matrix.
+- Add telemetry, logging, and robust error handling across modules.
+- Integrate packaging, installation scripts, and cross-platform build docs.
+
+Developer tooling & QA
+- Add `requirements.txt` and `python/` test harness scripts (coherence checker dependencies).
+- Expand unit tests in `tests/` to cover MPH, TAP selection, contract correctness, and IO.
+- Add static analysis (clang-tidy) and formatters (clang-format) to CI.
+- Address existing `TODO` and `FIXME` comments (search results saved under build/reports/).
+
+# Todo List (API-first, layered plan)
+
+- [ ] Define API surface (in-progress)
+	- Finalize `include/mage/api.h` and public headers; specify control-flow entrypoints for Presentation → API → Core → IO; produce API doc snippets.
+- [x] Wire Presentation layer
+	- Implement CLI (`src/mage_cli.c`), GUI wrapper, and Python FFI to call `mage_api_*` functions; ensure input validation and error handling. (implemented)
+- [ ] Implement TAP parser
+	- Complete `src/core/tap.c` with MPHF integration, heap-based shortlist (O(K log S)), Rule‑42 op counters, confidence/early-commit logic, and unit tests.
+- [ ] Implement MPHF generator
+	- Add CHD/BMZ-style MPHF in `src/utils/mphf.c` and a `tools/gen_mphf` utility; provide load/lookup API in `include/mage/mphf.h`.
+- [ ] Contract lazy block
+	- Implement `src/core/contract.c` lazy BxB contraction with Hot/Warm/Cold generator interfaces; expose contract API to TAP and API layer.
+- [ ] Retrieval & IO
+	- Implement `src/io/mmappedindex.c` and manifest readers, `vectors.bin` writer/reader, and API adapters (`mage_api_mmapped_*`).
+- [ ] Tokenizer & normalization
+	- Harden `src/utils/tokenizer.c`: Unicode normalization, configurable rules, `mage_normalize` and `mage_tokenize` contract; add tests.
+- [x] JSONL loader & validator
+	- Move JSONL parsing into `src/utils/vocab_parser.c` with strict protocol validation per `docs/vocabulary/protocol.md`; integrate `tools/validate_vocab.py` into CI. (implemented)
+- [ ] Deterministic RP & math
+	- Implement `hash_sign64`, RP projection in `rp.c`, fixed-tree reductions for determinism, and golden-test parity against Python prototypes.
+- [ ] Tests & CI
+	- Add unit tests, Python golden tests, microbench harnesses, CI pipeline updates, and gating for build & parity tests.
+- [ ] Performance optimizations
+	- Implement Warm inner-loop SIMD/AVX kernels, pack matrices (V transposed), and microbench-driven tuning.
+- [ ] Docs & developer guide
+	- Update architecture docs, developer setup (`docs/developer_setup.md`), and link examples; ensure [docs/architecture](docs/architecture) is authoritative.

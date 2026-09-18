@@ -1,0 +1,331 @@
+The user requires a comipler be built for pasta. below is the implementation for doing so. With the end goal being to rewrite pasta in pasta script so it becomes fully self-hosted. 
+
+## Phase 0 – Establish constraints and targets
+
+**Goals:**
+- Define what “compiled Pasta” means in v1.
+- Fix target platform(s) and toolchain.
+- Decide integration strategy with the existing interpreter.
+
+**Decisions:**
+- **Primary target:** `x86_64-linux-gnu` (adjust if your dev box differs).
+- **Toolchain:** LLVM (minimal install, X86 backend only), `llc`, system linker (`ld` or `clang`).
+- **Compiler modes:**
+  - `pasta script.ps` → interpret (current behavior).
+  - `pasta script.ps --compile` → produce native executable.
+  - `pasta script.ps --compile --shared` → produce shared library (`.so`/`.dll`).
+
+**Deliverables:**
+- Short design doc: *“Pasta Compiler v1 Scope”* with:
+  - Supported features (functions, control flow, basic types).
+  - Out‑of‑scope for v1 (generics, advanced optimizations, etc.).
+  - Target triple and toolchain assumptions.
+
+---
+
+## Phase 1 – Stabilize front‑end and IR model
+
+### 1.1 – Lock down AST and semantic model
+
+**Tasks:**
+- Document the current AST structures used by the interpreter:
+  - **Expressions:** literals, variables, binary ops, unary ops, calls.
+  - **Statements:** `if`, `while`, `for`, `return`, `block`, `assign`.
+  - **Top‑level:** `MOD`, imports, function definitions, globals.
+- Define a **semantic layer**:
+  - Symbol tables (scopes, function symbols, module symbols).
+  - Type info (even if initially “dynamic” or “any”).
+  - Function signatures (argument count, names, types if available).
+
+**Deliverables:**
+- `docs/compiler/ast.md` – AST spec.
+- `docs/compiler/semantics.md` – symbol and type model.
+- Unit tests for AST construction from parser (no codegen yet).
+
+### 1.2 – Introduce a compiler‑oriented IR abstraction (optional but helpful)
+
+Even if you go straight AST → LLVM IR, it helps to define a small, language‑level IR:
+
+- **Goal:** decouple high‑level Pasta semantics from LLVM details.
+- IR nodes: `IRFunction`, `IRBlock`, `IRInstr` (assign, branch, call, return, etc.).
+
+**Deliverables:**
+- `src/compiler/ir.rs` (or equivalent) with a minimal IR.
+- Tests that build IR from AST for simple programs.
+
+---
+
+## Phase 2 – Define the Pasta ABI and runtime representation
+
+This is critical for compiled modules and future self‑hosting.
+
+### 2.1 – Core value representation
+
+**Decide:**
+- How values are represented at runtime:
+  - Option A: tagged union (`PValue`) with variants: `Int`, `Float`, `Bool`, `String*`, `Array*`, `Object*`, etc.
+  - Option B: static types for now (e.g., only `i64`, `f64`, `bool`, `ptr`), dynamic later.
+
+**Tasks:**
+- Define a C‑compatible struct for `PValue` (if using tagged union).
+- Define string and array layouts (pointer + length, etc.).
+- Define calling convention for functions:
+  - Arguments: passed as `PValue*` or native types.
+  - Return: `PValue` or native type.
+
+**Deliverables:**
+- `docs/compiler/abi.md` – Pasta ABI spec.
+- `src/runtime/abi.h` or `abi.rs` – shared definitions.
+
+### 2.2 – Runtime support library
+
+**Tasks:**
+- Implement a small runtime in Rust (or C) that exposes:
+  - `pasta_print(PValue)` or `pasta_print_str(const char*, size_t)`.
+  - Memory allocation helpers.
+  - String/array constructors and basic ops.
+- Ensure it can be linked into any compiled Pasta binary or shared library.
+
+**Deliverables:**
+- `src/runtime/libpasta_runtime.{rs,c}`.
+- Build script to produce `libpasta_runtime.a` / `.so`.
+- Tests: small C/Rust program linking against runtime and calling a dummy function.
+
+---
+
+## Phase 3 – LLVM integration and codegen skeleton
+
+### 3.1 – Minimal LLVM setup
+
+**Tasks:**
+- Add a `codegen` module that:
+  - Creates `LLVMContext`, `Module`, `IRBuilder`.
+  - Configures target triple and data layout.
+- Implement a function to emit a trivial `main`:
+
+```pasta
+func main():
+    return 0
+```
+
+→ LLVM IR:
+
+```llvm
+define i32 @main() {
+entry:
+    ret i32 0
+}
+```
+
+**Deliverables:**
+- `src/compiler/codegen_llvm.rs` (or similar).
+- CLI flag `--emit-llvm` to dump IR to stdout for a simple test file.
+- Test: `pasta test.ps --emit-llvm` produces expected IR.
+
+### 3.2 – Expression codegen
+
+**Tasks:**
+- Implement codegen for:
+  - Integer literals → `i64` or `i32`.
+  - Boolean literals → `i1`.
+  - Binary ops: `+`, `-`, `*`, `/`, comparisons.
+  - Variable load/store.
+- Map Pasta types to LLVM types (initially: `i64`, `double`, `i1`, `ptr`).
+
+**Deliverables:**
+- Unit tests: expression AST → LLVM IR snippets.
+- Golden‑file tests for IR (small, stable examples).
+
+### 3.3 – Statement and control flow codegen
+
+**Tasks:**
+- Implement:
+  - `if`/`else` → conditional branches, basic blocks.
+  - `while`/`for` → loop blocks.
+  - `return` → `ret` instructions.
+  - Blocks → new scopes, variable lifetimes.
+
+**Deliverables:**
+- Tests: small Pasta programs compiled to IR and run via `lli` or compiled binary:
+  - `if` tests.
+  - loops.
+  - early returns.
+
+---
+
+## Phase 4 – Function, module, and binary emission
+
+### 4.1 – Function definitions and calls
+
+**Tasks:**
+- Map Pasta function definitions to LLVM functions:
+  - Name mangling (e.g., `modname_funcname`).
+  - Parameter types and order.
+- Implement function calls:
+  - Direct calls within the same module.
+  - External calls to runtime functions (`pasta_print`, etc.).
+
+**Deliverables:**
+- Tests: simple multi‑function Pasta programs compiled and executed.
+
+### 4.2 – Emitting object files and linking
+
+**Tasks:**
+- Add a pipeline:
+  1. AST → LLVM IR → `.ll` (optional).
+  2. `.ll` → `llc` → `.o`.
+  3. `.o` + `libpasta_runtime.a` → system linker → executable.
+- Integrate this into `pasta --compile`:
+  - Default output: `script_name` (no extension).
+  - Optional `--out` flag.
+
+**Deliverables:**
+- `pasta script.ps --compile` produces a working binary.
+- Tests: compile and run small programs in CI.
+
+---
+
+## Phase 5 – Shared libraries and compiled modules
+
+### 5.1 – Shared library emission
+
+**Tasks:**
+- Add `--shared` mode:
+  - Emit position‑independent code.
+  - Link as `.so`/`.dll`.
+- Define exported symbols:
+  - For a module `MOD math_fast`, export functions with predictable names:
+    - e.g., `pasta_mod_math_fast_fib`.
+
+**Deliverables:**
+- `pasta math_fast.ps --compile --shared` → `libmath_fast.so`.
+- Test: small C/Rust host loads `libmath_fast.so` and calls `fib`.
+
+### 5.2 – Interpreter integration with compiled modules
+
+**Tasks:**
+- Extend module loader:
+  - On `USE math_fast: fib`:
+    1. Look for `math_fast.ps` (source).
+    2. Look for `libmath_fast.so` in module search path.
+  - If `.so` found:
+    - `dlopen` / `LoadLibrary`.
+    - Resolve known entrypoints (e.g., `pasta_mod_math_fast_init` or direct function exports).
+- Define a small registration API:
+  - Compiled module exposes a function that registers its functions with the interpreter.
+
+**Deliverables:**
+- Interpreter can call compiled Pasta functions as if they were normal functions.
+- Tests: same module used in interpreted and compiled form, results match.
+
+---
+
+## Phase 6 – Optimization and flags
+
+### 6.1 – Optimization levels
+
+**Tasks:**
+- Add compiler flags:
+  - `--opt-level=0|1|2`.
+- Map to LLVM:
+  - `-O0`, `-O1`, `-O2` pass pipelines.
+- Default: `-O0` or `-O1` for speed on your small machine.
+
+**Deliverables:**
+- Benchmarks: simple numeric loops, string operations.
+- Documented tradeoffs in `docs/compiler/optimization.md`.
+
+---
+
+## Phase 7 – Incremental self‑hosting roadmap
+
+This is where your agent starts rewriting Rust in Pasta.
+
+### 7.1 – Rewrite stdlib pieces in Pasta
+
+**Targets:**
+- Math helpers.
+- String utilities.
+- List/array helpers.
+- Hashing and small data structures.
+
+**Process:**
+1. Implement in Pasta.
+2. Compile to shared library.
+3. Load from interpreter as a module.
+4. Gradually remove equivalent Rust code.
+
+**Deliverables:**
+- `std/math.ps`, `std/strings.ps`, etc.
+- CI tests ensuring behavior matches old Rust implementations.
+
+### 7.2 – Move higher‑level logic into Pasta
+
+**Targets:**
+- Parts of module resolution.
+- Some REPL helpers.
+- Non‑critical runtime utilities.
+
+**Goal:**
+- Keep Rust as a thin substrate: memory, GC, OS bindings.
+
+---
+
+## Phase 8 – Tooling, tests, and developer ergonomics
+
+### 8.1 – CLI and UX
+
+**Tasks:**
+- Extend `pasta` CLI:
+  - `--compile`
+  - `--shared`
+  - `--emit-llvm`
+  - `--opt-level`
+  - `--out`
+- Provide clear error messages:
+  - Parse errors.
+  - Codegen errors.
+  - Linker failures.
+
+**Deliverables:**
+- `docs/cli/compiler.md` – usage examples.
+- Integration tests for CLI behavior.
+
+### 8.2 – Test harness
+
+**Tasks:**
+- Add a compiler test suite:
+  - `tests/compiler/` with `.ps` files and expected outputs.
+- For each test:
+  - Interpret and capture output.
+  - Compile, run binary, capture output.
+  - Assert equality.
+
+**Deliverables:**
+- `pasta test-compiler` (or similar) command.
+- CI job that runs interpreter vs compiled equivalence tests.
+
+---
+
+## Phase 9 – Future extensions (for later)
+
+Not for v1, but worth noting for your agent:
+
+- JIT mode using LLVM ExecutionEngine (optional).
+- Debug info (`-g`) and integration with `gdb`/`lldb`.
+- More advanced type system and optimizations.
+- Cross‑compilation (other targets, e.g., ARM, WASM).
+
+---
+
+## How to hand this to your agent
+
+You can summarize the marching orders like this:
+
+1. **Implement LLVM‑based codegen for existing Pasta AST** (Phases 1–4).
+2. **Add `--compile` and `--shared` to the CLI** and wire up `llc` + system linker.
+3. **Define and implement a stable Pasta ABI + runtime** (Phase 2).
+4. **Teach the interpreter to load compiled modules** (Phase 5).
+5. **Build a test harness that compares interpreted vs compiled behavior** (Phase 8).
+6. **Start migrating stdlib pieces from Rust to Pasta** (Phase 7).
+

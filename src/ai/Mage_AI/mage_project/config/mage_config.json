@@ -1,0 +1,41 @@
+{
+  "system": {
+    "rng_seed": 42,
+    "deterministic_mode": true,
+    "num_threads": 4
+  },
+  "tensor": {
+    "state_dim": 1024,
+    "num_dimensions": 12,
+    "default_block_size": 64
+  },
+  "tap": {
+    "max_operations": 42,
+    "shortlist_size": 16,
+    "confidence_threshold": 0.15,
+    "enable_early_commit": true
+  },
+  "tiers": {
+    "hot": {
+      "max_slices": 32,
+      "latency_ns": 0.66
+    },
+    "warm": {
+      "default_rank": 16,
+      "latency_ns": 7.1
+    },
+    "cold": {
+      "latency_ns": 38.7,
+      "function_type": "separable_polynomial"
+    }
+  },
+  "random_projection": {
+    "dimension": 128,
+    "hash_seed": 12345
+  },
+  "cache": {
+    "enable_block_cache": true,
+    "max_blocks": 256,
+    "eviction_policy": "lru"
+  }
+}

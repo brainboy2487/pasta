@@ -1,0 +1,29 @@
+You’re basically asking for a **mini data-engineering stack** dedicated to feeding and evolving an AI’s vocabulary—perfect fit for your systems brain.
+
+I’ll lay this out as a **modular, sprintable architecture**:
+
+1. High‑level architecture
+2. Data scraper design
+3. Text normalization & cleaning
+4. Tokenizer layer
+5. Vocabulary generator & updater
+6. Storage, versioning, and rollback
+7. Orchestration, monitoring, and auto‑healing hooks
+8. Extension toward full training
+
+---
+
+## 1. High‑level architecture
+
+### 1.1 Core data flow
+
+**Pipeline:**
+
+1. **Scraper** → pulls raw HTML/text from configured sources.
+2. **Extractor/Normalizer** → strips boilerplate, cleans text, normalizes Unicode, etc.
+3. **Tokenizer** → converts text into token sequences using your chosen scheme.
+4. **Vocabulary Generator** → aggregates token stats, builds/updates vocab.
+5. **Artifact Store** → persists vocab versions, metadata, and change logs.
+6. **Training System** → consumes vocab + tokenizer config for model training.
+
+Think of each as a **separate service/daemon** with a clear contract (e.g., line‑delimited JSON, Parquet, or message queue events).

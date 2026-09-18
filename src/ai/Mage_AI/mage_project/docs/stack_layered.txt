@@ -1,0 +1,131 @@
+1 API and Data Controller
+
+    Define endpoints — Create OpenAPI for /vectorize, /retrieve, /generate, /tap/parse, /admin/indices.
+
+    Implement request/response schemas — Minimal JSON shapes, version field, and error codes.
+
+    Build ingestion pipeline — Simple producer that accepts text, metadata, and stores raw + vector placeholders.
+
+    Add auth and tracing — Token auth, request IDs, and basic logs for every request.
+
+    Smoke tests and CI — Contract tests for each endpoint and a local load test script.
+
+2 Storage and Ingestion
+
+    Design storage layout — vectors.bin for raw vectors, meta.db for metadata, and indices/ for index artifacts.
+
+    Implement writer — Atomic append + manifest file with versioned offsets.
+
+    Implement reader — Memory‑map reader for vectors.bin with safe fallbacks.
+
+    Backfill tool — Small CLI to ingest existing corpus into the storage layout.
+
+    Validation checks — CRC or checksum per vector and a manifest consistency test.
+
+3 Deterministic Vectorizer
+
+    Reference Python implementation — Write a golden Python vectorizer for parity.
+
+    Implement hash_sign64 — Deterministic projection with fixed seeds and normalization invariants.
+
+    Float32 and quantized paths — Implement both and a converter between them.
+
+    Unit parity tests — Cosine ≥0.999 vs golden for sample inputs.
+
+    Batch API — /vectorize/batch with deterministic ordering and replay mode.
+
+4 TAP Parsing Layer
+
+    Implement TAP parser core — Bounded loop with Rule 42 guard and op counters.
+
+    Shortlist heap — Heap‑based shortlist O(K log S) implementation and API return format.
+
+    Determinism controls — Fixed RNG seeds, fixed reduction trees, and op counter logging.
+
+    Golden tests — Compare shortlist and op counts against Python reference.
+
+    Expose /tap/parse — Return shortlist, TAP budget used, and deterministic trace.
+
+5 Lookup Tables and MPHF
+
+    Choose MPHF library or implement — Offline MPHF generator for static vocab; fallback hash for dynamic.
+
+    Implement Robin‑Hood hash for cooccurrence — 64‑bit composite keys and fast lookups.
+
+    Build key manifest — Map from token → offset in vectors.bin using MPHF.
+
+    Fallback dynamic path — Simple open addressing hash for runtime additions.
+
+    Tests — O(1) lookup tests and MPHF generation time/size benchmarks.
+
+6 Memory‑Mapped Index and Retrieval
+
+    MMAP reader — Implement safe mmapped access to vectors.bin with alignment and prefetch hints.
+
+    Brute‑force baseline — O(dN) retrieval for prototyping and correctness checks.
+
+    Microbench harness — Block‑size sweep and rank sweep tests to measure latency.
+
+    Plan ANN integration — Define interface for HNSW or other ANN to swap in later.
+
+    Retrieve API — /retrieve/nearest with deterministic tie‑breaking and telemetry.
+
+7 Generators and Inference Engine
+
+    Tiered generator skeleton — Hot/Warm/Cold interfaces and TAP budget enforcement.
+
+    Warm reconstruction — Implement U row‑major and V packed-transposed layouts and lazy contraction.
+
+    Cold separable generator — Implement f(i)g(j) separable generator for low memory.
+
+    Deterministic multithreading — Fixed work partitioning and 64‑bit accumulators for reductions.
+
+    FFI and C ABI — Expose C ABI and Python bindings for integration and testing.
+
+8 Determinism, Testing, and Validation
+
+    Golden parity suite — Automate Python vs C parity checks (cosine ≥0.999) and TAP trace diffs.
+
+    Microbench suite — Block, rank, and generator latency sweeps with reproducible inputs.
+
+    Protocol smoke tests — Protocol 9 vectorization smoke and Protocol 10 end‑to‑end latency test.
+
+    CI gating — Fail builds on parity regression or nondeterministic outputs.
+
+    Numeric stability checks — Fixed reduction trees, 64‑bit accumulators, and deterministic rounding rules.
+
+9 CLI and Developer Tools
+
+    CLI skeleton — Commands: vectorize, retrieve, generate, tap-parse, replay.
+
+    Replay mode — CLI flag to replay a request with saved seeds and manifests for deterministic debugging.
+
+    Local dev server — Lightweight server that runs all modules locally for integration tests.
+
+    Debugging flags — Verbose TAP traces, op counters, and vector dumps.
+
+    Developer docs — Quickstart README and example workflows.
+
+10 GUI and Production Deployment
+
+    Minimal GUI — Web app showing input box, TAP trace, shortlist, and generated response.
+
+    Telemetry dashboard — Expose latency, TAP budgets, parity failures, and error rates.
+
+    Containerization — Dockerfile for each service and a compose file for local stacks.
+
+    Deployment pipeline — CI/CD steps: build, test (parity + microbench), deploy to staging.
+
+    Monitoring and rollback — Health checks, versioned artifacts, and automated rollback on parity regressions.
+
+Practical iteration tips
+
+    One small PR per substep. Keep changes tiny and reviewable.
+
+    Run parity tests after each PR. Stop and fix nondeterminism immediately.
+
+    Keep artifacts versioned. Store MPHF, manifests, and vectors.bin with semantic versions.
+
+    Automate benchmarks. Make microbench scripts runnable in CI with fixed seeds.
+
+    Prioritize correctness over speed early. Replace brute‑force with optimized kernels only after parity is solid.

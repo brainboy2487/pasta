@@ -1,0 +1,34 @@
+# Pasta translation of src/runtime/threading.rs (placeholders)
+# ThreadManager, ThreadHandle, simple worker queue placeholders
+
+DEF ThreadHandle_join(handle):
+    # handle.join is a placeholder; just return OK
+    RETURN({"ok": True})
+END
+
+DEF ThreadManager_new(num_workers):
+    tx = {"type": "channel_sender_placeholder"}
+    workers = []
+    i = 0
+    WHILE i < (num_workers IF num_workers > 0 ELSE 1):
+        workers = workers + ["worker_placeholder"]
+        i = i + 1
+    END
+    RETURN({"workers": workers, "sender": tx})
+END
+
+DEF ThreadManager_spawn(mgr, f):
+    # create a placeholder result channel
+    res = f({"type": "executor_arc_placeholder"})
+    RETURN({"join": res})
+END
+
+DEF ThreadManager_spawn_with_shared_executor(mgr, exe_arc, f):
+    res = f(exe_arc)
+    RETURN({"join": res})
+END
+
+DEF ThreadManager_shutdown(mgr):
+    # no-op for placeholders
+    RETURN(None)
+END

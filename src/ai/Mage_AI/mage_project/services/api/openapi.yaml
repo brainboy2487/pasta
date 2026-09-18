@@ -1,0 +1,93 @@
+openapi: 3.0.3
+info:
+  title: MAGE Minimal API
+  version: 0.1.0
+  description: "Scaffolded OpenAPI for MAGE vectorize/retrieve/generate/tap endpoints (work in progress)."
+servers:
+  - url: http://localhost:8080
+paths:
+  /vectorize:
+    post:
+      summary: Vectorize input text
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+              required: [text]
+      responses:
+        '200':
+          description: Vectorization result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vector:
+                    type: array
+                    items:
+                      type: number
+  /retrieve:
+    post:
+      summary: Retrieve nearest vectors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vector:
+                  type: array
+                  items:
+                    type: number
+                k:
+                  type: integer
+              required: [vector]
+      responses:
+        '200':
+          description: Nearest results
+  /generate:
+    post:
+      summary: Generate text from context
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prompt:
+                  type: string
+              required: [prompt]
+      responses:
+        '200':
+          description: Generated text
+  /tap/parse:
+    post:
+      summary: TAP parse step
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+              required: [text]
+      responses:
+        '200':
+          description: TAP parse results
+  /admin/indices:
+    get:
+      summary: List indices
+      responses:
+        '200':
+          description: Index list
+components:
+  schemas: {}

@@ -1,0 +1,760 @@
+# ================================================================
+# 09_big_test.ps — Comprehensive PASTA regression + combo test
+# Tests every feature individually then in combination.
+# Expected outputs marked with  # =>
+# ================================================================
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 1: Basic print and literals
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 1: Literals ==="
+
+PRINT "hello world"          # => hello world
+PRINT 123                    # => 123
+PRINT true                   # => true
+PRINT false                  # => false
+PRINT 3.14                   # => 3.14
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 2: Variable binding and arithmetic
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 2: Arithmetic ==="
+
+let x = 10
+let y = 5
+PRINT x                      # => 10
+PRINT y                      # => 5
+PRINT 1 + 2                  # => 3
+PRINT 10 - 3                 # => 7
+PRINT 4 * 6                  # => 24
+PRINT 20 / 5                 # => 4
+PRINT 1 + 2 * 3              # => 7  (precedence)
+PRINT (1 + 2) * 3            # => 9
+PRINT 2 + 3 * 4              # => 14
+PRINT (2 + 3) * 4            # => 20
+PRINT 10 / 4                 # => 2.5
+PRINT 17 - 3 - 2             # => 12
+
+let x = 7
+PRINT x                      # => 7
+PRINT x + y                  # => 12
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 3: String operations
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 3: Strings ==="
+
+s = "hello world"
+PRINT s                      # => hello world
+PRINT type(s)                # => string
+PRINT s[0]                   # => h
+PRINT len(s)                 # => 11
+PRINT upper(s)               # => HELLO WORLD
+PRINT lower("PASTA")         # => pasta
+PRINT trim("  hi  ")         # => hi
+PRINT starts_with("pasta", "pas")   # => true
+PRINT ends_with("pasta", "sta")     # => true
+PRINT replace("hello world", "world", "pasta")  # => hello pasta
+
+parts = split("a,b,c,d", ",")
+PRINT list_first(parts)      # => a
+PRINT list_last(parts)       # => d
+
+a_str = "foo"
+b_str = "bar"
+PRINT concat(a_str, b_str)   # => foobar
+PRINT string_concat(a_str, b_str)  # => foobar
+
+lang = "pastalang"
+PRINT lang[0]                # => p
+PRINT lang[5]                # => l
+PRINT lang[-1]               # => g
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 4: Lists and indexing
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 4: Lists ==="
+
+lst = [10, 20, 30]
+PRINT lst[0]                 # => 10
+PRINT lst[2]                 # => 30
+
+nums = [100, 200, 300, 400, 500]
+PRINT nums[0]                # => 100
+PRINT nums[2]                # => 300
+PRINT nums[4]                # => 500
+PRINT nums[-1]               # => 500
+PRINT nums[-2]               # => 400
+
+PRINT len(lst)               # => 3
+
+data = [3, 1, 4, 1, 5, 9, 2, 6]
+PRINT list_first(data)       # => 3
+PRINT list_last(data)        # => 6
+PRINT list_sum(data)         # => 31
+PRINT list_average(data)     # => 3.875
+PRINT list_reverse(data)     # => [6, 2, 9, 5, 1, 4, 1, 3]
+
+front = list_take(data, 3)
+PRINT front                  # => [3, 1, 4]
+
+rest = list_drop(data, 5)
+PRINT rest                   # => [9, 2, 6]
+
+sliced = list_slice(data, 1, 4)
+PRINT sliced                 # => [1, 4, 1]
+
+a1 = [1, 2, 3]
+a2 = [4, 5, 6]
+merged = list_concat(a1, a2)
+PRINT merged                 # => [1, 2, 3, 4, 5, 6]
+
+nested_list = [[1, 2], [3, 4], [5]]
+flat = list_flatten(nested_list)
+PRINT flat                   # => [1, 2, 3, 4, 5]
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 5: Math builtins
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 5: Math builtins ==="
+
+PRINT abs(-7)                # => 7
+PRINT abs(3)                 # => 3
+PRINT sqrt(9)                # => 3
+PRINT pow(2, 10)             # => 1024
+PRINT floor(3.9)             # => 3
+PRINT ceil(3.1)              # => 4
+PRINT round(2.5)             # => 3
+PRINT min(10, 3)             # => 3
+PRINT max(10, 3)             # => 10
+PRINT clamp(15, 0, 10)       # => 10
+PRINT clamp(-5, 0, 10)       # => 0
+PRINT sign(-99)              # => -1
+PRINT sign(0)                # => 0
+PRINT sign(42)               # => 1
+PRINT abs(pow(2, 8) - 256)   # => 0
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 6: Type conversion
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 6: Conversion ==="
+
+PRINT int(3.9)               # => 3
+PRINT int(-2.7)              # => -2
+PRINT num("42")              # => 42
+PRINT float("3.14")          # => 3.14
+PRINT bool(1)                # => true
+PRINT bool(0)                # => false
+PRINT str(100)               # => 100
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 7: IF / OTHERWISE
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 7: IF / OTHERWISE ==="
+
+x = 10
+IF x > 5:
+    PRINT "big"
+OTHERWISE:
+    PRINT "small"
+END
+# => big
+
+y = 2
+IF y > 5:
+    PRINT "big"
+OTHERWISE:
+    PRINT "small"
+END
+# => small
+
+z = 15
+IF z > 20:
+    PRINT "very big"
+OTHERWISE:
+    IF z > 10:
+        PRINT "medium"
+    OTHERWISE:
+        PRINT "tiny"
+    END
+END
+# => medium
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 8: Boolean logic
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 8: Boolean Logic ==="
+
+PRINT (1 < 2 && 3 < 4)      # => true
+PRINT (1 > 2 || 3 < 4)      # => true
+PRINT (1 > 2 || 3 > 4)      # => false
+PRINT NOT true               # => false
+PRINT NOT false              # => true
+
+flag = true
+IF flag && 10 > 5:
+    PRINT "both true"
+END
+# => both true
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 9: Basic WHILE loops
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 9: WHILE ==="
+
+i = 0
+DO WHILE i < 3:
+    PRINT i
+    i = i + 1
+END
+# => 0 1 2
+
+k = 0
+DO WHILE k < 3:
+    PRINT k
+    k = k + 1
+END
+# => 0 1 2
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 10: WHILE with IF inside
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 10: WHILE + IF ==="
+
+i = 0
+DO WHILE i < 6:
+    IF i == 3:
+        PRINT "three"
+    OTHERWISE:
+        PRINT i
+    END
+    i = i + 1
+END
+# => 0 1 2 three 4 5
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 11: Nested WHILE
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 11: Nested WHILE ==="
+
+outer = 0
+DO WHILE outer < 3:
+    inner = 0
+    DO WHILE inner < 2:
+        PRINT outer
+        inner = inner + 1
+    END
+    outer = outer + 1
+END
+# => 0 0 1 1 2 2
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 12: DEF and DO
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 12: DEF and DO ==="
+
+DEF hello:
+    PRINT "hello"
+END
+DO hello
+# => hello
+
+DEF greet_fn:
+    PRINT "greet"
+END
+g = DO greet_fn
+DO g
+# => greet
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 13: Functions with global mutation
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 13: Global mutation ==="
+
+counter = 0
+
+DEF inc:
+    counter = counter + 1
+    PRINT counter
+END
+
+DEF run_inc_three:
+    DO inc
+    DO inc
+    DO inc
+END
+
+DO run_inc_three
+# => 1 2 3
+
+total = 0
+DEF add_five:
+    total = total + 5
+END
+DO add_five
+DO add_five
+DO add_five
+PRINT total
+# => 15
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 14: DO with multiple targets, alias, repeats
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 14: DO multi-target ==="
+
+DEF A:
+    PRINT "A"
+END
+DEF B:
+    PRINT "B"
+END
+DEF C:
+    PRINT "C"
+END
+
+DO A, B, C AS name FOR 2, 1, 3:
+    PRINT name
+END
+# => A A B C C C
+
+n_rep = 0
+DO tick FOR 5:
+    n_rep = n_rep + 1
+END
+PRINT n_rep
+# => 5
+
+hits = 0
+DO aa, bb FOR 3:
+    hits = hits + 1
+END
+PRINT hits
+# => 6
+
+DO worker AS w FOR 3:
+    PRINT w
+END
+# => worker worker worker
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 15: Nested functions with WHILE
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 15: Nested funcs + WHILE ==="
+
+ni = 0
+DEF inc_twice_fn:
+    WHILE ni < 2:
+        PRINT ni
+        ni = ni + 1
+    END
+END
+DEF outer_fn:
+    DO inc_twice_fn
+    WHILE ni < 5:
+        PRINT ni
+        ni = ni + 1
+    END
+END
+f = DO outer_fn
+DO f
+# => 0 1 2 3 4
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 16: Lambda stored and called
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 16: Lambda ==="
+
+double_fn = lambda x: x * 2
+PRINT double_fn(6)           # => 12
+PRINT double_fn(21)          # => 42
+
+adder = lambda a: a + 100
+PRINT adder(5)               # => 105
+PRINT adder(0)               # => 100
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 17: RET.NOW — basic and arithmetic
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 17: RET.NOW basic ==="
+
+DEF always_42():
+    RET.NOW(): 42
+    PRINT "FAIL: unreachable"
+END
+PRINT always_42()
+# => 42
+
+DEF double_ret(x):
+    RET.NOW(): x * 2
+END
+PRINT double_ret(7)          # => 14
+PRINT double_ret(21)         # => 42
+
+DEF early_exit_fn():
+    RET.NOW(): 99
+    x = 1 / 0
+    PRINT "FAIL: unreachable"
+END
+PRINT early_exit_fn()
+# => 99
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 18: RET.NOW inside IF / OTHERWISE
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 18: RET.NOW + IF ==="
+
+DEF classify(n):
+    IF n < 0:
+        RET.NOW(): "negative"
+    END
+    IF n == 0:
+        RET.NOW(): "zero"
+    END
+    RET.NOW(): "positive"
+END
+PRINT classify(-5)           # => negative
+PRINT classify(0)            # => zero
+PRINT classify(3)            # => positive
+
+DEF abs_val(x):
+    IF x < 0:
+        RET.NOW(): x * -1
+    OTHERWISE:
+        RET.NOW(): x
+    END
+END
+PRINT abs_val(-10)           # => 10
+PRINT abs_val(7)             # => 7
+PRINT abs_val(0)             # => 0
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 19: RET.NOW — string, bool, list returns
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 19: RET.NOW typed returns ==="
+
+DEF greet_ret(name):
+    RET.NOW(): "Hello " name
+END
+PRINT greet_ret("Travis")    # => Hello Travis
+PRINT greet_ret("World")     # => Hello World
+
+DEF is_even(n):
+    IF n % 2 == 0:
+        RET.NOW(): true
+    END
+    RET.NOW(): false
+END
+PRINT is_even(4)             # => true
+PRINT is_even(7)             # => false
+
+DEF make_pair(pa, pb):
+    RET.NOW(): [pa, pb]
+END
+pair = make_pair(10, 20)
+PRINT pair                   # => [10, 20]
+PRINT pair[0]                # => 10
+PRINT pair[1]                # => 20
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 20: RET.NOW — recursive functions
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 20: RET.NOW recursion ==="
+
+DEF factorial(n):
+    IF n <= 1:
+        RET.NOW(): 1
+    END
+    RET.NOW(): n * factorial(n - 1)
+END
+PRINT factorial(1)           # => 1
+PRINT factorial(5)           # => 120
+PRINT factorial(10)          # => 3628800
+
+DEF fib(n):
+    IF n <= 1:
+        RET.NOW(): n
+    END
+    RET.NOW(): fib(n - 1) + fib(n - 2)
+END
+PRINT fib(0)                 # => 0
+PRINT fib(1)                 # => 1
+PRINT fib(7)                 # => 13
+PRINT fib(10)                # => 55
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 21: RET.NOW — return used in expressions
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 21: RET.NOW in expressions ==="
+
+DEF square(x):
+    RET.NOW(): x * x
+END
+PRINT square(3) + square(4)  # => 25
+
+DEF add_ret(a, b):
+    RET.NOW(): a + b
+END
+PRINT add_ret(10, add_ret(3, 4))  # => 17
+
+DEF clamp_ret(x, lo, hi):
+    IF x < lo:
+        RET.NOW(): lo
+    END
+    IF x > hi:
+        RET.NOW(): hi
+    END
+    RET.NOW(): x
+END
+PRINT clamp_ret(5, 1, 10)    # => 5
+PRINT clamp_ret(-3, 1, 10)   # => 1
+PRINT clamp_ret(15, 1, 10)   # => 10
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 22: RET.NOW — cross-function calls
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 22: RET.NOW cross-function ==="
+
+DEF min_val(a, b):
+    IF a < b:
+        RET.NOW(): a
+    END
+    RET.NOW(): b
+END
+DEF max_val(a, b):
+    IF a > b:
+        RET.NOW(): a
+    END
+    RET.NOW(): b
+END
+DEF range_size(lo, hi):
+    RET.NOW(): max_val(lo, hi) - min_val(lo, hi)
+END
+PRINT min_val(3, 7)          # => 3
+PRINT max_val(3, 7)          # => 7
+PRINT range_size(2, 9)       # => 7
+PRINT range_size(9, 2)       # => 7
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 23: RET.NOW + math builtins combined
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 23: RET.NOW + math ==="
+
+DEF hypotenuse(a, b):
+    RET.NOW(): sqrt(square(a) + square(b))
+END
+PRINT hypotenuse(3, 4)       # => 5
+PRINT hypotenuse(5, 12)      # => 13
+
+DEF safe_div(a, b):
+    IF b == 0:
+        RET.NOW(): 0
+    END
+    RET.NOW(): a / b
+END
+PRINT safe_div(10, 2)        # => 5
+PRINT safe_div(7, 0)         # => 0
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 24: RET.NOW + list operations combined
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 24: RET.NOW + lists ==="
+
+DEF list_max(lst):
+    RET.NOW(): list_last(lst)
+END
+
+DEF build_range_list(n):
+    RET.NOW(): list_take([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], n)
+END
+PRINT build_range_list(4)    # => [0, 1, 2, 3]
+PRINT build_range_list(7)    # => [0, 1, 2, 3, 4, 5, 6]
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 25: RET.NOW inside WHILE (accumulator pattern)
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 25: RET.NOW + WHILE combo ==="
+DEF count_down(start):
+    i = start
+    acc = 0
+    WHILE i > 0:
+        acc = acc + i
+        i = i - 1
+    END
+END
+PRINT count_down(5)          # => 15  (5+4+3+2+1)
+PRINT count_down(10)         # => 55  (10+9+...+1)
+
+DEF first_over(threshold):
+   i = 0
+    WHILE i < 100:
+        i = i + 1
+        IF i * i > threshold:
+            RET.NOW(): i
+        END
+    END
+    RET.NOW(): -1
+END
+PRINT first_over(10)         # => 4  (4*4=16 > 10)
+PRINT first_over(100)        # => 11 (11*11=121 > 100)
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 26: RET.NOW + recursive + math combo
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 26: Recursive + math combo ==="
+
+DEF power(base, exp):
+    IF exp == 0:
+        RET.NOW(): 1
+    END
+    RET.NOW(): base * power(base, exp - 1)
+END
+PRINT power(2, 8)            # => 256
+PRINT power(3, 4)            # => 81
+PRINT power(10, 3)           # => 1000
+
+DEF sum_squares(n):
+    IF n <= 0:
+        RET.NOW(): 0
+    END
+    RET.NOW(): n * n + sum_squares(n - 1)
+END
+PRINT sum_squares(3)         # => 14  (9+4+1)
+PRINT sum_squares(5)         # => 55  (25+16+9+4+1)
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 27: RET.LATE — deferred return
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 27: RET.LATE ==="
+
+DEF delayed(x):
+    snapshot = x * 10
+    RET.LATE(500): snapshot
+    PRINT "body continued after RET.LATE"
+END
+handle = delayed(5)
+PRINT type(handle)           # => pending
+result = resolve(handle)
+PRINT result                 # => 50
+# => body continued after RET.LATE
+
+DEF fast_late(v):
+    RET.LATE(0): v + 1
+    PRINT "fast late body ran"
+END
+h2 = fast_late(41)
+PRINT resolve(h2)            # => 42
+# => fast late body ran
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 28: Priority graph
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 28: Priority ==="
+
+critical OVER normal
+normal OVER background
+PRINT "priorities set"       # => priorities set
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 29: Complex expression precedence + RET.NOW
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 29: Expression precedence ==="
+
+PRINT 1 + 2 * 3              # => 7
+PRINT (1 + 2) * 3            # => 9
+
+DEF complex_expr(a, b, c):
+    RET.NOW(): a + b * c - (a - b)
+END
+PRINT complex_expr(2, 3, 4)  # => 2 + 12 - (-1) = 15
+PRINT complex_expr(10, 5, 2) # => 10 + 10 - 5 = 15
+
+
+# ════════════════════════════════════════════════════════════════
+# SECTION 30: Full pipeline — functions calling functions
+#             using RET.NOW, math, lists, and IF/WHILE
+# ════════════════════════════════════════════════════════════════
+PRINT "=== SECTION 30: Full pipeline ==="
+
+DEF is_prime(n):
+    IF n < 2:
+        RET.NOW(): false
+    END
+    i = 2
+    WHILE i * i <= n:
+        IF n % i == 0:
+            RET.NOW(): false
+        END
+        i = i + 1
+    END
+    RET.NOW(): true
+END
+
+PRINT is_prime(1)            # => false
+PRINT is_prime(2)            # => true
+PRINT is_prime(7)            # => true
+PRINT is_prime(9)            # => false
+PRINT is_prime(13)           # => true
+PRINT is_prime(100)          # => false
+
+DEF nth_fib_gt(threshold):
+    a = 0
+    b = 1
+    WHILE b <= threshold:
+        temp = b
+        b = a + b
+        a = temp
+    END
+    RET.NOW(): b
+END
+PRINT nth_fib_gt(10)         # => 13
+PRINT nth_fib_gt(50)         # => 55
+PRINT nth_fib_gt(100)        # => 144
+
+DEF collatz_steps(n):
+    steps = 0
+    WHILE n != 1:
+        IF n % 2 == 0:
+            n = n / 2
+        OTHERWISE:
+            n = n * 3 + 1
+        END
+        steps = steps + 1
+    END
+    RET.NOW(): steps
+END
+PRINT collatz_steps(6)       # => 8
+PRINT collatz_steps(27)      # => 111
+
+
+# ════════════════════════════════════════════════════════════════
+PRINT "=== ALL TESTS COMPLETE ==="
+# ════════════════════════════════════════════════════════════════

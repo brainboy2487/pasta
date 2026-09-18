@@ -1,0 +1,121 @@
+# Pasta translation of src/runtime/pointer/pointer.rs
+# Pointer representation and helpers for PASTA (simplified, dict-based)
+
+# Pointer kind parsing (accept common casings)
+DEF PointerKind_from_str(s):
+    IF s == None: RETURN(None) END
+    IF s == "MEM" OR s == "Mem" OR s == "mem": RETURN("Mem") END
+    IF s == "FILE" OR s == "File" OR s == "file": RETURN("File") END
+    IF s == "DEV" OR s == "Dev" OR s == "dev": RETURN("Dev") END
+    IF s == "NET" OR s == "Net" OR s == "net": RETURN("Net") END
+    RETURN(None)
+END
+
+# Metadata helpers (metadata stored as simple dict)
+DEF PointerMetadata_new(): RETURN({}) END
+DEF PointerMetadata_set(meta, key, value):
+    meta[key] = value
+    RETURN(None)
+END
+DEF PointerMetadata_get(meta, key):
+    IF has_key(meta, key): RETURN(meta[key]) END
+    RETURN(None)
+END
+
+# Pointer constructors (match shapes used by registry.ps)
+DEF Pointer_new_mem(id, size):
+    obj = {"id": id, "kind": "Mem", "target": {"Mem": {"size": size, "data": [], "offset": 0}}, "metadata": {}, "alive": True, "temporary": False}
+    RETURN(obj)
+END
+
+DEF Pointer_new_file(id, path, mode):
+    obj = {"id": id, "kind": "File", "target": {"File": {"path": path, "offset": 0, "mode": mode}}, "metadata": {}, "alive": True, "temporary": False}
+    RETURN(obj)
+END
+
+DEF Pointer_new_device(id, device_id, device_type):
+    obj = {"id": id, "kind": "Dev", "target": {"Device": {"device_id": device_id, "device_type": device_type}}, "metadata": {}, "alive": True, "temporary": False}
+    RETURN(obj)
+END
+
+DEF Pointer_new_network(id, host, port):
+    obj = {"id": id, "kind": "Net", "target": {"Network": {"host": host, "port": port, "stream": None}}, "metadata": {}, "alive": True, "temporary": False}
+    RETURN(obj)
+END
+
+# Lifecycle helpers
+DEF Pointer_kill(ptr):
+    ptr["alive"] = False
+    RETURN(None)
+END
+
+DEF Pointer_is_valid(ptr):
+    RETURN(ptr["alive"])
+END
+
+# Offset helpers (MEM and FILE)
+DEF Pointer_reset_offset(ptr):
+    t = ptr["target"]
+    IF is_dict(t) AND has_key(t, "Mem"):
+        t["Mem"]["offset"] = 0
+        ptr["target"] = t
+        RETURN(None)
+    END
+    IF is_dict(t) AND has_key(t, "File"):
+        t["File"]["offset"] = 0
+        ptr["target"] = t
+        RETURN(None)
+    END
+    RETURN(None)
+END
+
+DEF Pointer_seek(ptr, position):
+    # position is expected to be a non-negative integer
+    IF position == None: RETURN({"err": "invalid seek position"}) END
+    t = ptr["target"]
+    IF is_dict(t) AND has_key(t, "Mem"):
+        size = t["Mem"]["size"] IF has_key(t["Mem"], "size") ELSE 0
+        IF position > size:
+            RETURN({"err": "Seek position " + position + " exceeds buffer size " + size})
+        END
+        t["Mem"]["offset"] = position
+        ptr["target"] = t
+        RETURN({"ok": True})
+    END
+    IF is_dict(t) AND has_key(t, "File"):
+        t["File"]["offset"] = position
+        ptr["target"] = t
+        RETURN({"ok": True})
+    END
+    RETURN({"err": "SEEK only supported for MEM and FILE pointers"})
+END
+
+# Info helper: return simple dict describing pointer
+DEF Pointer_info(ptr):
+    info = {"id": ptr["id"], "kind": ptr["kind"], "alive": ptr["alive"], "temporary": ptr["temporary"]}
+    # include target-specific fields
+    t = ptr["target"]
+    IF is_dict(t) AND has_key(t, "Mem"):
+        info["size"] = t["Mem"]["size"] IF has_key(t["Mem"], "size") ELSE 0
+        info["offset"] = t["Mem"]["offset"] IF has_key(t["Mem"], "offset") ELSE 0
+    END
+    IF is_dict(t) AND has_key(t, "File"):
+        info["path"] = t["File"]["path"]
+        info["offset"] = t["File"]["offset"]
+        info["mode"] = t["File"]["mode"]
+    END
+    IF is_dict(t) AND has_key(t, "Device"):
+        info["device_id"] = t["Device"]["device_id"]
+        info["device_type"] = t["Device"]["device_type"]
+    END
+    IF is_dict(t) AND has_key(t, "Network"):
+        info["host"] = t["Network"]["host"]
+        info["port"] = t["Network"]["port"]
+        info["connected"] = t["Network"]["stream"] != None
+    END
+    # include metadata if any
+    IF has_key(ptr, "metadata") AND dict_len(ptr["metadata"]) > 0:
+        info["metadata"] = ptr["metadata"]
+    END
+    RETURN(info)
+END

@@ -1,0 +1,7 @@
+FROM json USE loads, dumps END
+
+# simple test: parse JSON and print serialized form
+s = read_file("tests/tmp_json_input.json")
+PRINT s
+v = loads(s)
+PRINT dumps(v)

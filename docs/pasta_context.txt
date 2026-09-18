@@ -1,0 +1,602 @@
+[travis@archlinux pasta]$ sed -n '1,240p' src/interpreter/ex_eval.rs
+sed -n '1,240p' src/interpreter/ex_frame.rs
+rg -n "push_scope|pop_scope|set_local|get_local|env.set_local|env.push_scope|env.pop_scope" src || true
+// src/interpreter/ex_eval.rs
+//
+//! Statement and expression evaluation for the PASTA executor.
+//!
+//! All logic that was previously in the giant `impl Executor` block of
+//! `executor.rs` lives here, broken into two public entry-points:
+//!
+//!  * `eval_stmt` — dispatch a single `Statement` to its handler.
+//!  * `eval_expr` — recursively evaluate an `Expr` and return a `Value`.
+//!
+//! Both functions take `&mut Executor` so they can reach every field
+//! (environment, functions table, GC, diagnostics, traceback, etc.) without
+//! duplicating state.  The split is purely organisational — the borrow graph
+//! is unchanged from the monolithic file.
+
+use anyhow::{anyhow, Result};
+
+use crate::interpreter::executor::Executor;
+use crate::interpreter::environment::{Value, RuntimeTensor};
+use crate::interpreter::errors::{RuntimeError, RuntimeErrorKind};
+use crate::interpreter::ai_network;
+use crate::interpreter::ex_frame;
+use crate::parser::*;
+use crate::semantics::{Relation, ExprSimple, ConstraintExpr};
+
+// ── Internal formatting helper (mirrors the one in executor.rs) ───────────────
+
+#[inline]
+fn fmt_f64(n: f64) -> String {
+    if n.fract().abs() < f64::EPSILON {
+        format!("{}", n.round() as i64)
+    } else {
+        format!("{}", n)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public entry-points
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Dispatch a single AST statement, returning any yielded `Value`.
+///
+/// This is the primary statement execution loop, extracted verbatim from the
+/// original `Executor::execute_statement`.  All internal helpers that it
+/// calls (`eval_expr`, `call_builtin`, etc.) are defined later in this file
+/// or remain on `Executor` as public / pub(crate) methods.
+pub fn eval_stmt(exec: &mut Executor, stmt: &Statement) -> Result<Option<Value>> {
+    // Mirror the verbose-debug macro from executor.rs
+    if exec.verbose && crate::interpreter::executor::is_verbose_debug() {
+        println!("[DEBUG] Executing statement: {:?}", stmt);
+    }
+
+    let span = match stmt {
+        Statement::Assignment { span, .. }
+        | Statement::FunctionDef { span, .. }
+        | Statement::DoBlock { span, .. }
+        | Statement::WhileBlock { span, .. }
+        | Statement::ForIn { span, .. }
+        | Statement::PriorityOverride { span, .. }
+        | Statement::Constraint { span, .. }
+        | Statement::Print { span, .. }
+        | Statement::If { span, .. }
+        | Statement::End { span }
+        | Statement::ExprStmt { span, .. }
+        | Statement::ObjDecl { span, .. }
+        | Statement::SpawnBlock { span, .. }
+        | Statement::Other { span, .. } => span.clone(),
+
+        Statement::DefDoUntil(d)         => d.span.clone(),
+        Statement::RetNow { span, .. }   => span.clone(),
+        Statement::RetLate { span, .. }  => span.clone(),
+        Statement::AttemptBlock { span, .. } => span.clone(),
+    };
+
+    ex_frame::push_frame(&mut exec.traceback, span.clone(), "statement");
+
+    match stmt {
+        // ── Assignment ────────────────────────────────────────────────────────
+        Statement::Assignment { target, value, span: _ } => {
+            let v = eval_expr(exec, value)?;
+            exec.env.assign(&target.name, v);
+            Ok(None)
+        }
+
+        // ── Function definition ───────────────────────────────────────────────
+        Statement::FunctionDef { name, params, body, span: _ } => {
+            exec.functions.insert(name.name.clone(), (params.clone(), body.clone()));
+            if params.is_empty() {
+                exec.env.set_global(name.name.clone(), Value::Lambda(body.clone()));
+            }
+            Ok(None)
+        }
+
+        // ── Counted DO block ──────────────────────────────────────────────────
+        Statement::DoBlock { targets, alias, repeats, body, span } => {
+            let counts = exec.resolve_repeat_counts(targets.len(), repeats.as_ref(), span)?;
+
+            for (i, target_id) in targets.iter().enumerate() {
+                let repeat_count = counts[i];
+
+                let resolved_target_val = exec
+                    .env
+                    .get(&target_id.name)
+                    .map(|v| exec.deref(v));
+
+                // Lambda stored globally
+                let global_lambda: Option<Vec<Statement>> = match &resolved_target_val {
+                    Some(Value::Lambda(s)) => Some(s.clone()),
+                    _ => None,
+                };
+
+                if let Some(stmts) = global_lambda {
+                    for _ in 0..repeat_count {
+                        ex_frame::push_scope(&mut exec.env);
+                        if let Some(a) = alias {
+                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+                        }
+                        for s in stmts.iter() {
+                            exec.execute_statement(s)?;
+                            if exec.control_flow.is_some() { break; }
+                            let _ = exec.collect_garbage();
+                        }
+                        ex_frame::pop_scope(&mut exec.env, "DO lambda", &mut exec.diagnostics);
+                    }
+                    continue;
+                }
+
+                if let Some(Value::List(items)) = resolved_target_val.clone() {
+                    for _ in 0..repeat_count {
+                        for item in items.iter() {
+                            exec.execute_value_as_callable(item, alias, &target_id.name)?;
+                            let _ = exec.collect_garbage();
+                        }
+                    }
+                    continue;
+                }
+
+                let fn_lkp: Option<(Vec<crate::parser::Identifier>, Vec<Statement>)> =
+                    exec.functions.get(&target_id.name).cloned();
+                if let Some((func_params, func_body)) = fn_lkp {
+                    for _ in 0..repeat_count {
+                        ex_frame::push_scope(&mut exec.env);
+                        if let Some(a) = alias {
+                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+                        }
+                        let _ = func_params;
+                        for s in func_body.iter() {
+                            exec.execute_statement(s)?;
+                            if exec.control_flow.is_some() { break; }
+                            let _ = exec.collect_garbage();
+                        }
+                        ex_frame::pop_scope(&mut exec.env, "DO fn", &mut exec.diagnostics);
+                    }
+                    continue;
+                }
+
+                // Treat as logical thread name
+                let tid = exec.env.define_thread(Some(target_id.name.clone()), 1.0);
+                for _ in 0..repeat_count {
+                    ex_frame::push_scope(&mut exec.env);
+                    if let Some(a) = alias {
+                        ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+                    }
+                    ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+                    for s in body.iter() {
+                        exec.execute_statement(s)?;
+                        if exec.control_flow.is_some() { break; }
+                        let _ = exec.collect_garbage();
+                    }
+                    ex_frame::pop_scope(&mut exec.env, "DO thread body", &mut exec.diagnostics);
+                }
+                exec.env.remove_thread(tid);
+            }
+
+            Ok(None)
+        }
+
+        // ── WHILE loop ────────────────────────────────────────────────────────
+        Statement::WhileBlock { targets, alias, condition, body, span } => {
+            let limit = if exec.while_limit == 0 { usize::MAX } else { exec.while_limit };
+
+            if targets.is_empty() {
+                if body.is_empty() {
+                    ex_frame::pop_frame(&mut exec.traceback);
+                    return Ok(None);
+                }
+                let mut iterations: usize = 0;
+                loop {
+                    if iterations >= limit {
+                        ex_frame::pop_frame(&mut exec.traceback);
+                        return Err(exec.span_err(span, format!("WHILE loop exceeded iteration limit ({})", limit)));
+                    }
+                    let cond_val = eval_expr(exec, condition)?;
+                    if !exec.value_is_truthy(&cond_val) { break; }
+                    let scoped = alias.is_some();
+                    if scoped {
+                        ex_frame::push_scope(&mut exec.env);
+                        if let Some(a) = alias {
+                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(String::new()));
+                        }
+                    }
+                    for s in body.iter() {
+                        exec.execute_statement(s)?;
+                        if exec.control_flow.is_some() { break; }
+                        let _ = exec.collect_garbage();
+                    }
+                    if scoped {
+                        ex_frame::pop_scope(&mut exec.env, &format!("WHILE iter {}", iterations), &mut exec.diagnostics);
+                    }
+                    if exec.control_flow.is_some() { break; }
+                    iterations += 1;
+                }
+                ex_frame::pop_frame(&mut exec.traceback);
+                return Ok(None);
+            }
+
+            for target_id in targets.iter() {
+                let lambda_stmts: Option<Vec<Statement>> = exec
+                    .env
+                    .get(&target_id.name)
+                    .and_then(|v| if let Value::Lambda(s) = v { Some(s) } else { None })
+                    .or_else(|| exec.functions.get(&target_id.name).map(|r| r.1.clone()));
+
+                let tid = exec.env.define_thread(Some(target_id.name.clone()), 1.0);
+                let mut iterations: usize = 0;
+
+                if let Some(exec_body) = lambda_stmts {
+                    loop {
+                        if iterations >= limit {
+                            ex_frame::pop_frame(&mut exec.traceback);
+                            return Err(exec.span_err(span, format!("WHILE loop for '{}' exceeded iteration limit ({})", target_id.name, limit)));
+                        }
+                        if let Some(a) = alias {
+                            ex_frame::push_scope(&mut exec.env);
+                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+                            ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+                        }
+                        for s in exec_body.iter() {
+                            exec.execute_statement(s)?;
+                            if exec.control_flow.is_some() { break; }
+// src/interpreter/ex_frame.rs
+//
+//! Frame and environment management for the PASTA executor.
+//!
+//! This module owns:
+//!  - `CallFrame` / `FrameStack` — logical call-stack tracking used to build
+//!    rich `Traceback` objects for error messages.
+//!  - Thin wrappers around `Environment` scope push/pop helpers so that the
+//!    borrow-checker friction of doing these operations deep inside `ex_eval`
+//!    is reduced.
+//!
+//! `Executor` embeds a `Traceback` directly (preserved from the original
+//! design) and calls the helpers in this module to maintain it.  Nothing here
+//! owns the `Environment` — it remains on `Executor` so that all subsystems
+//! share one root.
+
+use crate::interpreter::errors::{TraceFrame, Traceback};
+use crate::interpreter::environment::{Environment, Value};
+use crate::parser::Span;
+
+// ── Re-export the public int_api handle so ex_eval can use one name ──────────
+
+pub use crate::interpreter::int_api::ModuleEnvHandle;
+
+// ── Traceback helpers ─────────────────────────────────────────────────────────
+
+/// Push a new frame onto a `Traceback`.
+///
+/// Called by the executor before entering any statement handler.
+#[inline]
+pub fn push_frame(tb: &mut Traceback, span: Span, ctx: impl Into<String>) {
+    tb.0.push(TraceFrame { span, context: ctx.into() });
+}
+
+/// Pop the most-recent frame from a `Traceback`.
+///
+/// Silently does nothing if the stack is empty (can happen when an error is
+/// returned before the matching pop is reached).
+#[inline]
+pub fn pop_frame(tb: &mut Traceback) {
+    tb.0.pop();
+}
+
+// ── Scope helpers ─────────────────────────────────────────────────────────────
+
+/// Push a new lexical scope onto `env` and return `Ok(())`.
+///
+/// Thin wrapper that keeps the call-site in `ex_eval` free of direct
+/// `Environment` imports for this operation.
+#[inline]
+pub fn push_scope(env: &mut Environment) {
+    env.push_scope();
+}
+
+/// Pop the innermost lexical scope from `env`, emitting a diagnostic string
+/// on failure (scope underflow) instead of panicking.
+#[inline]
+pub fn pop_scope(env: &mut Environment, context_hint: &str, diags: &mut Vec<String>) {
+    if let Err(e) = env.pop_scope() {
+        diags.push(format!("Warning: pop_scope failed ({}): {}", context_hint, e));
+    }
+}
+
+/// Bind `name` in the current (innermost) scope.
+#[inline]
+pub fn set_local(env: &mut Environment, name: impl Into<String>, val: Value) {
+    env.set_local(name.into(), val);
+}
+
+/// Bind `name` in the global (outermost) scope.
+#[inline]
+pub fn set_global(env: &mut Environment, name: impl Into<String>, val: Value) {
+    env.set_global(name.into(), val);
+}
+
+/// Look up `name` through the full scope chain.  Returns `None` if not found.
+#[inline]
+pub fn get(env: &Environment, name: &str) -> Option<Value> {
+    env.get(name)
+}
+
+/// Write `val` to the scope that already owns `name`, searching outward.
+/// If `name` is not found anywhere, it is created in the innermost scope.
+#[inline]
+pub fn assign(env: &mut Environment, name: &str, val: Value) {
+    env.assign(name, val);
+}
+src/runtime/asm.rs
+126:                env.set_local(name.to_string(), val);
+
+src/runtime/devices.rs.txt
+18://!   `Environment::set_local`) so the rest of the runtime can read them.
+130:/// The default behavior maps JSON values to `Environment::set_local` with simple conversions:
+138:        env.set_local(k.clone(), val);
+158:                    env.set_local("runtime_use_asm".to_string(), EnvValue::Bool(true));
+170:            env.set_local("runtime_use_asm".to_string(), EnvValue::Bool(false));
+171:            env.set_local("platform".to_string(), EnvValue::String("apple".into()));
+181:            env.set_local("runtime_use_asm".to_string(), EnvValue::Bool(false));
+182:            env.set_local("platform".to_string(), EnvValue::String("raspi".into()));
+192:            env.set_local("runtime_use_asm".to_string(), EnvValue::Bool(false));
+193:            env.set_local("platform".to_string(), EnvValue::String("wasm".into()));
+247:        env.set_local("device_id".to_string(), EnvValue::String(dev.id.clone()));
+248:        env.set_local("device_arch".to_string(), EnvValue::String(dev.arch.clone()));
+
+src/runtime/threading.rs
+239:            exe.env.set_local("threaded".to_string(), crate::interpreter::environment::Value::Number(7.0));
+254:        env.set_local("max_threads".to_string(), Value::Number(3.0));
+
+src/semantics/resolver.rs
+124:    pub fn push_scope(&mut self) {
+129:    pub fn pop_scope(&mut self) {
+218:        r.push_scope();
+224:        r.pop_scope();
+
+src/runtime/threading.rs.txt
+239:            exe.env.set_local("threaded".to_string(), crate::interpreter::environment::Value::Number(7.0));
+254:        env.set_local("max_threads".to_string(), Value::Number(3.0));
+
+src/runtime/devices.rs
+18://!   `Environment::set_local`) so the rest of the runtime can read them.
+136:/// The default behavior maps JSON values to `Environment::set_local` with simple conversions:
+144:        env.set_local(k.clone(), val);
+164:                    env.set_local("runtime_use_asm".to_string(), EnvValue::Bool(true));
+176:            env.set_local("runtime_use_asm".to_string(), EnvValue::Bool(false));
+177:            env.set_local("platform".to_string(), EnvValue::String("apple".into()));
+187:            env.set_local("runtime_use_asm".to_string(), EnvValue::Bool(false));
+188:            env.set_local("platform".to_string(), EnvValue::String("raspi".into()));
+198:            env.set_local("runtime_use_asm".to_string(), EnvValue::Bool(false));
+199:            env.set_local("platform".to_string(), EnvValue::String("wasm".into()));
+253:        env.set_local("device_id".to_string(), EnvValue::String(dev.id.clone()));
+254:        env.set_local("device_arch".to_string(), EnvValue::String(dev.arch.clone()));
+
+src/interpreter/executor.rs.txt
+435:                self.env.push_scope();
+437:                    self.env.set_local(format!("__arg_{}__", i), v.clone());
+444:                        if let Err(e) = self.env.pop_scope() {
+445:                            self.diagnostics.push(format!("Warning: pop_scope in call_value: {}", e));
+450:                if let Err(e) = self.env.pop_scope() {
+451:                    self.diagnostics.push(format!("Warning: pop_scope after call_value: {}", e));
+470:                self.env.push_scope();
+472:                    self.env.set_local(a.name.clone(), Value::String(name_hint.to_string()));
+479:                if let Err(e) = self.env.pop_scope() {
+480:                    self.diagnostics.push(format!("Warning: pop_scope after list-item lambda call: {}", e));
+
+src/interpreter/ex_eval.rs.bak_ret_now_expr_patch
+114:                        ex_frame::push_scope(&mut exec.env);
+116:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+123:                        ex_frame::pop_scope(&mut exec.env, "DO lambda", &mut exec.diagnostics);
+142:                        ex_frame::push_scope(&mut exec.env);
+144:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+152:                        ex_frame::pop_scope(&mut exec.env, "DO fn", &mut exec.diagnostics);
+160:                    ex_frame::push_scope(&mut exec.env);
+162:                        ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+164:                    ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+170:                    ex_frame::pop_scope(&mut exec.env, "DO thread body", &mut exec.diagnostics);
+197:                        ex_frame::push_scope(&mut exec.env);
+199:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(String::new()));
+208:                        ex_frame::pop_scope(&mut exec.env, &format!("WHILE iter {}", iterations), &mut exec.diagnostics);
+234:                            ex_frame::push_scope(&mut exec.env);
+235:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+236:                            ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+244:                            ex_frame::pop_scope(&mut exec.env, "WHILE lambda", &mut exec.diagnostics);
+260:                            ex_frame::push_scope(&mut exec.env);
+261:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+262:                            ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+270:                            ex_frame::pop_scope(&mut exec.env, "WHILE body", &mut exec.diagnostics);
+302:            ex_frame::push_scope(&mut exec.env);
+304:                ex_frame::set_local(&mut exec.env, var.name.clone(), element);
+312:            ex_frame::pop_scope(&mut exec.env, "FOR IN", &mut exec.diagnostics);
+409:            exec.env.set_local("__ret_late__".to_string(), pending);
+429:                    exec.env.set_local(err_var.name.clone(), Value::String(err_msg));
+486:                    ex_frame::push_scope(&mut exec.env);
+489:                        ex_frame::set_local(&mut exec.env, param.name.clone(), val);
+496:                            ex_frame::pop_scope(&mut exec.env, "RET.NOW in fn", &mut exec.diagnostics);
+503:                    ex_frame::pop_scope(&mut exec.env, "fn call", &mut exec.diagnostics);
+513:                    ex_frame::push_scope(&mut exec.env);
+515:                        ex_frame::set_local(&mut exec.env, format!("__arg_{}__", i), val.clone());
+522:                            ex_frame::pop_scope(&mut exec.env, "RET.NOW in lambda", &mut exec.diagnostics);
+526:                    ex_frame::pop_scope(&mut exec.env, "lambda call", &mut exec.diagnostics);
+
+src/interpreter/ex_frame.rs.txt
+51:pub fn push_scope(env: &mut Environment) {
+52:    env.push_scope();
+58:pub fn pop_scope(env: &mut Environment, context_hint: &str, diags: &mut Vec<String>) {
+59:    if let Err(e) = env.pop_scope() {
+60:        diags.push(format!("Warning: pop_scope failed ({}): {}", context_hint, e));
+66:pub fn set_local(env: &mut Environment, name: impl Into<String>, val: Value) {
+67:    env.set_local(name.into(), val);
+
+src/interpreter/executor.rs.bak_20260316_145249
+435:                self.env.push_scope();
+437:                    self.env.set_local(format!("__arg_{}__", i), v.clone());
+444:                        if let Err(e) = self.env.pop_scope() {
+445:                            self.diagnostics.push(format!("Warning: pop_scope in call_value: {}", e));
+450:                if let Err(e) = self.env.pop_scope() {
+451:                    self.diagnostics.push(format!("Warning: pop_scope after call_value: {}", e));
+470:                self.env.push_scope();
+472:                    self.env.set_local(a.name.clone(), Value::String(name_hint.to_string()));
+479:                if let Err(e) = self.env.pop_scope() {
+480:                    self.diagnostics.push(format!("Warning: pop_scope after list-item lambda call: {}", e));
+
+src/interpreter/ex_frame.rs
+51:pub fn push_scope(env: &mut Environment) {
+52:    env.push_scope();
+58:pub fn pop_scope(env: &mut Environment, context_hint: &str, diags: &mut Vec<String>) {
+59:    if let Err(e) = env.pop_scope() {
+60:        diags.push(format!("Warning: pop_scope failed ({}): {}", context_hint, e));
+66:pub fn set_local(env: &mut Environment, name: impl Into<String>, val: Value) {
+67:    env.set_local(name.into(), val);
+
+src/interpreter/environment.rs
+5://! - Variable access helpers: set_local, set_global, assign, set_if_absent, get, remove.
+244:    pub fn push_scope(&mut self) { self.scopes.push(Scope::new()); }
+247:    pub fn pop_scope(&mut self) -> Result<()> {
+254:    pub fn set_local(&mut self, name: impl Into<String>, val: Value) {
+370:        env.set_local("x", Value::Number(1.0));
+372:        env.push_scope();
+373:        env.set_local("x", Value::Number(2.0));
+375:        env.pop_scope().unwrap();
+382:        env.set_local("a", Value::Number(1.0)); // global
+383:        env.push_scope();
+384:        env.set_local("b", Value::Number(2.0)); // inner
+
+src/interpreter/ex_eval.rs
+114:                        ex_frame::push_scope(&mut exec.env);
+116:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+123:                        ex_frame::pop_scope(&mut exec.env, "DO lambda", &mut exec.diagnostics);
+142:                        ex_frame::push_scope(&mut exec.env);
+144:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+152:                        ex_frame::pop_scope(&mut exec.env, "DO fn", &mut exec.diagnostics);
+160:                    ex_frame::push_scope(&mut exec.env);
+162:                        ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+164:                    ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+170:                    ex_frame::pop_scope(&mut exec.env, "DO thread body", &mut exec.diagnostics);
+197:                        ex_frame::push_scope(&mut exec.env);
+199:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(String::new()));
+208:                        ex_frame::pop_scope(&mut exec.env, &format!("WHILE iter {}", iterations), &mut exec.diagnostics);
+234:                            ex_frame::push_scope(&mut exec.env);
+235:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+236:                            ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+244:                            ex_frame::pop_scope(&mut exec.env, "WHILE lambda", &mut exec.diagnostics);
+260:                            ex_frame::push_scope(&mut exec.env);
+261:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+262:                            ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+270:                            ex_frame::pop_scope(&mut exec.env, "WHILE body", &mut exec.diagnostics);
+302:            ex_frame::push_scope(&mut exec.env);
+304:                ex_frame::set_local(&mut exec.env, var.name.clone(), element);
+312:            ex_frame::pop_scope(&mut exec.env, "FOR IN", &mut exec.diagnostics);
+409:            exec.env.set_local("__ret_late__".to_string(), pending);
+429:                    exec.env.set_local(err_var.name.clone(), Value::String(err_msg));
+502:                    ex_frame::push_scope(&mut exec.env);
+505:                        ex_frame::set_local(&mut exec.env, param.name.clone(), val);
+512:                            ex_frame::pop_scope(&mut exec.env, "RET.NOW in fn", &mut exec.diagnostics);
+519:                    ex_frame::pop_scope(&mut exec.env, "fn call", &mut exec.diagnostics);
+529:                    ex_frame::push_scope(&mut exec.env);
+531:                        ex_frame::set_local(&mut exec.env, format!("__arg_{}__", i), val.clone());
+538:                            ex_frame::pop_scope(&mut exec.env, "RET.NOW in lambda", &mut exec.diagnostics);
+542:                    ex_frame::pop_scope(&mut exec.env, "lambda call", &mut exec.diagnostics);
+
+src/interpreter/executor.rs.bak_20260316_145801
+435:                self.env.push_scope();
+437:                    self.env.set_local(format!("__arg_{}__", i), v.clone());
+444:                        if let Err(e) = self.env.pop_scope() {
+445:                            self.diagnostics.push(format!("Warning: pop_scope in call_value: {}", e));
+450:                if let Err(e) = self.env.pop_scope() {
+451:                    self.diagnostics.push(format!("Warning: pop_scope after call_value: {}", e));
+470:                self.env.push_scope();
+472:                    self.env.set_local(a.name.clone(), Value::String(name_hint.to_string()));
+479:                if let Err(e) = self.env.pop_scope() {
+480:                    self.diagnostics.push(format!("Warning: pop_scope after list-item lambda call: {}", e));
+
+src/interpreter/executor.rs.bak_register_functions
+437:                self.env.push_scope();
+439:                    self.env.set_local(format!("__arg_{}__", i), v.clone());
+446:                        if let Err(e) = self.env.pop_scope() {
+447:                            self.diagnostics.push(format!("Warning: pop_scope in call_value: {}", e));
+452:                if let Err(e) = self.env.pop_scope() {
+453:                    self.diagnostics.push(format!("Warning: pop_scope after call_value: {}", e));
+472:                self.env.push_scope();
+474:                    self.env.set_local(a.name.clone(), Value::String(name_hint.to_string()));
+481:                if let Err(e) = self.env.pop_scope() {
+482:                    self.diagnostics.push(format!("Warning: pop_scope after list-item lambda call: {}", e));
+
+src/interpreter/executor.rs.bak_20260316_150546
+435:                self.env.push_scope();
+437:                    self.env.set_local(format!("__arg_{}__", i), v.clone());
+444:                        if let Err(e) = self.env.pop_scope() {
+445:                            self.diagnostics.push(format!("Warning: pop_scope in call_value: {}", e));
+450:                if let Err(e) = self.env.pop_scope() {
+451:                    self.diagnostics.push(format!("Warning: pop_scope after call_value: {}", e));
+470:                self.env.push_scope();
+472:                    self.env.set_local(a.name.clone(), Value::String(name_hint.to_string()));
+479:                if let Err(e) = self.env.pop_scope() {
+480:                    self.diagnostics.push(format!("Warning: pop_scope after list-item lambda call: {}", e));
+
+src/interpreter/int_api.rs
+117:        // Environment does not expose `set` — use set_local to bind in the module scope.
+119:        e.set_local(name.to_string(), val);
+
+src/interpreter/executor.rs.bak_20260316_054208
+435:                self.env.push_scope();
+437:                    self.env.set_local(format!("__arg_{}__", i), v.clone());
+444:                        if let Err(e) = self.env.pop_scope() {
+445:                            self.diagnostics.push(format!("Warning: pop_scope in call_value: {}", e));
+450:                if let Err(e) = self.env.pop_scope() {
+451:                    self.diagnostics.push(format!("Warning: pop_scope after call_value: {}", e));
+470:                self.env.push_scope();
+472:                    self.env.set_local(a.name.clone(), Value::String(name_hint.to_string()));
+479:                if let Err(e) = self.env.pop_scope() {
+480:                    self.diagnostics.push(format!("Warning: pop_scope after list-item lambda call: {}", e));
+
+src/interpreter/executor.rs
+435:                self.env.push_scope();
+437:                    self.env.set_local(format!("__arg_{}__", i), v.clone());
+444:                        if let Err(e) = self.env.pop_scope() {
+445:                            self.diagnostics.push(format!("Warning: pop_scope in call_value: {}", e));
+450:                if let Err(e) = self.env.pop_scope() {
+451:                    self.diagnostics.push(format!("Warning: pop_scope after call_value: {}", e));
+470:                self.env.push_scope();
+472:                    self.env.set_local(a.name.clone(), Value::String(name_hint.to_string()));
+479:                if let Err(e) = self.env.pop_scope() {
+480:                    self.diagnostics.push(format!("Warning: pop_scope after list-item lambda call: {}", e));
+
+src/interpreter/ex_eval.rs.txt
+114:                        ex_frame::push_scope(&mut exec.env);
+116:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+123:                        ex_frame::pop_scope(&mut exec.env, "DO lambda", &mut exec.diagnostics);
+142:                        ex_frame::push_scope(&mut exec.env);
+144:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+152:                        ex_frame::pop_scope(&mut exec.env, "DO fn", &mut exec.diagnostics);
+160:                    ex_frame::push_scope(&mut exec.env);
+162:                        ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+164:                    ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+170:                    ex_frame::pop_scope(&mut exec.env, "DO thread body", &mut exec.diagnostics);
+197:                        ex_frame::push_scope(&mut exec.env);
+199:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(String::new()));
+208:                        ex_frame::pop_scope(&mut exec.env, &format!("WHILE iter {}", iterations), &mut exec.diagnostics);
+234:                            ex_frame::push_scope(&mut exec.env);
+235:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+236:                            ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+244:                            ex_frame::pop_scope(&mut exec.env, "WHILE lambda", &mut exec.diagnostics);
+260:                            ex_frame::push_scope(&mut exec.env);
+261:                            ex_frame::set_local(&mut exec.env, a.name.clone(), Value::String(target_id.name.clone()));
+262:                            ex_frame::set_local(&mut exec.env, "_thread_id", Value::Number(tid as f64));
+270:                            ex_frame::pop_scope(&mut exec.env, "WHILE body", &mut exec.diagnostics);
+302:            ex_frame::push_scope(&mut exec.env);
+304:                ex_frame::set_local(&mut exec.env, var.name.clone(), element);
+312:            ex_frame::pop_scope(&mut exec.env, "FOR IN", &mut exec.diagnostics);
+409:            exec.env.set_local("__ret_late__".to_string(), pending);
+429:                    exec.env.set_local(err_var.name.clone(), Value::String(err_msg));
+486:                    ex_frame::push_scope(&mut exec.env);
+489:                        ex_frame::set_local(&mut exec.env, param.name.clone(), val);
+496:                            ex_frame::pop_scope(&mut exec.env, "RET.NOW in fn", &mut exec.diagnostics);
+503:                    ex_frame::pop_scope(&mut exec.env, "fn call", &mut exec.diagnostics);
+513:                    ex_frame::push_scope(&mut exec.env);
+515:                        ex_frame::set_local(&mut exec.env, format!("__arg_{}__", i), val.clone());
+522:                            ex_frame::pop_scope(&mut exec.env, "RET.NOW in lambda", &mut exec.diagnostics);
+526:                    ex_frame::pop_scope(&mut exec.env, "lambda call", &mut exec.diagnostics);
+[travis@archlinux pasta]$ 

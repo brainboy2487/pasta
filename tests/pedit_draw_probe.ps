@@ -1,0 +1,56 @@
+FROM term USE tty_available, screen_begin, screen_end, wait_key, draw_buffer_view END
+
+GUTTER = 6
+
+DEF draw_probe(lines, row, col, scroll_row, scroll_col, status_msg):
+    draw_buffer_view(lines, scroll_row, scroll_col, GUTTER, status_msg, row - scroll_row + 1, col - scroll_col + GUTTER + 1)
+END
+
+IF NOT tty_available():
+    PRINT "pedit_draw_probe requires an interactive terminal"
+    sys.exit(1)
+END
+
+lines = [
+    "This probe uses the same full-screen row redraw pattern as pedit.",
+    "Press printable keys, arrows, Ctrl+G, Ctrl+X, or Ctrl+C.",
+    "It does not edit the buffer; it only shows the last key seen."
+]
+
+row = 0
+col = 0
+scroll_row = 0
+scroll_col = 0
+status_msg = "Waiting for key input..."
+
+screen_begin()
+
+WHILE True:
+    draw_probe(lines, row, col, scroll_row, scroll_col, status_msg)
+    key = wait_key(-1)
+    IF key == "":
+        CONTINUE
+    END
+
+    status_msg = "Captured: " + key
+
+    IF key == "Left" AND col > 0:
+        col = col - 1
+    END
+    IF key == "Right":
+        col = col + 1
+    END
+    IF key == "Up" AND row > 0:
+        row = row - 1
+    END
+    IF key == "Down" AND row + 1 < list_len(lines):
+        row = row + 1
+    END
+
+    IF key == "Ctrl+X" OR key == "Ctrl+C":
+        BREAK
+    END
+END
+
+screen_end()
+PRINT status_msg

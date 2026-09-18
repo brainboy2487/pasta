@@ -1,0 +1,315 @@
+# AST constructors for Pasta (translation of src/parser/ast.rs)
+
+# Span
+DEF Span_new(sl, sc, el, ec):
+    RETURN({"start_line": sl, "start_col": sc, "end_line": el, "end_col": ec})
+
+DEF Span_dummy():
+    RETURN(Span_new(0,0,0,0))
+
+# Program
+DEF Program_new(statements):
+    RETURN({"statements": statements})
+
+# Identifier
+DEF Identifier_new(name, span):
+    RETURN({"name": name, "span": span})
+
+# FieldDecl
+DEF FieldDecl_new(name, value, span):
+    RETURN({"name": name, "value": value, "span": span})
+
+# MutEntry and MutBody
+DEF MutBody_Block(stmts): RETURN({"Block": stmts})
+DEF MutBody_Expr(expr): RETURN({"Expr": expr})
+DEF MutEntry_new(name, body, span):
+    RETURN({"name": name, "body": body, "span": span})
+
+# Constructor and MethodDecl
+DEF Constructor_new(params, body, span): RETURN({"params": params, "body": body, "span": span})
+DEF MethodDecl_new(name, params, body, span): RETURN({"name": name, "params": params, "body": body, "span": span})
+
+# SpawnEntry
+DEF SpawnEntry_new(father_expr, father_family, mother_expr, mother_family, actions, span):
+    RETURN({"father_expr": father_expr, "father_family": father_family, "mother_expr": mother_expr, "mother_family": mother_family, "actions": actions, "span": span})
+
+# ModuleImportGroup and UseItem
+DEF UseItem_new(name, alias, span): RETURN({"name": name, "alias": alias, "span": span})
+DEF ModuleImportGroup_new(module, uses, span): RETURN({"module": module, "uses": uses, "span": span})
+
+# ModuleDecl, DefDoUntil
+DEF ModuleDecl_new(name, exports, body, span): RETURN({"name": name, "exports": exports, "body": body, "span": span})
+DEF DefDoUntil_new(name, until_condition, body, lx_condition, span): RETURN({"name": name, "until_condition": until_condition, "body": body, "lx_condition": lx_condition, "span": span})
+
+# ScopeModifier as simple strings: "UnbindScope" / "BindScope"
+
+# Statement variants (externally-tagged to match Rust serde default)
+DEF St_Assignment(target, value, span): RETURN({"Assignment": {"target": target, "value": value, "span": span}})
+DEF St_ConstAssignment(target, value, span): RETURN({"ConstAssignment": {"target": target, "value": value, "span": span}})
+DEF St_MultiAssignment(targets, value, span): RETURN({"MultiAssignment": {"targets": targets, "value": value, "span": span}})
+DEF St_IndexAssignment(target, value, span): RETURN({"IndexAssignment": {"target": target, "value": value, "span": span}})
+
+DEF St_ObjDecl(name, family_group, params, fields, mutation_table, constructor, methods, span):
+    RETURN({"ObjDecl": {"name": name, "family_group": family_group, "params": params, "fields": fields, "mutation_table": mutation_table, "constructor": constructor, "methods": methods, "span": span}})
+
+DEF St_SpawnBlock(entries, span): RETURN({"SpawnBlock": {"entries": entries, "span": span}})
+DEF St_DefDoUntil(v): RETURN({"DefDoUntil": v})
+DEF St_DoBlock(targets, alias, repeats, duration_ms, body, span): RETURN({"DoBlock": {"targets": targets, "alias": alias, "repeats": repeats, "duration_ms": duration_ms, "body": body, "span": span}})
+DEF St_FunctionDef(name, params, body, span): RETURN({"FunctionDef": {"name": name, "params": params, "body": body, "span": span}})
+DEF St_WhileBlock(targets, alias, condition, body, scope_modifier, span): RETURN({"WhileBlock": {"targets": targets, "alias": alias, "condition": condition, "body": body, "scope_modifier": scope_modifier, "span": span}})
+DEF St_ForIn(var, iterable, body, scope_modifier, span): RETURN({"ForIn": {"var": var, "iterable": iterable, "body": body, "scope_modifier": scope_modifier, "span": span}})
+DEF St_ModuleDecl(v): RETURN({"ModuleDecl": v})
+DEF St_Break(span): RETURN({"Break": {"span": span}})
+DEF St_Continue(span): RETURN({"Continue": {"span": span}})
+DEF St_PriorityOverride(higher, lower, span): RETURN({"PriorityOverride": {"higher": higher, "lower": lower, "span": span}})
+DEF St_Constraint(left, relation, right, constraint, span): RETURN({"Constraint": {"left": left, "relation": relation, "right": right, "constraint": constraint, "span": span}})
+DEF St_ExprStmt(expr, span): RETURN({"ExprStmt": {"expr": expr, "span": span}})
+DEF St_FromBlock(imports, span): RETURN({"FromBlock": {"imports": imports, "span": span}})
+DEF St_Print(expr, span): RETURN({"Print": {"expr": expr, "span": span}})
+DEF St_If(conditions, then_body, else_body, scope_modifier, span): RETURN({"If": {"conditions": conditions, "then_body": then_body, "else_body": else_body, "scope_modifier": scope_modifier, "span": span}})
+DEF St_End(span): RETURN({"End": {"span": span}})
+DEF St_RetNow(value, span): RETURN({"RetNow": {"value": value, "span": span}})
+DEF St_RetLate(value, condition, span): RETURN({"RetLate": {"value": value, "condition": condition, "span": span}})
+DEF St_AttemptBlock(err_var, try_body, else_body, span): RETURN({"AttemptBlock": {"err_var": err_var, "try_body": try_body, "else_body": else_body, "span": span}})
+DEF St_TryBlock(try_body, else_body, span): RETURN({"TryBlock": {"try_body": try_body, "else_body": else_body, "span": span}})
+
+DEF St_LoopBlock(name, body, span): RETURN({"LoopBlock": {"name": name, "body": body, "span": span}})
+DEF St_GotoLabel(label, span): RETURN({"GotoLabel": {"label": label, "span": span}})
+DEF St_GotoBlock(name, body, span): RETURN({"GotoBlock": {"name": name, "body": body, "span": span}})
+DEF St_Pull(dtype, explicit_ptr, args, target, span): RETURN({"Pull": {"dtype": dtype, "explicit_ptr": explicit_ptr, "args": args, "target": target, "span": span}})
+DEF St_Push(dtype, explicit_ptr, value, args, span): RETURN({"Push": {"dtype": dtype, "explicit_ptr": explicit_ptr, "value": value, "args": args, "span": span}})
+DEF St_Alloc(target, kind, args, metadata, span): RETURN({"Alloc": {"target": target, "kind": kind, "args": args, "metadata": metadata, "span": span}})
+DEF St_Free(pointer_expr, span): RETURN({"Free": {"pointer_expr": pointer_expr, "span": span}})
+DEF St_Info(pointer_expr, target, span): RETURN({"Info": {"pointer_expr": pointer_expr, "target": target, "span": span}})
+DEF St_Seek(pointer_expr, offset_expr, span): RETURN({"Seek": {"pointer_expr": pointer_expr, "offset_expr": offset_expr, "span": span}})
+DEF St_Swap(var1, var2, span): RETURN({"Swap": {"var1": var1, "var2": var2, "span": span}})
+DEF St_Other(kind, payload, span): RETURN({"Other": {"kind": kind, "payload": payload, "span": span}})
+DEF St_UseUnsafe(write_access, span): RETURN({"UseUnsafe": {"write_access": write_access, "span": span}})
+
+# RetLateCondition helpers
+DEF RetLate_AfterMs(expr): RETURN({"AfterMs": expr})
+DEF RetLate_WhenCalled(name): RETURN({"WhenCalled": name})
+
+# Expr variants
+DEF Expr_Number(n, span): RETURN({"Number": [n, span]})
+DEF Expr_String(s, span): RETURN({"String": [s, span]})
+DEF Expr_Bool(b, span): RETURN({"Bool": [b, span]})
+DEF Expr_None(span): RETURN({"None": span})
+DEF Expr_Identifier(id): RETURN({"Identifier": id})
+DEF Expr_ConstructorCall(family_name, args, span): RETURN({"ConstructorCall": {"family_name": family_name, "args": args, "span": span}})
+DEF Expr_Combine(left, right, span): RETURN({"Combine": {"left": left, "right": right, "span": span}})
+DEF Expr_Reassign(target_family, expr, span): RETURN({"Reassign": {"target_family": target_family, "expr": expr, "span": span}})
+DEF Expr_Binary(op, left, right, span): RETURN({"Binary": {"op": op, "left": left, "right": right, "span": span}})
+DEF Expr_Call(callee, args, span): RETURN({"Call": {"callee": callee, "args": args, "span": span}})
+DEF Expr_List(items, span): RETURN({"List": {"items": items, "span": span}})
+DEF Expr_Raw(s, span): RETURN({"Raw": [s, span]})
+DEF Expr_Lambda(stmts, span): RETURN({"Lambda": [stmts, span]})
+DEF Expr_TensorBuilder(expr, span): RETURN({"TensorBuilder": {"expr": expr, "span": span}})
+DEF Expr_Index(base, indices, span): RETURN({"Index": {"base": base, "indices": indices, "span": span}})
+DEF Expr_Ref(kind, target, metadata, span): RETURN({"Ref": {"kind": kind, "target": target, "metadata": metadata, "span": span}})
+DEF Expr_ObjFamNew(group, mutable, parent_a, parent_b, span): RETURN({"ObjFamNew": {"group": group, "mutable": mutable, "parent_a": parent_a, "parent_b": parent_b, "span": span}})
+DEF Expr_DoesParentExist(target, span): RETURN({"DoesParentExist": {"target": target, "span": span}})
+DEF Expr_Dict(pairs, span): RETURN({"Dict": {"pairs": pairs, "span": span}})
+
+# BinaryOp helpers: represent as variant name string (e.g. "Add", "Sub")
+# RelationToken
+DEF RelationToken_new(text, span): RETURN({"text": text, "span": span})
+
+# Convenience: build a Program from statements list
+DEF build_program(stmts): RETURN(Program_new(stmts))
+
+# Normalize parser-produced dicts ("type": "X") into serde-style externally-tagged variants
+
+# Convert parser span {line,col} into full Span struct {start_line,start_col,end_line,end_col} if needed
+DEF parser_span_to_Span(s):
+    IF s == None: RETURN(Span_dummy()) END
+    IF has_key(s, "start_line") AND has_key(s, "start_col"):
+        RETURN({"start_line": s["start_line"], "start_col": s["start_col"], "end_line": s["end_line"] IF has_key(s, "end_line") ELSE s["start_line"], "end_col": s["end_col"] IF has_key(s, "end_col") ELSE s["start_col"]})
+    # simple {line, col}
+    IF has_key(s, "line") AND has_key(s, "col"):
+        RETURN({"start_line": s["line"], "start_col": s["col"], "end_line": s["line"], "end_col": s["col"}})
+    # fallback
+    RETURN(Span_dummy())
+
+# Normalize expression produced by parser into Expr_* constructors
+DEF normalize_expr(e):
+    IF e == None: RETURN(e) END
+    IF NOT is_dict(e): RETURN(e) END
+    IF has_key(e, "type"):
+        t = e["type"]
+        IF t == "Number":
+            val = e["value"] IF has_key(e, "value") ELSE 0.0
+            span = parser_span_to_Span(e["span"] IF has_key(e, "span") ELSE None)
+            RETURN(Expr_Number(val, span))
+        END
+        IF t == "String":
+            v = e["value"] IF has_key(e, "value") ELSE ""
+            span = parser_span_to_Span(e["span"] IF has_key(e, "span") ELSE None)
+            RETURN(Expr_String(v, span))
+        END
+        IF t == "Bool":
+            v = e["value"] IF has_key(e, "value") ELSE False
+            span = parser_span_to_Span(e["span"] IF has_key(e, "span") ELSE None)
+            RETURN(Expr_Bool(v, span))
+        END
+        IF t == "None":
+            span = parser_span_to_Span(e["span"] IF has_key(e, "span") ELSE None)
+            RETURN(Expr_None(span))
+        END
+        IF t == "Identifier":
+            id = Identifier_new(e["name"], parser_span_to_Span(e["span"] IF has_key(e, "span") ELSE None))
+            RETURN(Expr_Identifier(id))
+        END
+        IF t == "Call":
+            callee = normalize_expr(e["callee"]) IF has_key(e, "callee") ELSE None
+            args = []
+            FOR a IN e["args"] IF has_key(e, "args") ELSE []:
+                args = list_concat(args, [normalize_expr(a)])
+            END
+            span = parser_span_to_Span(e["span"] IF has_key(e, "span") ELSE None)
+            RETURN(Expr_Call(callee, args, span))
+        END
+        IF t == "Binary":
+            op = e["op"]
+            left = normalize_expr(e["left"]) IF has_key(e, "left") ELSE None
+            right = normalize_expr(e["right"]) IF has_key(e, "right") ELSE None
+            span = parser_span_to_Span(e["span"] IF has_key(e, "span") ELSE None)
+            RETURN(Expr_Binary(op, left, right, span))
+        END
+        IF t == "List":
+            items = []
+            FOR it IN e["items"]:
+                items = list_concat(items, [normalize_expr(it)])
+            END
+            span = parser_span_to_Span(e["span"] IF has_key(e, "span") ELSE None)
+            RETURN(Expr_List(items, span))
+        END
+        IF t == "Index":
+            base = normalize_expr(e["base"]) IF has_key(e, "base") ELSE None
+            idxs = []
+            FOR it IN e["indices"] IF has_key(e, "indices") ELSE []:
+                idxs = list_concat(idxs, [normalize_expr(it)])
+            END
+            span = parser_span_to_Span(e["span"] IF has_key(e, "span") ELSE None)
+            RETURN(Expr_Index(base, idxs, span))
+        END
+        IF t == "Ref":
+            kind = e["kind"] IF has_key(e, "kind") ELSE ""
+            target = normalize_expr(e["target"]) IF has_key(e, "target") ELSE None
+            metadata = []
+            FOR kv IN e["metadata"] IF has_key(e, "metadata") ELSE []:
+                metadata = list_concat(metadata, [[kv[0], normalize_expr(kv[1])]])
+            END
+            span = parser_span_to_Span(e["span"] IF has_key(e, "span") ELSE None)
+            RETURN(Expr_Ref(kind, target, metadata, span))
+        END
+        IF t == "ObjFamNew":
+            group = e["group"]
+            mutable = e["mutable"] IF has_key(e, "mutable") ELSE False
+            pa = normalize_expr(e["parent_a"]) IF has_key(e, "parent_a") ELSE None
+            pb = normalize_expr(e["parent_b"]) IF has_key(e, "parent_b") ELSE None
+            span = parser_span_to_Span(e["span"] IF has_key(e, "span") ELSE None)
+            RETURN(Expr_ObjFamNew(group, mutable, pa, pb, span))
+        END
+        IF t == "Dict":
+            pairs = []
+            FOR kv IN e["pairs"] IF has_key(e, "pairs") ELSE []:
+                pairs = list_concat(pairs, [[normalize_expr(kv[0]), normalize_expr(kv[1])]])
+            END
+            span = parser_span_to_Span(e["span"] IF has_key(e, "span") ELSE None)
+            RETURN(Expr_Dict(pairs, span))
+        END
+        # Fallback: wrap raw
+        RETURN(Expr_Raw(str(e), Span_dummy()))
+    END
+    # If already normalized (externally-tagged), return as-is
+    RETURN(e)
+
+# Normalize a statement produced by parser
+DEF normalize_statement(s):
+    IF s == None: RETURN(s) END
+    IF NOT is_dict(s): RETURN(s) END
+    IF has_key(s, "type"):
+        t = s["type"]
+        IF t == "Assignment":
+            target = s["target"]
+            # target might be Identifier dict
+            id = Identifier_new(target["name"], parser_span_to_Span(target["span"])) IF is_dict(target) AND has_key(target, "name") ELSE target
+            val = normalize_expr(s["value"]) IF has_key(s, "value") ELSE None
+            span = parser_span_to_Span(s["span"] IF has_key(s, "span") ELSE None)
+            RETURN(St_Assignment(id, val, span))
+        END
+        IF t == "MultiAssignment":
+            targets = []
+            FOR tt IN s["targets"]:
+                targets = list_concat(targets, [Identifier_new(tt["name"], parser_span_to_Span(tt["span"]))])
+            END
+            value = normalize_expr(s["value"]) IF has_key(s, "value") ELSE None
+            span = parser_span_to_Span(s["span"] IF has_key(s, "span") ELSE None)
+            RETURN(St_MultiAssignment(targets, value, span))
+        END
+        IF t == "ObjDecl":
+            name = Identifier_new(s["name"]["name"], parser_span_to_Span(s["name"]["span"])) IF is_dict(s["name"]) ELSE s["name"]
+            fields = []
+            FOR f IN s["fields"] IF has_key(s, "fields") ELSE []:
+                fields = list_concat(fields, [FieldDecl_new(Identifier_new(f["name"]["name"], parser_span_to_Span(f["name"]["span"])), normalize_expr(f["value"]), parser_span_to_Span(f["span"]) )])
+            END
+            # mutation_table, constructor, methods left raw for now
+            span = parser_span_to_Span(s["span"] IF has_key(s, "span") ELSE None)
+            RETURN(St_ObjDecl(name, s["family_group"], s["params"] IF has_key(s, "params") ELSE [], fields, s["mutation_table"] IF has_key(s, "mutation_table") ELSE [], s["constructor"] IF has_key(s, "constructor") ELSE None, s["methods"] IF has_key(s, "methods") ELSE [], span))
+        END
+        IF t == "ExprStmt":
+            expr = normalize_expr(s["expr"]) IF has_key(s, "expr") ELSE None
+            span = parser_span_to_Span(s["span"] IF has_key(s, "span") ELSE None)
+            RETURN(St_ExprStmt(expr, span))
+        END
+        IF t == "Print":
+            expr = normalize_expr(s["expr"]) IF has_key(s, "expr") ELSE None
+            span = parser_span_to_Span(s["span"] IF has_key(s, "span") ELSE None)
+            RETURN(St_Print(expr, span))
+        END
+        IF t == "If":
+            conds = []
+            FOR c IN s["conditions"] IF has_key(s, "conditions") ELSE []:
+                conds = list_concat(conds, [normalize_expr(c)])
+            END
+            then_b = []
+            FOR st IN s["then_body"] IF has_key(s, "then_body") ELSE []:
+                then_b = list_concat(then_b, [normalize_statement(st)])
+            END
+            else_b = None
+            IF has_key(s, "else_body"):
+                temp = []
+                FOR st IN s["else_body"]:
+                    temp = list_concat(temp, [normalize_statement(st)])
+                END
+                else_b = temp
+            END
+            span = parser_span_to_Span(s["span"] IF has_key(s, "span") ELSE None)
+            RETURN(St_If(conds, then_b, else_b, None, span))
+        END
+        IF t == "WhileBlock":
+            targets = []
+            span = parser_span_to_Span(s["span"] IF has_key(s, "span") ELSE None)
+            condition = normalize_expr(s["condition"]) IF has_key(s, "condition") ELSE None
+            body = []
+            FOR st IN s["body"] IF has_key(s, "body") ELSE []:
+                body = list_concat(body, [normalize_statement(st)])
+            END
+            RETURN(St_WhileBlock(targets, None, condition, body, None, span))
+        END
+        # Generic fallback: wrap into Other with payload
+        RETURN(St_Other(t, str(s), parser_span_to_Span(s["span"] IF has_key(s, "span") ELSE None)))
+    END
+    # If already normalized (externally tagged), return as-is
+    RETURN(s)
+
+# Normalize a whole program (list of parser-produced statements)
+DEF normalize_program(stmts):
+    out = []
+    FOR s IN stmts:
+        out = list_concat(out, [normalize_statement(s)])
+    END
+    RETURN(Program_new(out))
+
+# End of ast.ps

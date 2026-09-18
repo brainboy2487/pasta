@@ -1,0 +1,348 @@
+MOD json:
+    export loads, dumps, json_loads, json_dumps
+
+    # json.ps — Minimal pure-Pasta JSON parser and serializer
+    # Provides: loads(s) -> value, dumps(v, indent=None) -> string
+    # This implementation is deliberately simple and written in pure Pasta.
+    # TODO: improve Unicode \uXXXX decoding, streaming, and performance.
+
+    # Helpers
+    DEF _is_ws(ch):
+        IF ch == " " OR ch == "\t" OR ch == "\n" OR ch == "\r": RETURN(True) END
+        RETURN(False)
+    END
+
+    DEF _skip_ws(s, i):
+        n = len(s)
+        WHILE i < n:
+            ch = s[i:i+1]
+            IF _is_ws(ch):
+                i = i + 1
+            ELSE:
+                BREAK
+            END
+        END
+        RETURN(i)
+    END
+
+    # Parse JSON string starting at index i (expects s[i] == '"')
+    # Handles escape sequences including \uXXXX unicode escapes and surrogate pairs.
+    # Returns decoded string and next index.
+    DEF _hex_value(ch):
+        IF ch == '0': RETURN(0) END
+        IF ch == '1': RETURN(1) END
+        IF ch == '2': RETURN(2) END
+        IF ch == '3': RETURN(3) END
+        IF ch == '4': RETURN(4) END
+        IF ch == '5': RETURN(5) END
+        IF ch == '6': RETURN(6) END
+        IF ch == '7': RETURN(7) END
+        IF ch == '8': RETURN(8) END
+        IF ch == '9': RETURN(9) END
+        IF ch == 'A' OR ch == 'a': RETURN(10) END
+        IF ch == 'B' OR ch == 'b': RETURN(11) END
+        IF ch == 'C' OR ch == 'c': RETURN(12) END
+        IF ch == 'D' OR ch == 'd': RETURN(13) END
+        IF ch == 'E' OR ch == 'e': RETURN(14) END
+        IF ch == 'F' OR ch == 'f': RETURN(15) END
+        raise('json: invalid hex digit in unicode escape')
+    END
+
+    DEF _parse_string(s, i):
+        IF i >= len(s) OR s[i:i+1] != '"': raise('json: expected quote at start of string') END
+        i = i + 1
+        buf = ""
+        WHILE i < len(s):
+            ch = s[i:i+1]
+            IF ch == '"':
+                res = {}
+                res["val"] = buf
+                res["i"] = i+1
+                RETURN(res)
+            END
+            IF ch == '\\':
+                # Escape sequence
+                IF i + 1 >= len(s): raise('json: unterminated escape') END
+                esc = s[i+1:i+2]
+                IF esc == '"': buf = buf + '"'; i = i + 2; CONTINUE END
+                ELIF esc == '\\': buf = buf + '\\'; i = i + 2; CONTINUE END
+                ELIF esc == '/': buf = buf + '/'; i = i + 2; CONTINUE END
+                ELIF esc == 'b': buf = buf + '\b'; i = i + 2; CONTINUE END
+                ELIF esc == 'f': buf = buf + '\f'; i = i + 2; CONTINUE END
+                ELIF esc == 'n': buf = buf + '\n'; i = i + 2; CONTINUE END
+                ELIF esc == 'r': buf = buf + '\r'; i = i + 2; CONTINUE END
+                ELIF esc == 't': buf = buf + '\t'; i = i + 2; CONTINUE END
+                ELIF esc == 'u':
+                    # Expect four hex digits after \u
+                    IF i + 6 > len(s): raise('json: invalid unicode escape') END
+                    hx = s[i+2:i+6]
+                    v = 0
+                    FOR k IN range(0, 4):
+                        dch = hx[k:k+1]
+                        dv = _hex_value(dch)
+                        v = v * 16 + dv
+                    END
+                    i = i + 6
+                    # Handle surrogate pair
+                    IF v >= 55296 AND v <= 56319:
+                        # high surrogate; expect \uXXXX low surrogate
+                        IF i + 6 <= len(s) AND s[i:i+2] == '\\u':
+                            hx2 = s[i+2:i+6]
+                            low = 0
+                            FOR k IN range(0, 4):
+                                dch = hx2[k:k+1]
+                                dv = _hex_value(dch)
+                                low = low * 16 + dv
+                            END
+                            IF low >= 56320 AND low <= 57343:
+                                v = 65536 + (v - 55296) * 1024 + (low - 56320)
+                                i = i + 6
+                            ELSE:
+                                raise('json: invalid low surrogate in unicode escape')
+                            END
+                        ELSE:
+                            raise('json: invalid unicode surrogate pair')
+                        END
+                    END
+                    # Convert codepoint to character using builtin unicode_char
+                    chstr = unicode_char(v)
+                    buf = buf + chstr
+                    CONTINUE
+                ELSE:
+                    raise(str.format("json: invalid escape '\\{}'", esc))
+                END
+            END
+            buf = buf + ch
+            i = i + 1
+        END
+        raise('json: unterminated string')
+    END
+
+    # Parse number starting at i
+    DEF _parse_number(s, i):
+        n = len(s)
+        start = i
+        IF i < n AND s[i:i+1] == '-': i = i + 1 END
+        # integer part
+        WHILE i < n AND s[i:i+1] >= '0' AND s[i:i+1] <= '9': i = i + 1 END
+        # fraction
+        IF i < n AND s[i:i+1] == '.':
+            i = i + 1
+            WHILE i < n AND s[i:i+1] >= '0' AND s[i:i+1] <= '9': i = i + 1 END
+        END
+        # exponent
+        IF i < n AND (s[i:i+1] == 'e' OR s[i:i+1] == 'E'):
+            i = i + 1
+            IF i < n AND (s[i:i+1] == '+' OR s[i:i+1] == '-'):
+                i = i + 1
+            END
+            WHILE i < n AND s[i:i+1] >= '0' AND s[i:i+1] <= '9': i = i + 1 END
+        END
+        numstr = s[start:i]
+        # choose int when possible
+        IF str.find(numstr, '.') == -1 AND str.find(numstr, 'e') == -1 AND str.find(numstr, 'E') == -1:
+            TRY:
+                RETURN({"val": int(numstr), "i": i})
+            EXCEPT:
+                RETURN({"val": float(numstr), "i": i})
+            END
+        END
+        RETURN({"val": float(numstr), "i": i})
+    END
+
+    # Parse literals true/false/null
+    DEF _parse_true(s, i):
+        IF s[i:i+4] == 'true': RETURN({"val": True, "i": i+4}) END
+        raise("json: invalid token, expected true")
+    END
+    DEF _parse_false(s, i):
+        IF s[i:i+5] == 'false': RETURN({"val": False, "i": i+5}) END
+        raise("json: invalid token, expected false")
+    END
+    DEF _parse_null(s, i):
+        IF s[i:i+4] == 'null': RETURN({"val": None, "i": i+4}) END
+        raise("json: invalid token, expected null")
+    END
+
+    # Forward declaration
+    DEF _parse_value(s, i): RETURN(None) END
+
+    # Parse array
+    DEF _parse_array(s, i):
+        # expects '[' at s[i]
+        i = i + 1
+        i = _skip_ws(s, i)
+        arr = []
+        IF i < len(s) AND s[i:i+1] == ']': RETURN({"val": arr, "i": i+1}) END
+        WHILE True:
+            res = _parse_value(s, i)
+            arr.append(res["val"])   # append parsed element
+            i = res["i"]
+            i = _skip_ws(s, i)
+            IF i >= len(s): raise("json: unterminated array") END
+            ch = s[i:i+1]
+            IF ch == ',': i = i + 1; i = _skip_ws(s, i); CONTINUE END
+            ELIF ch == ']': RETURN({"val": arr, "i": i+1}) END
+            ELSE: raise("json: expected ',' or ']' in array") END
+        END
+    END
+
+    # Parse object
+    DEF _parse_object(s, i):
+        # expects '{' at s[i]
+        i = i + 1
+        i = _skip_ws(s, i)
+        obj = {}
+        IF i < len(s) AND s[i:i+1] == '}': RETURN({"val": obj, "i": i+1}) END
+        WHILE True:
+            # key must be string
+            IF i >= len(s) OR s[i:i+1] != '"': raise("json: object keys must be strings") END
+            key_res = _parse_string(s, i)
+            key = key_res["val"]
+            i = key_res["i"]
+            i = _skip_ws(s, i)
+            IF i >= len(s) OR s[i:i+1] != ':': raise("json: expected ':' after object key") END
+            i = i + 1
+            i = _skip_ws(s, i)
+            val_res = _parse_value(s, i)
+            obj[key] = val_res["val"]
+            i = val_res["i"]
+            i = _skip_ws(s, i)
+            IF i >= len(s): raise("json: unterminated object") END
+            ch = s[i:i+1]
+            IF ch == ',': i = i + 1; i = _skip_ws(s, i); CONTINUE END
+            ELIF ch == '}': RETURN({"val": obj, "i": i+1}) END
+            ELSE: raise("json: expected ',' or '}' in object") END
+        END
+    END
+
+    # Main value parser
+    DEF _parse_value(s, i):
+        i = _skip_ws(s, i)
+        IF i >= len(s): raise("json: unexpected end of input") END
+        ch = s[i:i+1]
+        IF ch == '"': RETURN(_parse_string(s, i)) END
+        IF ch == '{': RETURN(_parse_object(s, i)) END
+        IF ch == '[': RETURN(_parse_array(s, i)) END
+        IF ch == 't': RETURN(_parse_true(s, i)) END
+        IF ch == 'f': RETURN(_parse_false(s, i)) END
+        IF ch == 'n': RETURN(_parse_null(s, i)) END
+        # number or invalid
+        IF ch == '-' OR (ch >= '0' AND ch <= '9'):
+            RETURN(_parse_number(s, i))
+        END
+        raise(str.format("json: unexpected character '{}' at {}", ch, i))
+    END
+
+    # Public API: loads
+    DEF loads(s):
+        IF type(s) != str: raise("json.loads expects a string") END
+        res = _parse_value(s, 0)
+        i = _skip_ws(s, res["i"])  # allow trailing whitespace
+        IF i != len(s): raise("json.loads: trailing data after value") END
+        RETURN(res["val"])
+    END
+
+    # Serializer helpers
+    DEF _is_string_like(v):
+        IF type(v) == str: RETURN(True) END
+        IF type(v) == dict AND has_key(v, "String"): RETURN(True) END
+        RETURN(False)
+    END
+
+    DEF _get_string(v):
+        IF type(v) == str: RETURN(v) END
+        IF type(v) == dict AND has_key(v, "String"): RETURN(v["String"]) END
+        raise("json.dumps: expected string-like for key or value")
+    END
+
+    DEF _escape_string(s):
+        out = ""
+        FOR i IN range(0, len(s)):
+            c = s[i:i+1]
+            IF c == '"': out = out + '\\"'
+            ELIF c == '\\': out = out + '\\\\'
+            ELIF c == '\n': out = out + '\\n'
+            ELIF c == '\r': out = out + '\\r'
+            ELIF c == '\t': out = out + '\\t'
+            ELIF c == '\b': out = out + '\\b'
+            ELIF c == '\f': out = out + '\\f'
+            ELSE: out = out + c
+            END
+        END
+        RETURN(out)
+    END
+
+    DEF _serialize(v, indent, level):
+        # unwrap some wrapper types
+        IF type(v) == dict AND has_key(v, "Dict"): v = v["Dict"] END
+        IF type(v) == dict AND has_key(v, "String"): v = v["String"] END
+
+        IF type(v) == str:
+            RETURN('"' + _escape_string(v) + '"')
+        END
+        IF type(v) == bool:
+            RETURN('true' IF v ELSE 'false')
+        END
+        IF v == None:
+            RETURN('null')
+        END
+        IF type(v) == int OR type(v) == float:
+            RETURN(str(v))
+        END
+        IF type(v) == list:
+            items = []
+            FOR e IN v:
+                items.append(_serialize(e, indent, level+1))
+            END
+            IF indent != None:
+                sep = ',\n'
+                pad = ' ' * (indent * (level+1))
+                inner = sep.join([pad + it for it in items])
+                return '\n' + inner + '\n' + (' ' * (indent * level))
+            END
+            RETURN('[' + ','.join(items) + ']')
+        END
+        IF type(v) == dict:
+            entries = []
+            # keys must be strings (or string-wrapped)
+            FOR k IN v:
+                ks = _get_string(k) IF type(k) != str ELSE k END
+                vs = v[k]
+                entries.append('"' + _escape_string(ks) + '":' + (_serialize(vs, indent, level+1)))
+            END
+            IF indent != None:
+                sep = ',\n'
+                pad = ' ' * (indent * (level+1))
+                inner = sep.join([pad + e for e in entries])
+                RETURN('{\n' + inner + '\n' + (' ' * (indent * level)) + '}')
+            END
+            RETURN('{' + ','.join(entries) + '}')
+        END
+        # fallback: attempt str()
+        RETURN('"' + _escape_string(str(v)) + '"')
+    END
+
+    # Public API: dumps
+    DEF dumps(v, indent=None):
+        # indent: None for compact, or integer number of spaces for pretty
+        IF indent != None:
+            TRY:
+                n = int(indent)
+            EXCEPT:
+                raise("json.dumps: indent must be integer or None")
+            END
+            RETURN(_serialize(v, n, 0))
+        END
+        RETURN(_serialize(v, None, 0))
+    END
+
+    # Aliases for compatibility
+    DEF json_loads(s): RETURN(loads(s)) END
+    DEF json_dumps(v, indent=None): RETURN(dumps(v, indent)) END
+
+    # Exported convenience (module-style)
+    DEF json_exports():
+        RETURN(["loads", "dumps", "json_loads", "json_dumps"])
+    END
+END

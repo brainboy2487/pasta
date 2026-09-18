@@ -1,0 +1,423 @@
+# src/lexer/lexer.ps
+# Full, line-for-line transcription of src/lexer/lexer.rs into Pasta script
+# Maintains token kinds, positions, indentation, numeric rules, and alias normalization.
+
+# Token constructor
+DEF Token_new(kind, value, line, col):
+    RETURN({"kind": kind, "value": value, "line": line, "col": col})
+END
+
+# Lexer constructor
+DEF Lexer_new(source):
+    IF source == None:
+        lines = []
+    ELSE:
+        lines = source.split("\n")
+    END
+    RETURN({
+        "lines": lines,
+        "line_num": 0,
+        "col": 0,
+        "indent_stack": [0],
+        "tokens": [],
+        "aliases": AliasTable_new()
+    })
+END
+
+# emit helper
+DEF lexer_emit(obj, kind, value):
+    tok = Token_new(kind, value, obj["line_num"], obj["col"]) 
+    obj["tokens"] = list_concat(obj["tokens"], [tok])
+    RETURN(None)
+END
+
+# Public lex wrapper (panics not modeled)
+DEF Lexer_lex(obj):
+    RETURN(Lexer_lex_result(obj))
+END
+
+# Main lex result: iterate lines, call line lexer, close indents, emit EOF
+DEF Lexer_lex_result(obj):
+    obj["tokens"] = []
+    lines = obj["lines"]
+    i = 0
+    WHILE i < len(lines):
+        raw = lines[i]
+        obj["line_num"] = i + 1
+        res = Lexer_lex_line_result(obj, raw)
+        IF has_key(res, "err"):
+            RETURN(res)
+        END
+        i = i + 1
+    END
+
+    WHILE len(obj["indent_stack"]) > 1:
+        obj["indent_stack"] = obj["indent_stack"][:-1]
+        lexer_emit(obj, "Dedent", None)
+    END
+    lexer_emit(obj, "Eof", None)
+    RETURN(obj["tokens"])
+END
+
+# Lex a single line (faithful to Rust implementation)
+DEF Lexer_lex_line_result(obj, raw):
+    obj["col"] = 0
+
+    # normalize unicode characters
+    normalized = normalize_unicode(raw)
+
+    # count leading indentation from raw (tabs = 4 spaces)
+    leading = 0
+    j = 0
+    WHILE j < len(raw):
+        ch = raw[j]
+        IF ch == ' ': leading = leading + 1
+        ELSEIF ch == '\t': leading = leading + 4
+        ELSE: BREAK END
+        j = j + 1
+    END
+
+    # work on normalized content but preserve raw-derived j for column math
+    s = normalized
+
+    # strip comments ("#")
+    hash_idx = str.find(s, '#')
+    IF hash_idx != -1:
+        s = s[:hash_idx]
+    END
+
+    # if the remaining text (after trimming) is empty, emit Newline and return
+    IF str.strip(s) == "":
+        lexer_emit(obj, "Newline", None)
+        RETURN(None)
+    END
+
+    # indentation handling
+    indent = leading
+    last_indent = obj["indent_stack"][-1]
+    IF indent > last_indent:
+        obj["indent_stack"] = list_concat(obj["indent_stack"], [indent])
+        lexer_emit(obj, "Indent", None)
+    ELSEIF indent < last_indent:
+        WHILE indent < obj["indent_stack"][-1]:
+            IF len(obj["indent_stack"]) > 1:
+                obj["indent_stack"] = obj["indent_stack"][:-1]
+                lexer_emit(obj, "Dedent", None)
+            ELSE:
+                BREAK
+            END
+        END
+    END
+
+    # DO-line context for alias normalization
+    is_do_line = str.lower(str.strip(raw)).startswith("do ")
+
+    # scanning region: start after the leading bytes
+    line_rest = s[j:]
+    k = 0
+
+    WHILE k < len(line_rest):
+        ch = line_rest[k]
+        obj["col"] = j + k + 1
+
+        # whitespace
+        IF ch.isspace():
+            k = k + 1
+            CONTINUE
+        END
+
+        # string literal
+        IF ch == '"':
+            k = k + 1
+            buf = ""
+            escaped = false
+            WHILE k < len(line_rest):
+                c = line_rest[k]
+                IF escaped:
+                    IF c == 'n': buf = buf + '\n' ELSEIF c == 'r': buf = buf + '\r' ELSEIF c == 't': buf = buf + '\t' ELSEIF c == '\\': buf = buf + '\\' ELSEIF c == '"': buf = buf + '"' ELSE: buf = buf + c END
+                    escaped = false
+                ELSEIF c == '\\':
+                    escaped = true
+                ELSEIF c == '"':
+                    BREAK
+                ELSE:
+                    buf = buf + c
+                END
+                k = k + 1
+                obj["col"] = obj["col"] + 1
+            END
+            IF k < len(line_rest) AND line_rest[k] == '"': k = k + 1 END
+            lexer_emit(obj, "String", buf)
+            CONTINUE
+        END
+
+        # Unicode operators
+        IF ch == '≈' OR ch == '\u2248':
+            k = k + 1
+            lexer_emit(obj, "Approx", None)
+            CONTINUE
+        END
+        IF ch == '≠' OR ch == '\u2260':
+            k = k + 1
+            lexer_emit(obj, "NotEq", None)
+            CONTINUE
+        END
+        IF ch == '≡' OR ch == '\u2261':
+            k = k + 1
+            lexer_emit(obj, "StrictEq", None)
+            CONTINUE
+        END
+
+        # '==' or '='
+        IF ch == '=':
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == '=':
+                k = k + 2
+                obj["col"] = obj["col"] + 1
+                lexer_emit(obj, "EqEq", None)
+            ELSE:
+                k = k + 1
+                lexer_emit(obj, "Eq", None)
+            END
+            CONTINUE
+        END
+
+        # '!' and '!='
+        IF ch == '!':
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == '=':
+                k = k + 2
+                obj["col"] = obj["col"] + 1
+                lexer_emit(obj, "Neq", None)
+            ELSE:
+                k = k + 1
+                lexer_emit(obj, "Identifier", "!")
+            END
+            CONTINUE
+        END
+
+        # '<' operators
+        IF ch == '<':
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == '<':
+                k = k + 2; obj["col"] = obj["col"] + 1; lexer_emit(obj, "LShift", None)
+            ELSEIF k + 1 < len(line_rest) AND line_rest[k+1] == '=':
+                k = k + 2; obj["col"] = obj["col"] + 1; lexer_emit(obj, "Lte", None)
+            ELSE:
+                k = k + 1; lexer_emit(obj, "Lt", None)
+            END
+            CONTINUE
+        END
+
+        # '>' operators
+        IF ch == '>':
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == '>':
+                k = k + 2; obj["col"] = obj["col"] + 1; lexer_emit(obj, "RShift", None)
+            ELSEIF k + 1 < len(line_rest) AND line_rest[k+1] == '=':
+                k = k + 2; obj["col"] = obj["col"] + 1; lexer_emit(obj, "Gte", None)
+            ELSE:
+                k = k + 1; lexer_emit(obj, "Gt", None)
+            END
+            CONTINUE
+        END
+
+        # '&' and '&&'
+        IF ch == '&':
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == '&':
+                k = k + 2; obj["col"] = obj["col"] + 1; lexer_emit(obj, "And", None)
+            ELSE:
+                k = k + 1; lexer_emit(obj, "Ampersand", None)
+            END
+            CONTINUE
+        END
+
+        # '|' and '||' and '|>'
+        IF ch == '|':
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == '|':
+                k = k + 2; obj["col"] = obj["col"] + 1; lexer_emit(obj, "Or", None)
+            ELSEIF k + 1 < len(line_rest) AND line_rest[k+1] == '>':
+                k = k + 2; obj["col"] = obj["col"] + 1; lexer_emit(obj, "PipeArrow", None)
+            ELSE:
+                k = k + 1; lexer_emit(obj, "Pipe", None)
+            END
+            CONTINUE
+        END
+
+        # '..' range
+        IF ch == '.' AND k + 1 < len(line_rest) AND line_rest[k+1] == '.':
+            k = k + 2; obj["col"] = obj["col"] + 1; lexer_emit(obj, "DotDot", None); CONTINUE
+        END
+
+        # leading-dot float (.5)
+        IF ch == '.' AND k + 1 < len(line_rest) AND line_rest[k+1].isdigit():
+            buf = "."
+            k = k + 1
+            WHILE k < len(line_rest) AND (line_rest[k].isdigit() OR line_rest[k] == '_'):
+                buf = buf + line_rest[k]
+                k = k + 1
+                obj["col"] = obj["col"] + 1
+            END
+            lexer_emit(obj, "Number", buf)
+            CONTINUE
+        END
+
+        # punctuation and compound forms
+        IF ch == ',': k = k + 1; lexer_emit(obj, "Comma", None); CONTINUE END
+        IF ch == ':':
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == ':': k = k + 2; lexer_emit(obj, "ColonColon", None); CONTINUE
+            ELSE: k = k + 1; lexer_emit(obj, "Colon", None); CONTINUE
+            END
+        END
+        IF ch == '(' : k = k + 1; lexer_emit(obj, "LParen", None); CONTINUE END
+        IF ch == ')' : k = k + 1; lexer_emit(obj, "RParen", None); CONTINUE END
+        IF ch == '[' : k = k + 1; lexer_emit(obj, "LBracket", None); CONTINUE END
+        IF ch == ']' : k = k + 1; lexer_emit(obj, "RBracket", None); CONTINUE END
+        IF ch == '{' : k = k + 1; lexer_emit(obj, "LBrace", None); CONTINUE END
+        IF ch == '}' : k = k + 1; lexer_emit(obj, "RBrace", None); CONTINUE END
+        IF ch == ';' : k = k + 1; lexer_emit(obj, "Semicolon", None); CONTINUE END
+        IF ch == '~' : k = k + 1; lexer_emit(obj, "Tilde", None); CONTINUE END
+        IF ch == '?' : k = k + 1; lexer_emit(obj, "Question", None); CONTINUE END
+
+        IF ch == '+':
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == '=': k = k + 2; lexer_emit(obj, "PlusEq", None); CONTINUE
+            ELSE: k = k + 1; lexer_emit(obj, "Plus", None); CONTINUE
+            END
+        END
+
+        IF ch == '-':
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == '=': k = k + 2; lexer_emit(obj, "MinusEq", None); CONTINUE
+            ELSEIF k + 1 < len(line_rest) AND line_rest[k+1] == '>': k = k + 2; lexer_emit(obj, "Arrow", None); CONTINUE
+            ELSE: k = k + 1; lexer_emit(obj, "Minus", None); CONTINUE
+            END
+        END
+
+        IF ch == '*':
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == '*': k = k + 2; lexer_emit(obj, "StarStar", None); CONTINUE
+            ELSEIF k + 1 < len(line_rest) AND line_rest[k+1] == '=': k = k + 2; lexer_emit(obj, "StarEq", None); CONTINUE
+            ELSE: k = k + 1; lexer_emit(obj, "Star", None); CONTINUE
+            END
+        END
+
+        IF ch == '/':
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == '/': k = k + 2; lexer_emit(obj, "FloorDiv", None); CONTINUE
+            ELSEIF k + 1 < len(line_rest) AND line_rest[k+1] == '=': k = k + 2; lexer_emit(obj, "SlashEq", None); CONTINUE
+            ELSE: k = k + 1; lexer_emit(obj, "Slash", None); CONTINUE
+            END
+        END
+
+        IF ch == '%':
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == '=': k = k + 2; lexer_emit(obj, "PercentEq", None); CONTINUE
+            ELSE: k = k + 1; lexer_emit(obj, "Percent", None); CONTINUE
+            END
+        END
+
+        IF ch == '=':
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == '>': k = k + 2; lexer_emit(obj, "FatArrow", None); CONTINUE
+            ELSE: k = k + 1; lexer_emit(obj, "Eq", None); CONTINUE
+            END
+        END
+
+        IF ch == '|' :
+            IF k + 1 < len(line_rest) AND line_rest[k+1] == '>': k = k + 2; lexer_emit(obj, "PipeArrow", None); CONTINUE
+            ELSE: k = k + 1; lexer_emit(obj, "Pipe", None); CONTINUE
+            END
+        END
+
+        IF ch == '&': k = k + 1; lexer_emit(obj, "Ampersand", None); CONTINUE END
+        IF ch == '.' : k = k + 1; lexer_emit(obj, "Dot", None); CONTINUE END
+        IF ch == '@' : k = k + 1; lexer_emit(obj, "At", None); CONTINUE END
+        IF ch == '^' : k = k + 1; lexer_emit(obj, "Caret", None); CONTINUE END
+        IF ch == '\\' : k = k + 1; lexer_emit(obj, "Backslash", None); CONTINUE END
+
+        # identifiers / numbers
+        IF ch.isalnum() OR ch == '_':
+            buf = ""
+            WHILE k < len(line_rest):
+                c2 = line_rest[k]
+                IF c2.isalnum() OR c2 == '_':
+                    buf = buf + c2; k = k + 1; obj["col"] = obj["col"] + 1; CONTINUE
+                END
+                IF c2 == '.' AND NOT ('.' IN buf) AND len(buf) > 0 AND buf[0].isdigit():
+                    IF k + 1 < len(line_rest) AND line_rest[k+1].isdigit():
+                        buf = buf + '.'; k = k + 1; obj["col"] = obj["col"] + 1; CONTINUE
+                    ELSE:
+                        BREAK
+                    END
+                END
+                BREAK
+            END
+
+            token_text = buf
+            cleaned = token_text.replace("_", "")
+            is_number = False
+            IF cleaned != "":
+                first_ch = cleaned[0]
+                IF first_ch.isdigit() OR first_ch == '.':
+                    TRY:
+                        float(cleaned)
+                        is_number = True
+                    EXCEPT:
+                        is_number = False
+                    END
+                END
+            END
+
+            IF is_number:
+                lexer_emit(obj, "Number", token_text)
+                CONTINUE
+            END
+
+            # duration suffix ms
+            IF len(cleaned) > 2 AND cleaned[-2:].lower() == "ms" AND cleaned[:-2] != "":
+                num_part = cleaned[:-2]
+                TRY:
+                    float(num_part)
+                    orig_num = token_text[:-2]
+                    lexer_emit(obj, "Number", orig_num)
+                    lexer_emit(obj, "Identifier", "ms")
+                    CONTINUE
+                EXCEPT:
+                    # fallthrough
+                END
+            END
+
+            # alias / keyword
+            canonical = AliasTable_normalize(obj["aliases"], token_text, is_do_line)
+            IF canonical != None:
+                ct = canonical
+                IF ct == "TRUE" OR ct == "FALSE": lexer_emit(obj, "Bool", token_text)
+                ELSEIF ct == "NONE" OR ct == "NULL": lexer_emit(obj, "NoneVal", token_text)
+                ELSEIF ct == "OBJ": lexer_emit(obj, "Obj", None)
+                ELSEIF ct == "SPAWN": lexer_emit(obj, "Spawn", None)
+                ELSE:
+                    kw_map = {
+                        "DEF": "Def", "DO": "Do", "AS": "As", "FOR": "For", "IN": "In", "STEP": "Step",
+                        "OVER": "Over", "LIMIT": "Limit", "END": "End", "PAUSE": "Pause", "UNPAUSE": "Unpause",
+                        "RESTART": "Restart", "WAIT": "Wait", "SET": "Set", "IF": "If", "THEN": "Then",
+                        "OTHERWISE": "Otherwise", "ELSE": "Otherwise", "TRY": "Try", "GROUP": "Group", "CLASS": "Class",
+                        "LEARN": "Learn", "BUILD": "Build", "TENSOR": "Tensor", "PRINT": "Print", "WHILE": "While",
+                        "UNLESS": "Unless", "UNTIL": "Until", "PASS": "Pass", "BREAK": "Break", "CONTINUE": "Continue",
+                        "ASSERT": "Assert", "TYPEOF": "Typeof", "YIELD": "Yield", "RETURN": "Return", "MATCH": "Match",
+                        "WHEN": "When", "WITH": "With", "FROM": "From", "CONST": "Const", "EXPORT": "Export",
+                        "AWAIT": "Await", "DRAW": "Draw", "FRAME": "Frame",
+                        "GOTO": "Goto", "LOOP": "Loop", "PULL": "Pull", "PUSH": "Push", "ALLOC": "Alloc",
+                        "FREE": "Free", "INFO": "Info", "REF": "Ref", "SEEK": "Seek", "SWAP": "Swap",
+                        "DOES_PARENT_EXIST": "DoesParentExist",
+                    }
+                    IF has_key(kw_map, ct): lexer_emit(obj, kw_map[ct], token_text)
+                    ELSE: lexer_emit(obj, "Identifier", token_text)
+                    END
+                END
+                CONTINUE
+            END
+
+            lexer_emit(obj, "Identifier", token_text)
+            CONTINUE
+        END
+
+        # fallback single char as identifier
+        ch_str = ch
+        k = k + 1
+        lexer_emit(obj, "Identifier", ch_str)
+    END
+
+    lexer_emit(obj, "Newline", None)
+    RETURN(None)
+END

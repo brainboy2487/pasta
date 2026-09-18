@@ -1,0 +1,76 @@
+# Pasta translation of src/runtime/meatball.rs
+# Minimal Meatball micro-VM scaffolding in Pasta script
+
+DEF Meatball_new(id, config):
+    # executor is represented as a placeholder dict; real executor lives in Rust
+    executor = {"kind": "ExecutorPlaceholder"}
+    inbox = {"type": "ReceiverPlaceholder"}
+    outbox = {"type": "SenderPlaceholder"}
+    mb = {"id": id, "executor": executor, "inbox": inbox, "outbox": outbox, "config": config}
+    RETURN(mb, {"sender": "inbox_sender_placeholder"}, {"receiver": "outbox_receiver_placeholder"})
+END
+
+DEF MeatballHandle_send(handle, msg):
+    # in Pasta placeholder just record last_sent
+    handle["last_sent"] = msg
+    RETURN({"ok": True})
+END
+
+DEF MeatballHandle_recv(handle):
+    # return placeholder message if present
+    IF has_key(handle, "last_sent"):
+        v = handle["last_sent"]
+        handle["last_sent"] = None
+        RETURN(v)
+    END
+    RETURN(None)
+END
+
+DEF MeatballHandle_join(handle):
+    # no-op in placeholder
+    RETURN({"ok": True})
+END
+
+DEF Saucepan_new():
+    RETURN({"next_id": 1, "registry": {}})
+END
+
+DEF Saucepan_spawn(sp, config, f):
+    id = sp["next_id"]
+    sp["next_id"] = id + 1
+    mb, inbox_sender, outbox_receiver = Meatball_new(id, config)
+    # create handle
+    handle = {"id": id, "sender": inbox_sender, "receiver": outbox_receiver, "join": True}
+    # store a clone without join handle
+    reg_handle = dict_copy(handle)
+    reg_handle["join"] = None
+    sp["registry"][str(id)] = reg_handle
+    RETURN(handle)
+END
+
+DEF Saucepan_list(sp):
+    keys = dict_keys(sp["registry"])
+    out = []
+    FOR k IN keys:
+        out = out + [int(k)]
+    END
+    RETURN(out)
+END
+
+DEF Saucepan_kill(sp, id):
+    k = str(id)
+    IF has_key(sp["registry"], k):
+        val = sp["registry"][k]
+        sp["registry"] = dict_remove(sp["registry"], k)
+        RETURN(val)
+    END
+    RETURN(None)
+END
+
+DEF MeatballHandle_clone(handle):
+    new_rx = {"type": "ReceiverPlaceholder"}
+    cloned = {"id": handle["id"], "sender": handle["sender"], "receiver": new_rx, "join": None}
+    RETURN(cloned)
+END
+
+# minimal placeholders complete

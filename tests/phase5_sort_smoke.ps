@@ -1,0 +1,28 @@
+PRINT "=== PHASE5 SORT SMOKE START ==="
+
+nums = sort([3, 1, 2, 1])
+PRINT nums[0]          # 1
+PRINT nums[1]          # 1
+PRINT nums[2]          # 2
+PRINT nums[3]          # 3
+
+fast = sort(["pear", "apple", "banana"], "fast")
+PRINT fast[0]          # apple
+PRINT fast[2]          # pear
+
+slow = sort([4, 3, 2, 1], "slow")
+PRINT slow[0]          # 1
+PRINT slow[3]          # 4
+
+d = sort({"z": 26, "a": 1, "m": 13})
+keys = dict_keys(d)
+PRINT keys[0]          # a
+PRINT keys[1]          # m
+PRINT keys[2]          # z
+PRINT dict_get(d, "a") # 1
+
+compat = list_sort([9, 4, 7, 1])
+PRINT compat[0]        # 1
+PRINT compat[3]        # 9
+
+PRINT "=== PHASE5 SORT SMOKE PASS ==="

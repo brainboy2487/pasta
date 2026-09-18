@@ -1,0 +1,75 @@
+OBJ.NRML Item(name, category, power, value):
+    FIELD name = name
+    FIELD category = category
+    FIELD power = power
+    FIELD value = value
+END
+
+OBJ.NRML Enemy(name, hp, damage, gold):
+    FIELD name = name
+    FIELD hp = hp
+    FIELD damage = damage
+    FIELD gold = gold
+END
+
+OBJ.NRML Player(name, hp, attack, gold):
+    FIELD name = name
+    FIELD hp = hp
+    FIELD attack = attack
+    FIELD gold = gold
+END
+
+inventory = []
+
+sword = Item(1, 2, "Rusty Sword", "weapon", 3, 5)
+potion = Item(1, 2, "Potion", "heal", 6, 4)
+list_append(inventory, sword)
+list_append(inventory, potion)
+
+player = Player(1, 2, "Ari", 20, 4, 0)
+slime = Enemy(1, 2, "Green Slime", 10, 2, 3)
+
+PRINT "=== Pasta Object RPG Demo ==="
+PRINT "Hero " + player["name"] + " enters the ruins."
+PRINT "Starter inventory: " + str(list_len(inventory))
+
+player["attack"] = player["attack"] + sword["power"]
+PRINT "Equipped " + sword["name"] + " -> ATK " + str(player["attack"])
+
+PRINT "Encounter: " + slime["name"] + " (HP " + str(slime["hp"]) + ")"
+
+damage = player["attack"]
+PRINT player["name"] + " hits " + slime["name"] + " for " + str(damage) + " damage."
+slime["hp"] = slime["hp"] - damage
+IF slime["hp"] < 0:
+    slime["hp"] = 0
+END
+PRINT slime["name"] + " HP is now " + str(slime["hp"])
+
+enemy_damage = slime["damage"]
+PRINT slime["name"] + " hits " + player["name"] + " for " + str(enemy_damage) + " damage."
+player["hp"] = player["hp"] - enemy_damage
+PRINT player["name"] + " HP is now " + str(player["hp"])
+
+heal = potion["power"]
+PRINT player["name"] + " uses " + potion["name"] + " and heals " + str(heal) + " HP."
+player["hp"] = player["hp"] + heal
+PRINT player["name"] + " HP is now " + str(player["hp"])
+
+damage = player["attack"]
+PRINT player["name"] + " hits " + slime["name"] + " for " + str(damage) + " damage."
+slime["hp"] = slime["hp"] - damage
+IF slime["hp"] < 0:
+    slime["hp"] = 0
+END
+PRINT slime["name"] + " HP is now " + str(slime["hp"])
+
+loot = Item(1, 2, "Slime Gel", "loot", 0, 2)
+list_append(inventory, loot)
+player["gold"] = player["gold"] + slime["gold"]
+PRINT slime["name"] + " drops " + loot["name"] + " and " + str(slime["gold"]) + " gold."
+
+PRINT "Final gold: " + str(player["gold"])
+PRINT "Final inventory: " + str(list_len(inventory))
+PRINT "First item: " + inventory[0]["name"]
+PRINT "Last item: " + inventory[2]["name"]

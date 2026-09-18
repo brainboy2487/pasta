@@ -1,0 +1,9 @@
+{"id": "hello", "key": "hello", "responses": ["hello"], "type": "other"}
+{"id": "a", "key": "a", "responses": ["a"], "type": "other"}
+{"id": "corpus", "key": "corpus", "responses": ["corpus"], "type": "other"}
+{"id": "is", "key": "is", "responses": ["is"], "type": "other"}
+{"id": "mage", "key": "mage", "responses": ["mage"], "type": "other"}
+{"id": "this", "key": "this", "responses": ["this"], "type": "other"}
+{"id": "tiny", "key": "tiny", "responses": ["tiny"], "type": "other"}
+{"id": "training", "key": "training", "responses": ["training"], "type": "other"}
+{"id": "world", "key": "world", "responses": ["world"], "type": "other"}

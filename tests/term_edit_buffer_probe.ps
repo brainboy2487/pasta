@@ -1,0 +1,9 @@
+lines = ["first line", "second line"]
+result = TERM_EDIT_BUFFER(lines, "Ctrl+O/Ctrl+X/Ctrl+C return or 10s auto-timeout", 0, 0, 10000)
+
+PRINT "action=" + result[1]
+PRINT "row=" + str(result[2]) + " col=" + str(result[3])
+PRINT "line0=" + result[0][0]
+IF list_len(result[0]) > 1:
+    PRINT "line1=" + result[0][1]
+END

@@ -1,0 +1,32 @@
+# tokens.ps — TokenType and Token translation of src/lexer/tokens.rs
+
+# TokenType represented as strings in token.kind for compatibility with parser.ps
+DEF TokenType_all():
+    RETURN([
+        "Number","String","StringFragment","InterpStart","InterpEnd","Bool","NoneVal",
+        "Identifier",
+        "Def","Do","As","For","In","Step","Over","Limit","End","Pause","Unpause","Restart","Wait","Set","If","Then","Otherwise","Try","Group","Class","Learn","Build","Tensor","Print","And","Or","Not","While",
+        "Obj","Spawn",
+        "Pipe","PipeOr","PipeBoth","PipeMap",
+        "Plus","Minus","Star","Slash","At","Percent","Caret","Eq","EqEq","Neq","Lt","Gt","Lte","Gte","Approx","NotEq","StrictEq",
+        "Dot","DotDot","Comma","Colon","LParen","RParen","LBracket","RBracket","LBrace","RBrace","Semicolon","Ampersand","Tilde","LShift","RShift","StarStar","PlusEq","MinusEq","StarEq","SlashEq","PercentEq","Arrow","FatArrow","Question","ColonColon","FloorDiv","PipeArrow","Backslash","Unless","Until","Pass","Break","Continue","Assert","Typeof","Yield","Return","Match","When","With","From","Const","Export","Await","Draw","Frame",
+        "Goto","Loop","Pull","Push","Alloc","Free","Info","Ref","Seek","Swap","DoesParentExist",
+        "Indent","Dedent","Newline","Eof"
+    ])
+
+# Token constructor
+DEF Token_new(kind, value, line, col):
+    RETURN({"kind": kind, "value": value, "line": line, "col": col})
+
+DEF Token_is_eof(tok):
+    RETURN(tok["kind"] == "Eof")
+
+DEF Token_str(tok):
+    IF tok["value"] != None:
+        RETURN(str.format("{}({})", tok["kind"], tok["value"]))
+    END
+    RETURN(tok["kind"])
+
+# Export convenience
+DEF make_token(kind, value, line, col):
+    RETURN(Token_new(kind, value, line, col))

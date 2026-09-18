@@ -1,0 +1,1458 @@
+// src/parser/parser.rs
+//! Recursive-descent / precedence-climbing parser for PASTA (refactored).
+//!
+//! This parser implements the grammar in `grammar.rs` and produces the AST
+//! defined in `ast.rs`. It supports OBJ.<GROUP>.MUT declarations, SPAWN blocks,
+//! DEF DO ... UNTIL (LX), combines (`+`), `.MUT` style forms in spawn LHS,
+//! and the existing expression/statement forms.
+
+use std::collections::HashMap;
+
+use crate::lexer::{Token, TokenType};
+use super::*;
+use crate::interpreter::errors::messages as err_msg;
+
+/// A parse error with source location and a human-readable message.
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    /// Source span where the error was detected.
+    pub span: Span,
+    /// Human-readable description of what was expected or found.
+    pub message: String,
+}
+
+impl ParseError {
+    /// Construct a `ParseError` at the given source span.
+    pub fn new(span: Span, message: impl Into<String>) -> Self {
+        Self { span, message: message.into() }
+    }
+}
+
+/// Parser structure
+pub struct Parser {
+    tokens: Vec<Token>,
+    pos: usize,
+    prec: HashMap<TokenType, i32>,
+    diagnostics: Vec<ParseError>,
+    eof: Token,
+}
+
+impl Parser {
+    /// Construct a parser from a pre-lexed token stream.
+    pub fn new(tokens: Vec<Token>) -> Self {
+        let mut prec = HashMap::new();
+        // precedence: higher number => binds tighter
+        prec.insert(TokenType::At,       45); // matmul
+        prec.insert(TokenType::Caret,    42); // exponentiation (right-associative, high prec)
+        prec.insert(TokenType::Star,     40);
+        prec.insert(TokenType::Slash,    40);
+        prec.insert(TokenType::Percent,  40); // modulo same level as * /
+        prec.insert(TokenType::Plus,     30);
+        prec.insert(TokenType::Minus,    30);
+        prec.insert(TokenType::EqEq,     20);
+        prec.insert(TokenType::Neq,      20);
+        prec.insert(TokenType::Lt,       20);
+        prec.insert(TokenType::Gt,       20);
+        prec.insert(TokenType::Lte,      20);
+        prec.insert(TokenType::Gte,      20);
+        prec.insert(TokenType::Approx,   20);
+        prec.insert(TokenType::NotEq,    20);
+        prec.insert(TokenType::StrictEq, 20);
+        prec.insert(TokenType::And,      10);
+        prec.insert(TokenType::Or,        5);
+
+        Parser {
+            tokens,
+            pos: 0,
+            prec,
+            diagnostics: Vec::new(),
+            eof: Token::new(TokenType::Eof, None, 0, 0),
+        }
+    }
+
+    /// Parse and return Program plus diagnostics.
+    pub fn parse_with_diagnostics(&mut self) -> (Program, Vec<ParseError>) {
+        let mut stmts = Vec::new();
+        while !self.is_eof() {
+            // At top level, a DEDENT means a block closed — consume it and continue.
+            // parse_statement returns None on DEDENT (without consuming), so we must
+            // consume it here to avoid spinning.
+            if self.check(TokenType::Dedent) { self.advance(); continue; }
+            if let Some(s) = self.parse_statement() {
+                stmts.push(s);
+            }
+        }
+        let diags = std::mem::take(&mut self.diagnostics);
+        (Program::new(stmts), diags)
+    }
+
+    /// Parse and return a Program, discarding diagnostics.
+    /// This restores the legacy `parse()` API used by callers.
+    pub fn parse(&mut self) -> Program {
+        let (program, _diags) = self.parse_with_diagnostics();
+        program
+    }
+
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+
+    fn peek(&self) -> &Token {
+        self.tokens.get(self.pos).unwrap_or(&self.eof)
+    }
+
+    fn advance(&mut self) -> Token {
+        let t = self.tokens.get(self.pos).cloned().unwrap_or_else(|| self.eof.clone());
+        if self.pos < self.tokens.len() { self.pos += 1; }
+        t
+    }
+
+    fn match_token(&mut self, kind: TokenType) -> bool {
+        if self.check(kind.clone()) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn check(&self, kind: TokenType) -> bool {
+        self.peek().kind == kind
+    }
+
+    fn is_eof(&self) -> bool {
+        self.peek().kind == TokenType::Eof
+    }
+
+    fn current_span(&self) -> Span {
+        let t = self.peek();
+        Span::new(t.line, t.col, t.line, t.col)
+    }
+
+    fn get_prec(&self, kind: &TokenType) -> i32 {
+        *self.prec.get(kind).unwrap_or(&0)
+    }
+
+    fn token_to_binop(&self, kind: &TokenType) -> BinaryOp {
+        match kind {
+            TokenType::Plus => BinaryOp::Add,
+            TokenType::Minus => BinaryOp::Sub,
+            TokenType::Star => BinaryOp::Mul,
+            TokenType::Slash => BinaryOp::Div,
+            TokenType::Percent => BinaryOp::Mod,
+            TokenType::Caret => BinaryOp::Pow,
+            TokenType::At => BinaryOp::MatMul,
+            TokenType::EqEq => BinaryOp::Eq,
+            TokenType::Neq => BinaryOp::Neq,
+            TokenType::Lt => BinaryOp::Lt,
+            TokenType::Gt => BinaryOp::Gt,
+            TokenType::Lte => BinaryOp::Lte,
+            TokenType::Gte => BinaryOp::Gte,
+            TokenType::Approx => BinaryOp::Approx,
+            TokenType::NotEq => BinaryOp::NotEq,
+            TokenType::StrictEq => BinaryOp::StrictEq,
+            TokenType::And => BinaryOp::And,
+            TokenType::Or => BinaryOp::Or,
+            _ => BinaryOp::Add, // fallback (shouldn't happen)
+        }
+    }
+
+    fn recover_to_next_statement(&mut self) {
+        while !self.is_eof() && !self.check(TokenType::Newline) && !self.check(TokenType::Dedent) {
+            self.advance();
+        }
+        if self.check(TokenType::Newline) { self.advance(); }
+    }
+
+    // ── Statement parsing ────────────────────────────────────────────────────
+
+    fn parse_statement(&mut self) -> Option<Statement> {
+        // Skip leading newlines
+        while self.check(TokenType::Newline) { self.advance(); }
+        if self.is_eof() { return None; }
+
+        let tok = self.peek().clone();
+        let res = match tok.kind {
+            // DEDENT is a block-end sentinel — return None without consuming.
+            // All body-loops (while !check(Dedent)) check BEFORE calling parse_statement,
+            // so they will see this None and re-check check(Dedent)->true->exit normally.
+            // The only caller that doesn't guard is parse_with_diagnostics (top-level),
+            // which we fix below.
+            TokenType::Dedent => return None,
+            TokenType::Obj => self.parse_obj_decl().map(Some),
+            TokenType::Spawn => self.parse_spawn_block().map(Some),
+            TokenType::Def => self.parse_def_statement().map(Some),
+            TokenType::Try => self.parse_try_statement().map(Some),
+            // set/let/make — lexer emits Set token; consume it then parse assignment
+            TokenType::Set => { self.advance(); self.parse_assignment_statement().map(Some) },
+            TokenType::If => self.parse_if_statement().map(Some),
+            TokenType::Do => self.parse_do_statement().map(Some),
+            TokenType::While => self.parse_while_statement().map(Some),
+            TokenType::For => self.parse_for_in_statement().map(Some),
+            TokenType::Print => self.parse_print_statement().map(Some),
+            TokenType::End => { self.advance(); while self.check(TokenType::Newline) { self.advance(); } Ok(None) },
+            TokenType::Identifier => {
+                // Intercept RET.NOW() and RET.LATE() — lexer emits these as a
+                // single identifier token "RET.NOW" or "RET.LATE" because it
+                // absorbs dots into non-digit-starting identifier buffers.
+                let is_ret = self.peek().value.as_deref()
+                    .map(|s| {
+                        let u = s.to_uppercase();
+                        u.starts_with("RET.NOW") || u.starts_with("RET.LATE")
+                    })
+                    .unwrap_or(false);
+                if is_ret {
+                    self.parse_ret_statement().map(Some)
+                } else if self.peek_is_assign() {
+                    self.parse_assignment_statement().map(Some)
+                } else if self.peek_is_priority_override() {
+                    self.parse_priority_override().map(Some)
+                } else {
+                    self.parse_expr_statement().map(Some)
+                }
+            }
+            _ => self.parse_expr_statement().map(Some),
+        };
+
+        match res {
+            Ok(sopt) => sopt,
+            Err(e) => { self.diagnostics.push(e); self.recover_to_next_statement(); None }
+        }
+    }
+
+    // ── OBJ declaration parsing ──────────────────────────────────────────────
+
+    fn parse_obj_decl(&mut self) -> Result<Statement, ParseError> {
+        // Expect: OBJ . FamilyGroup . MUT Name ( params ) : NEWLINE INDENT { members } DEDENT END
+        let start_tok = self.advance(); // OBJ
+        let start_span = Span::new(start_tok.line, start_tok.col, start_tok.line, start_tok.col);
+
+        // expect Dot
+        if !self.match_token(TokenType::Dot) {
+            return Err(ParseError::new(self.current_span(), "Expected '.' after OBJ".to_string()));
+        }
+
+        // family group: Identifier token (NRML, LIST, ARY, TNSR)
+        if !self.check(TokenType::Identifier) {
+            return Err(ParseError::new(self.current_span(), "Expected family group after OBJ.".to_string()));
+        }
+        let fg_tok = self.advance();
+        let family_group = fg_tok.value.unwrap_or_default();
+
+        // expect Dot
+        if !self.match_token(TokenType::Dot) {
+            return Err(ParseError::new(self.current_span(), "Expected '.' after family group".to_string()));
+        }
+
+        // expect MUT (could be Identifier "MUT" or canonical token via alias)
+        if !self.check(TokenType::Identifier) && !self.check(TokenType::Def) {
+            // allow Identifier "MUT"
+        }
+        // consume token (prefer Identifier)
+        let mut_tok = self.advance();
+        let mut_name = mut_tok.value.unwrap_or_default();
+        if mut_name.to_uppercase() != "MUT" {
+            // tolerate but warn
+        }
+
+        // expect Identifier (object name)
+        if !self.check(TokenType::Identifier) {
+            return Err(ParseError::new(self.current_span(), "Expected object name after MUT".to_string()));
+        }
+        let name_tok = self.advance();
+        let name = Identifier::new(name_tok.value.unwrap_or_default(), Span::new(name_tok.line, name_tok.col, name_tok.line, name_tok.col));
+
+        // params: '(' [ident, ...] ')'
+        let mut params = Vec::new();
+        if self.match_token(TokenType::LParen) {
+            while !self.check(TokenType::RParen) && !self.is_eof() {
+                if self.check(TokenType::Identifier) {
+                    let p = self.advance();
+                    params.push(Identifier::new(p.value.unwrap_or_default(), Span::new(p.line, p.col, p.line, p.col)));
+                }
+                if self.check(TokenType::Comma) { self.advance(); } else { break; }
+            }
+            if !self.match_token(TokenType::RParen) {
+                return Err(ParseError::new(self.current_span(), "Expected ')' after parameter list".to_string()));
+            }
+        }
+
+        // expect Colon
+        if !self.match_token(TokenType::Colon) {
+            return Err(ParseError::new(self.current_span(), "Expected ':' after OBJ header".to_string()));
+        }
+
+        // optional newline then INDENT
+        if self.check(TokenType::Newline) { self.advance(); }
+        if !self.match_token(TokenType::Indent) {
+            return Err(ParseError::new(self.current_span(), "Expected indented body after OBJ header".to_string()));
+        }
+
+        // parse members until Dedent
+        let mut fields = Vec::new();
+        let mut mutation_table = Vec::new();
+        let mut constructor: Option<Constructor> = None;
+        let mut methods = Vec::new();
+
+        while !self.check(TokenType::Dedent) && !self.is_eof() {
+            // skip newlines
+            if self.check(TokenType::Newline) { self.advance(); continue; }
+
+            // lookahead for FIELD, DEF MUTATION_TABLE, CONSTRUCTOR, DEF (method)
+            if self.check(TokenType::Identifier) {
+                let look = self.peek().clone();
+                if let Some(val) = &look.value {
+                    let up = val.to_uppercase();
+                    match up.as_str() {
+                        "FIELD" => {
+                            if let Ok(f) = self.parse_field_decl() { fields.push(f); } else { self.recover_to_next_statement(); }
+                            continue;
+                        }
+                        "DEF" => {
+                            // could be MUTATION_TABLE or method
+                            // peek next tokens to decide
+                            // consume DEF
+                            let pos_before = self.pos;
+                            let _def_tok = self.advance();
+                            if self.check(TokenType::Identifier) {
+                                let next = self.peek().clone();
+                                if let Some(nv) = &next.value {
+                                    if nv.to_uppercase() == "MUTATION_TABLE" {
+                                        // consume and parse mutation table
+                                        let _ = self.advance();
+                                        // expect Colon
+                                        if self.match_token(TokenType::Colon) {
+                                            if self.check(TokenType::Newline) { self.advance(); }
+                                            if self.match_token(TokenType::Indent) {
+                                                // parse mut entries until Dedent
+                                                while !self.check(TokenType::Dedent) && !self.is_eof() {
+                                                    if self.check(TokenType::Newline) { self.advance(); continue; }
+                                                    if self.check(TokenType::Identifier) {
+                                                        let mut_entry = self.parse_mut_entry()?;
+                                                        mutation_table.push(mut_entry);
+                                                    } else {
+                                                        // skip unknown
+                                                        self.advance();
+                                                    }
+                                                }
+                                                // consume Dedent
+                                                if !self.match_token(TokenType::Dedent) {
+                                                    return Err(ParseError::new(self.current_span(), "Expected DEDENT after MUTATION_TABLE body".to_string()));
+                                                }
+                                                // expect END
+                                                if !self.match_token(TokenType::End) {
+                                                    return Err(ParseError::new(self.current_span(), "Expected END after MUTATION_TABLE".to_string()));
+                                                }
+                                                // optional newline
+                                                if self.check(TokenType::Newline) { self.advance(); }
+                                                continue;
+                                            } else {
+                                                return Err(ParseError::new(self.current_span(), "Expected indented MUTATION_TABLE body".to_string()));
+                                            }
+                                        } else {
+                                            return Err(ParseError::new(self.current_span(), "Expected ':' after MUTATION_TABLE".to_string()));
+                                        }
+                                    }
+                                }
+                            }
+                            // not a MUTATION_TABLE; rewind and parse as method
+                            self.pos = pos_before;
+                            let method = self.parse_method_decl()?;
+                            methods.push(method);
+                            continue;
+                        }
+                        "CONSTRUCTOR" => {
+                            let ctor = self.parse_constructor_decl()?;
+                            constructor = Some(ctor);
+                            continue;
+                        }
+                        _ => {
+                            // unknown member; try to parse as statement and ignore
+                            if let Some(_s) = self.parse_statement() { /* ignore */ }
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // fallback: parse statement and ignore
+            if self.parse_statement().is_some() { /* ignore */ }
+        }
+
+        // consume Dedent
+        if !self.match_token(TokenType::Dedent) {
+            return Err(ParseError::new(self.current_span(), "Expected DEDENT after OBJ body".to_string()));
+        }
+
+        // expect END
+        if !self.match_token(TokenType::End) {
+            return Err(ParseError::new(self.current_span(), "Expected END after OBJ declaration".to_string()));
+        }
+
+        // optional newline
+        if self.check(TokenType::Newline) { self.advance(); }
+
+        Ok(Statement::ObjDecl {
+            name,
+            family_group,
+            params,
+            fields,
+            mutation_table,
+            constructor,
+            methods,
+            span: start_span,
+        })
+    }
+
+    fn parse_field_decl(&mut self) -> Result<FieldDecl, ParseError> {
+        // FIELD name = expr NEWLINE
+        let tok = self.advance(); // FIELD
+        let start_span = Span::new(tok.line, tok.col, tok.line, tok.col);
+        if !self.check(TokenType::Identifier) {
+            return Err(ParseError::new(self.current_span(), "Expected identifier after FIELD".to_string()));
+        }
+        let name_tok = self.advance();
+        let name = Identifier::new(name_tok.value.unwrap_or_default(), Span::new(name_tok.line, name_tok.col, name_tok.line, name_tok.col));
+        if !self.match_token(TokenType::Eq) {
+            return Err(ParseError::new(self.current_span(), "Expected '=' in FIELD declaration".to_string()));
+        }
+        let value = self.parse_expression(0);
+        if self.check(TokenType::Newline) { self.advance(); }
+        Ok(FieldDecl { name, value, span: start_span })
+    }
+
+    fn parse_mut_entry(&mut self) -> Result<MutEntry, ParseError> {
+        // MUT name = DO ... END  (or MUT name = DO expr)
+        let mut_tok = self.advance(); // MUT
+        let start_span = Span::new(mut_tok.line, mut_tok.col, mut_tok.line, mut_tok.col);
+        if !self.check(TokenType::Identifier) {
+            return Err(ParseError::new(self.current_span(), "Expected mutation name after MUT".to_string()));
+        }
+        let name_tok = self.advance();
+        let name = Identifier::new(name_tok.value.unwrap_or_default(), Span::new(name_tok.line, name_tok.col, name_tok.line, name_tok.col));
+        if !self.match_token(TokenType::Eq) {
+            return Err(ParseError::new(self.current_span(), "Expected '=' after mutation name".to_string()));
+        }
+        // Expect DO
+        if !self.match_token(TokenType::Do) {
+            return Err(ParseError::new(self.current_span(), "Expected DO in mutation body".to_string()));
+        }
+        // If next is Newline + Indent, parse block
+        if self.check(TokenType::Newline) { self.advance(); }
+        if self.match_token(TokenType::Indent) {
+            let mut body = Vec::new();
+            while !self.check(TokenType::Dedent) && !self.is_eof() {
+                if let Some(s) = self.parse_statement() { body.push(s); }
+            }
+            if !self.match_token(TokenType::Dedent) {
+                return Err(ParseError::new(self.current_span(), "Expected DEDENT after mutation DO body".to_string()));
+            }
+            // expect END
+            if !self.match_token(TokenType::End) {
+                return Err(ParseError::new(self.current_span(), "Expected END after mutation DO block".to_string()));
+            }
+            if self.check(TokenType::Newline) { self.advance(); }
+            Ok(MutEntry { name, body: MutBody::Block(body), span: start_span })
+        } else {
+            // single-line expression until NEWLINE or END token
+            let expr = self.parse_expression(0);
+            // optional END token
+            if self.check(TokenType::End) { self.advance(); }
+            if self.check(TokenType::Newline) { self.advance(); }
+            Ok(MutEntry { name, body: MutBody::Expr(expr), span: start_span })
+        }
+    }
+
+    fn parse_constructor_decl(&mut self) -> Result<Constructor, ParseError> {
+        // CONSTRUCTOR(params): NEWLINE INDENT { statements } DEDENT END NEWLINE?
+        let tok = self.advance(); // CONSTRUCTOR
+        let start_span = Span::new(tok.line, tok.col, tok.line, tok.col);
+        // expect '(' 'params' ')'
+        if !self.match_token(TokenType::LParen) {
+            return Err(ParseError::new(self.current_span(), "Expected '(' after CONSTRUCTOR".to_string()));
+        }
+        // accept any identifier list (commonly "params")
+        let mut params = Vec::new();
+        while !self.check(TokenType::RParen) && !self.is_eof() {
+            if self.check(TokenType::Identifier) {
+                let p = self.advance();
+                params.push(Identifier::new(p.value.unwrap_or_default(), Span::new(p.line, p.col, p.line, p.col)));
+            }
+            if self.check(TokenType::Comma) { self.advance(); } else { break; }
+        }
+        if !self.match_token(TokenType::RParen) {
+            return Err(ParseError::new(self.current_span(), "Expected ')' after constructor params".to_string()));
+        }
+        if !self.match_token(TokenType::Colon) {
+            return Err(ParseError::new(self.current_span(), "Expected ':' after CONSTRUCTOR header".to_string()));
+        }
+        if self.check(TokenType::Newline) { self.advance(); }
+        if !self.match_token(TokenType::Indent) {
+            return Err(ParseError::new(self.current_span(), "Expected indented constructor body".to_string()));
+        }
+        let mut body = Vec::new();
+        while !self.check(TokenType::Dedent) && !self.is_eof() {
+            if let Some(s) = self.parse_statement() { body.push(s); }
+        }
+        if !self.match_token(TokenType::Dedent) {
+            return Err(ParseError::new(self.current_span(), "Expected DEDENT after constructor body".to_string()));
+        }
+        if !self.match_token(TokenType::End) {
+            return Err(ParseError::new(self.current_span(), "Expected END after constructor".to_string()));
+        }
+        if self.check(TokenType::Newline) { self.advance(); }
+        Ok(Constructor { params, body, span: start_span })
+    }
+
+    fn parse_method_decl(&mut self) -> Result<MethodDecl, ParseError> {
+        // DEF name(params): NEWLINE INDENT { statements } DEDENT END
+        let def_tok = self.advance(); // DEF
+        let start_span = Span::new(def_tok.line, def_tok.col, def_tok.line, def_tok.col);
+        if !self.check(TokenType::Identifier) {
+            return Err(ParseError::new(self.current_span(), "Expected method name after DEF".to_string()));
+        }
+        let name_tok = self.advance();
+        let name = Identifier::new(name_tok.value.unwrap_or_default(), Span::new(name_tok.line, name_tok.col, name_tok.line, name_tok.col));
+        // params
+        let mut params = Vec::new();
+        if self.match_token(TokenType::LParen) {
+            while !self.check(TokenType::RParen) && !self.is_eof() {
+                if self.check(TokenType::Identifier) {
+                    let p = self.advance();
+                    params.push(Identifier::new(p.value.unwrap_or_default(), Span::new(p.line, p.col, p.line, p.col)));
+                }
+                if self.check(TokenType::Comma) { self.advance(); } else { break; }
+            }
+            if !self.match_token(TokenType::RParen) {
+                return Err(ParseError::new(self.current_span(), "Expected ')' after method params".to_string()));
+            }
+        }
+        if !self.match_token(TokenType::Colon) {
+            return Err(ParseError::new(self.current_span(), "Expected ':' after method header".to_string()));
+        }
+        if self.check(TokenType::Newline) { self.advance(); }
+        if !self.match_token(TokenType::Indent) {
+            return Err(ParseError::new(self.current_span(), "Expected indented method body".to_string()));
+        }
+        let mut body = Vec::new();
+        while !self.check(TokenType::Dedent) && !self.is_eof() {
+            if let Some(s) = self.parse_statement() { body.push(s); }
+        }
+        if !self.match_token(TokenType::Dedent) {
+            return Err(ParseError::new(self.current_span(), "Expected DEDENT after method body".to_string()));
+        }
+        if !self.match_token(TokenType::End) {
+            return Err(ParseError::new(self.current_span(), "Expected END after method".to_string()));
+        }
+        if self.check(TokenType::Newline) { self.advance(); }
+        Ok(MethodDecl { name, params, body, span: start_span })
+    }
+
+    // ── SPAWN block parsing ──────────────────────────────────────────────────
+
+    fn parse_spawn_block(&mut self) -> Result<Statement, ParseError> {
+        // SPAWN : NEWLINE INDENT { SpawnEntry } DEDENT END
+        let start_tok = self.advance(); // SPAWN
+        let start_span = Span::new(start_tok.line, start_tok.col, start_tok.line, start_tok.col);
+        if !self.match_token(TokenType::Colon) {
+            return Err(ParseError::new(self.current_span(), "Expected ':' after SPAWN".to_string()));
+        }
+        if self.check(TokenType::Newline) { self.advance(); }
+        if !self.match_token(TokenType::Indent) {
+            return Err(ParseError::new(self.current_span(), "Expected indented SPAWN body".to_string()));
+        }
+        let mut entries = Vec::new();
+        while !self.check(TokenType::Dedent) && !self.is_eof() {
+            if self.check(TokenType::Newline) { self.advance(); continue; }
+            // parse spawn entry: LHS ':' NEWLINE INDENT { statements } DEDENT END
+            if let Ok(entry) = self.parse_spawn_entry() {
+                entries.push(entry);
+            } else {
+                self.recover_to_next_statement();
+            }
+        }
+        if !self.match_token(TokenType::Dedent) {
+            return Err(ParseError::new(self.current_span(), "Expected DEDENT after SPAWN body".to_string()));
+        }
+        if !self.match_token(TokenType::End) {
+            return Err(ParseError::new(self.current_span(), "Expected END after SPAWN block".to_string()));
+        }
+        if self.check(TokenType::Newline) { self.advance(); }
+        Ok(Statement::SpawnBlock { entries, span: start_span })
+    }
+
+    fn parse_spawn_entry(&mut self) -> Result<SpawnEntry, ParseError> {
+        // parse LHS (expr . Family . MUT [ @ expr . Family . MUT ]) ':' NEWLINE INDENT actions DEDENT END
+        let start_span = self.current_span();
+        let (father_expr, father_family, mother_expr, mother_family) = self.parse_spawn_lhs()?;
+        if !self.match_token(TokenType::Colon) {
+            return Err(ParseError::new(self.current_span(), "Expected ':' after SPAWN LHS".to_string()));
+        }
+        if self.check(TokenType::Newline) { self.advance(); }
+        if !self.match_token(TokenType::Indent) {
+            return Err(ParseError::new(self.current_span(), "Expected indented SPAWN actions".to_string()));
+        }
+        let mut actions = Vec::new();
+        while !self.check(TokenType::Dedent) && !self.is_eof() {
+            if let Some(s) = self.parse_statement() { actions.push(s); }
+        }
+        if !self.match_token(TokenType::Dedent) {
+            return Err(ParseError::new(self.current_span(), "Expected DEDENT after SPAWN actions".to_string()));
+        }
+        if !self.match_token(TokenType::End) {
+            return Err(ParseError::new(self.current_span(), "Expected END after SPAWN entry".to_string()));
+        }
+        if self.check(TokenType::Newline) { self.advance(); }
+        Ok(SpawnEntry {
+            father_expr,
+            father_family,
+            mother_expr,
+            mother_family,
+            actions,
+            span: start_span,
+        })
+    }
+
+    fn parse_spawn_lhs(&mut self) -> Result<(Expr, Option<String>, Expr, Option<String>), ParseError> {
+        // parse pattern: expr . Family . MUT [ @ expr . Family . MUT ]
+        // parse first expr (could be identifier or call)
+        let father_expr = self.parse_expression(0);
+        let father_family: Option<String>;
+        // expect Dot Family Dot MUT
+        if self.match_token(TokenType::Dot) {
+            if self.check(TokenType::Identifier) {
+                let fg = self.advance();
+                father_family = Some(fg.value.unwrap_or_default());
+                if !self.match_token(TokenType::Dot) {
+                    return Err(ParseError::new(self.current_span(), "Expected '.' after family in spawn LHS".to_string()));
+                }
+                // expect MUT (Identifier "MUT")
+                if self.check(TokenType::Identifier) {
+                    let _mut_tok = self.advance();
+                    // ignore value; presence is enough
+                } else {
+                    return Err(ParseError::new(self.current_span(), "Expected MUT after family in spawn LHS".to_string()));
+                }
+            } else {
+                return Err(ParseError::new(self.current_span(), "Expected family identifier after '.' in spawn LHS".to_string()));
+            }
+        } else {
+            return Err(ParseError::new(self.current_span(), "Expected '.' family qualifier in spawn LHS".to_string()));
+        }
+
+        // optional mother part prefixed by '@'
+        let mut mother_expr = Expr::Raw("".to_string(), Span::dummy());
+        let mut mother_family: Option<String> = None;
+        if self.match_token(TokenType::At) {
+            mother_expr = self.parse_expression(0);
+            if self.match_token(TokenType::Dot) {
+                if self.check(TokenType::Identifier) {
+                    let fg = self.advance();
+                    mother_family = Some(fg.value.unwrap_or_default());
+                    if !self.match_token(TokenType::Dot) {
+                        return Err(ParseError::new(self.current_span(), "Expected '.' after mother family".to_string()));
+                    }
+                    if self.check(TokenType::Identifier) {
+                        let _mut_tok = self.advance(); // MUT
+                    } else {
+                        return Err(ParseError::new(self.current_span(), "Expected MUT after mother family".to_string()));
+                    }
+                } else {
+                    return Err(ParseError::new(self.current_span(), "Expected mother family identifier".to_string()));
+                }
+            } else {
+                return Err(ParseError::new(self.current_span(), "Expected '.' after mother expression in spawn LHS".to_string()));
+            }
+        }
+
+        Ok((father_expr, father_family, mother_expr, mother_family))
+    }
+
+    // ── DEF / IF / DO / PRINT / ASSIGN / PRIORITY ────────────────────────────
+
+    fn parse_def_statement(&mut self) -> Result<Statement, ParseError> {
+        // Support both function defs and DEF DO ... UNTIL (handled separately)
+        let start_tok = self.advance(); // DEF
+        let start_span = Span::new(start_tok.line, start_tok.col, start_tok.line, start_tok.col);
+
+        // If next token is DO -> parse DefDoUntil
+        if self.check(TokenType::Do) {
+            // rewind one token (we consumed DEF), parse DefDoUntil expecting name after DO
+            // Actually grammar: DEF DO name UNTIL cond: ...
+            // We already consumed DEF; ensure DO present
+            if !self.match_token(TokenType::Do) {
+                return Err(ParseError::new(self.current_span(), "Expected DO after DEF".to_string()));
+            }
+            // expect identifier name
+            if !self.check(TokenType::Identifier) {
+                return Err(ParseError::new(self.current_span(), "Expected identifier after DEF DO".to_string()));
+            }
+            let name_tok = self.advance();
+            let name = Identifier::new(name_tok.value.unwrap_or_default(), Span::new(name_tok.line, name_tok.col, name_tok.line, name_tok.col));
+            // expect UNTIL
+            if !self.match_token(TokenType::Identifier) {
+                return Err(ParseError::new(self.current_span(), "Expected UNTIL after DEF DO name".to_string()));
+            }
+            // parse condition expression
+            let cond = self.parse_expression(0);
+            // expect Colon
+            if !self.match_token(TokenType::Colon) {
+                return Err(ParseError::new(self.current_span(), "Expected ':' after DEF DO UNTIL header".to_string()));
+            }
+            if self.check(TokenType::Newline) { self.advance(); }
+            if !self.match_token(TokenType::Indent) {
+                return Err(ParseError::new(self.current_span(), "Expected indented body after DEF DO header".to_string()));
+            }
+            let mut body = Vec::new();
+            while !self.check(TokenType::Dedent) && !self.is_eof() {
+                if let Some(s) = self.parse_statement() { body.push(s); }
+            }
+            if !self.match_token(TokenType::Dedent) {
+                return Err(ParseError::new(self.current_span(), "Expected DEDENT after DEF DO body".to_string()));
+            }
+            if !self.match_token(TokenType::End) {
+                return Err(ParseError::new(self.current_span(), "Expected END after DEF DO body".to_string()));
+            }
+            // optional LX annotation: ( LX UNTIL cond )
+            let mut lx_cond: Option<Expr> = None;
+            if self.match_token(TokenType::LParen) {
+                // expect Identifier LX
+                if self.check(TokenType::Identifier) {
+                    let lx_tok = self.advance();
+                    if lx_tok.value.unwrap_or_default().to_uppercase() == "LX"
+                        && self.match_token(TokenType::Identifier) {
+                            // expect UNTIL then condition
+                            let cond2 = self.parse_expression(0);
+                            lx_cond = Some(cond2);
+                        }
+                }
+                // consume closing paren if present
+                if self.check(TokenType::RParen) { self.advance(); }
+            }
+            if self.check(TokenType::Newline) { self.advance(); }
+            let defdo = DefDoUntil { name, until_condition: cond, body, lx_condition: lx_cond, span: start_span };
+            return Ok(Statement::DefDoUntil(defdo));
+        }
+
+        // Otherwise treat as function def (DEF name DO ... END)
+        // Rewind: we consumed DEF already; expect identifier
+        if !self.check(TokenType::Identifier) {
+            return Err(ParseError::new(self.current_span(), err_msg::EXPECTED_IDENTIFIER_AFTER_DEF));
+        }
+        let name_tok = self.advance();
+        let name = Identifier::new(name_tok.value.unwrap_or_default(), Span::new(name_tok.line, name_tok.col, name_tok.line, name_tok.col));
+        // Optional parameter list: DEF name(param1, param2):
+        let mut params: Vec<Identifier> = Vec::new();
+        if self.check(TokenType::LParen) {
+            self.advance(); // consume '('
+            while !self.check(TokenType::RParen) && !self.is_eof() {
+                if self.check(TokenType::Identifier) {
+                    let p = self.advance();
+                    params.push(Identifier::new(p.value.unwrap_or_default(), Span::new(p.line, p.col, p.line, p.col)));
+                }
+                if self.check(TokenType::Comma) { self.advance(); } else { break; }
+            }
+            if self.check(TokenType::RParen) { self.advance(); } // consume ')'
+        }
+        // Accept either DO or ':' after DEF name / params.
+        if !(self.match_token(TokenType::Do) || self.match_token(TokenType::Colon)) {
+            return Err(ParseError::new(self.current_span(), err_msg::EXPECTED_DO_AFTER_DEF));
+        }
+        // Single-line body: `DEF foo(x): x + 1`  (no newline/indent follows)
+        // Capture everything until end-of-line as an implicit ExprStmt body.
+        if !self.check(TokenType::Newline) && !self.check(TokenType::Indent) && !self.is_eof() {
+            let mut inline_body = Vec::new();
+            while !self.check(TokenType::Newline) && !self.check(TokenType::Eof) && !self.is_eof() {
+                if self.check(TokenType::End) { self.advance(); break; }
+                if let Some(s) = self.parse_statement() { inline_body.push(s); } else { break; }
+            }
+            if self.check(TokenType::Newline) { self.advance(); }
+            self.match_token(TokenType::End);
+            while self.check(TokenType::Newline) { self.advance(); }
+            return Ok(Statement::FunctionDef { name, params, body: inline_body, span: start_span });
+        }
+        if self.check(TokenType::Newline) { self.advance(); }
+        if !self.match_token(TokenType::Indent) {
+            // Tolerate missing indent — treat as empty body rather than hard error
+            self.match_token(TokenType::End);
+            while self.check(TokenType::Newline) { self.advance(); }
+            return Ok(Statement::FunctionDef { name, params, body: vec![], span: start_span });
+        }
+        let mut body = Vec::new();
+        while !self.check(TokenType::Dedent) && !self.is_eof() {
+            // Consume bare End tokens that close nested blocks (WHILE...END, IF...END)
+            // written explicitly inside a DEF body. INDENT/DEDENT already bounds
+            // the nested block; these End tokens are no-ops at this level.
+            if self.check(TokenType::End) {
+                self.advance();
+                while self.check(TokenType::Newline) { self.advance(); }
+                continue;
+            }
+            if let Some(stmt) = self.parse_statement() { body.push(stmt); }
+        }
+        if !self.match_token(TokenType::Dedent) {
+            return Err(ParseError::new(self.current_span(), err_msg::EXPECTED_DEDENT_AFTER_DEF));
+        }
+        // The closing END keyword is optional: some scripts write it explicitly,
+        // others rely on indentation alone. Consume it if present.
+        self.match_token(TokenType::End);
+        while self.check(TokenType::Newline) { self.advance(); }
+        Ok(Statement::FunctionDef { name, params, body, span: start_span })
+    }
+
+    fn parse_ret_statement(&mut self) -> Result<Statement, ParseError> {
+
+        // The lexer absorbs "RET.NOW" and "RET.LATE" as a single Identifier token.
+        let ret_tok = self.advance(); // consume "RET.NOW" or "RET.LATE"
+        let span = Span::new(ret_tok.line, ret_tok.col, ret_tok.line, ret_tok.col);
+        let token_val = ret_tok.value.clone().unwrap_or_default().to_uppercase();
+
+        let variant = if token_val.starts_with("RET.NOW") {
+            "NOW"
+        } else if token_val.starts_with("RET.LATE") {
+            "LATE"
+        } else {
+            return Err(ParseError::new(span,
+                format!("Unknown RET form '{}': expected RET.NOW or RET.LATE", token_val)));
+        };
+
+        match variant {
+            "NOW" => {
+                // consume optional (expr)
+                let value = if self.check(TokenType::LParen) {
+                    self.advance(); // consume '('
+                    // If there's an expression before the closing paren, parse it.
+                    
+                    if !self.check(TokenType::RParen) {
+                        let e = self.parse_expression(0);
+                        // allow trailing ')' if present
+                        if self.check(TokenType::RParen) { self.advance(); }
+                        e
+                    } else {
+                        // empty parentheses: RET.NOW(): expr  OR  RET.NOW()
+                        self.advance(); // consume ')'
+                        // If a colon + expression follows, that IS the return value
+                        if self.check(TokenType::Colon) {
+                            self.advance(); // consume ':'
+                            while self.check(TokenType::Newline) { self.advance(); }
+                            self.parse_expression(0)
+                        } else {
+                            // Truly bare RET.NOW() with no value — return None sentinel
+                            Expr::Number(0.0, span.clone())
+                        }
+                    }
+                } else {
+                    // no paren form; consume optional colon/newlines then parse expression
+                    if self.check(TokenType::Colon) { self.advance(); }
+                    while self.check(TokenType::Newline) { self.advance(); }
+                    self.parse_expression(0)
+                };
+
+                // If paren form was used and a trailing colon remains, skip it
+                if self.check(TokenType::Colon) { self.advance(); }
+                while self.check(TokenType::Newline) { self.advance(); }
+
+                Ok(Statement::RetNow { value, span })
+
+}
+
+            "LATE" => {
+                let condition = if self.check(TokenType::LParen) {
+                    self.advance(); // consume '('
+                    let cond_expr = self.parse_expression(0);
+                    if self.check(TokenType::RParen) { self.advance(); }
+                    match &cond_expr {
+                        Expr::Number(_, _) => RetLateCondition::AfterMs(cond_expr),
+                        _ => RetLateCondition::WhenTrue(cond_expr),
+                    }
+                } else {
+                    RetLateCondition::AfterMs(Expr::Number(0.0, span.clone()))
+                };
+                if self.check(TokenType::Colon) { self.advance(); }
+                while self.check(TokenType::Newline) { self.advance(); }
+                let value = self.parse_expression(0);
+                Ok(Statement::RetLate { value, condition, span })
+            }
+
+            _ => unreachable!(),
+        }
+    }
+
+    fn parse_if_statement(&mut self) -> Result<Statement, ParseError> {
+        let start_tok = self.advance(); // IF
+        let start_span = Span::new(start_tok.line, start_tok.col, start_tok.line, start_tok.col);
+        let mut conditions = vec![self.parse_expression(6)];
+        while self.match_token(TokenType::Or) {
+            conditions.push(self.parse_expression(6));
+        }
+        // Accept: IF cond DO   or   IF cond:
+        if !self.match_token(TokenType::Do) && !self.match_token(TokenType::Colon) {
+            return Err(ParseError::new(self.current_span(), "Expected DO or : after IF condition(s)".to_string()));
+        }
+        let then_body = self.parse_do_body(&start_span)?;
+        // Accept OTHERWISE/else with optional DO or :
+        let else_body = if self.match_token(TokenType::Otherwise) {
+            let _ = self.match_token(TokenType::Do) || self.match_token(TokenType::Colon);
+            Some(self.parse_do_body(&start_span)?)
+        } else { None };
+        while self.check(TokenType::Newline) { self.advance(); }
+        Ok(Statement::If { conditions, then_body, else_body, span: start_span })
+    }
+
+    fn parse_do_statement(&mut self) -> Result<Statement, ParseError> {
+        let start_tok = self.advance(); // DO
+        let start_span = Span::new(start_tok.line, start_tok.col, start_tok.line, start_tok.col);
+        let mut targets: Vec<Identifier> = Vec::new();
+        if self.check(TokenType::Identifier) {
+            loop {
+                let t = self.advance();
+                targets.push(Identifier::new(t.value.unwrap_or_default(), Span::new(t.line, t.col, t.line, t.col)));
+                if self.check(TokenType::Comma) { self.advance(); continue; } else { break; }
+            }
+        }
+        let mut alias: Option<Identifier> = None;
+        if self.match_token(TokenType::As) {
+            if self.check(TokenType::Identifier) {
+                let t = self.advance();
+                alias = Some(Identifier::new(t.value.unwrap_or_default(), Span::new(t.line, t.col, t.line, t.col)));
+            } else {
+                return Err(ParseError::new(self.current_span(), "Expected identifier after AS".to_string()));
+            }
+        }
+        if self.match_token(TokenType::While) {
+            let condition = self.parse_expression(0);
+            let body = self.parse_do_body(&start_span)?;
+            return Ok(Statement::WhileBlock { targets, alias, condition, body, span: start_span });
+        }
+        let mut repeats: Option<Vec<Expr>> = None;
+        if self.match_token(TokenType::For) {
+            let mut reps = Vec::new();
+            loop {
+                reps.push(self.parse_expression(0));
+                if self.check(TokenType::Comma) { self.advance(); } else { break; }
+            }
+            repeats = Some(reps);
+        }
+        let body = self.parse_do_body(&start_span)?;
+        Ok(Statement::DoBlock { targets, alias, repeats, body, span: start_span })
+    }
+
+    fn parse_do_body(&mut self, _start_span: &Span) -> Result<Vec<Statement>, ParseError> {
+        if self.match_token(TokenType::Colon) {
+            if self.check(TokenType::Newline) { self.advance(); }
+            if self.match_token(TokenType::Indent) {
+                let mut body = Vec::new();
+                while !self.check(TokenType::Dedent) && !self.is_eof() {
+                    // Consume explicit End tokens used to close nested blocks
+                    // (e.g. WHILE...END or IF...END written inside this body).
+                    // INDENT/DEDENT already bounded those blocks; these End tokens
+                    // are cosmetic closers at this indentation level.
+                    if self.check(TokenType::End) {
+                        self.advance();
+                        while self.check(TokenType::Newline) { self.advance(); }
+                        continue;
+                    }
+                    if let Some(s) = self.parse_statement() { body.push(s); }
+                }
+                if !self.match_token(TokenType::Dedent) {
+                    return Err(ParseError::new(self.current_span(), "Expected DEDENT after block".to_string()));
+                }
+                return Ok(body);
+            } else {
+                return Ok(Vec::new());
+            }
+        } else if self.check(TokenType::Newline) {
+            self.advance();
+            if self.match_token(TokenType::Indent) {
+                let mut body = Vec::new();
+                while !self.check(TokenType::Dedent) && !self.is_eof() {
+                    // Consume explicit End tokens used to close nested blocks.
+                    if self.check(TokenType::End) {
+                        self.advance();
+                        while self.check(TokenType::Newline) { self.advance(); }
+                        continue;
+                    }
+                    if let Some(s) = self.parse_statement() { body.push(s); }
+                }
+                if !self.match_token(TokenType::Dedent) {
+                    return Err(ParseError::new(self.current_span(), "Expected DEDENT after block".to_string()));
+                }
+                return Ok(body);
+            } else {
+                return Ok(Vec::new());
+            }
+        }
+        // Inline body: `DO print z` — no colon, no newline yet.
+        // Parse statements until end-of-line so `a = DO print z` captures print z.
+        let mut inline = Vec::new();
+        while !self.check(TokenType::Newline) && !self.check(TokenType::Eof) && !self.is_eof() {
+            if self.check(TokenType::End) { self.advance(); break; }
+            if let Some(s) = self.parse_statement() { inline.push(s); } else { break; }
+        }
+        if self.check(TokenType::Newline) { self.advance(); }
+        Ok(inline)
+    }
+
+    fn parse_for_in_statement(&mut self) -> Result<Statement, ParseError> {
+        let start_tok = self.advance(); // FOR
+        let start_span = Span::new(start_tok.line, start_tok.col, start_tok.line, start_tok.col);
+
+        // Expect loop variable identifier
+        if !self.check(TokenType::Identifier) {
+            return Err(ParseError::new(
+                self.current_span(),
+                "Expected identifier after FOR".to_string(),
+            ));
+        }
+        let var_tok = self.advance();
+        let var_span = Span::new(var_tok.line, var_tok.col, var_tok.line, var_tok.col);
+        let var = Identifier::new(var_tok.value.unwrap_or_default(), var_span);
+
+        // Expect IN keyword
+        if !self.match_token(TokenType::In) {
+            return Err(ParseError::new(
+                self.current_span(),
+                "Expected 'IN' after loop variable in FOR loop".to_string(),
+            ));
+        }
+
+        // Parse iterable expression
+        let iterable = self.parse_expression(0);
+
+        // Expect ':' or newline/indent to open body
+        let _ = self.match_token(TokenType::Colon);
+
+        // Parse body
+        let body = self.parse_do_body(&start_span)?;
+
+        Ok(Statement::ForIn { var, iterable, body, span: start_span })
+    }
+
+    fn parse_while_statement(&mut self) -> Result<Statement, ParseError> {
+        let start_tok = self.advance(); // WHILE
+        let start_span = Span::new(start_tok.line, start_tok.col, start_tok.line, start_tok.col);
+        let condition = self.parse_expression(0);
+        if self.match_token(TokenType::Colon) || self.match_token(TokenType::Do) || self.check(TokenType::Newline) {
+            let body = self.parse_do_body(&start_span)?;
+            Ok(Statement::WhileBlock { targets: vec![], alias: None, condition, body, span: start_span })
+        } else {
+            Err(ParseError::new(self.current_span(), "Expected ':' or indented body after WHILE".to_string()))
+        }
+    }
+
+    fn parse_print_statement(&mut self) -> Result<Statement, ParseError> {
+        let t = self.advance(); // PRINT
+        let start_span = Span::new(t.line, t.col, t.line, t.col);
+        let first = self.parse_expression(0);
+        let expr = if self.check(TokenType::Comma) {
+            let mut items = vec![first];
+            while self.check(TokenType::Comma) {
+                self.advance();
+                items.push(self.parse_expression(0));
+            }
+            let end = items.last().unwrap().span();
+            let span = Span::new(start_span.start_line, start_span.start_col, end.end_line, end.end_col);
+            Expr::List { items, span }
+        } else {
+            first
+        };
+        let print_span = expr.span();
+        // Extract identifier before expr is moved into print_stmt,
+        // so we can auto-append an increment for `print VAR WHILE cond`.
+        let loop_var_id: Option<Identifier> = if let Expr::Identifier(ref id) = expr {
+            Some(id.clone())
+        } else {
+            None
+        };
+        let print_stmt = Statement::Print { expr, span: print_span.clone() };
+        if self.match_token(TokenType::While) {
+            let condition = self.parse_expression(0);
+            if self.check(TokenType::Newline) { self.advance(); }
+            let end_span = self.current_span();
+            let while_span = Span::new(start_span.start_line, start_span.start_col, end_span.end_line, end_span.end_col);
+            let mut body = vec![print_stmt];
+            // Auto-append `var = var + 1` when printing a bare identifier.
+            if let Some(id) = loop_var_id {
+                let var_span = id.span.clone();
+                let inc_expr = Expr::Binary {
+                    op: BinaryOp::Add,
+                    left: Box::new(Expr::Identifier(id.clone())),
+                    right: Box::new(Expr::Number(1.0, var_span.clone())),
+                    span: var_span.clone(),
+                };
+                body.push(Statement::Assignment { target: id, value: inc_expr, span: var_span });
+            }
+            return Ok(Statement::WhileBlock { targets: vec![], alias: None, condition, body, span: while_span });
+        }
+        if self.match_token(TokenType::For) {
+            let count_expr = self.parse_expression(0);
+            if self.check(TokenType::Newline) { self.advance(); }
+            let end_span = self.current_span();
+            let for_span = Span::new(start_span.start_line, start_span.start_col, end_span.end_line, end_span.end_col);
+            let dummy_target = Identifier::new("_print_for_".to_string(), for_span.clone());
+            return Ok(Statement::DoBlock { targets: vec![dummy_target], alias: None, repeats: Some(vec![count_expr]), body: vec![print_stmt], span: for_span });
+        }
+        if self.check(TokenType::Newline) { self.advance(); }
+        Ok(print_stmt)
+    }
+
+    fn parse_assignment_statement(&mut self) -> Result<Statement, ParseError> {
+        let id_tok = self.advance();
+        let target = Identifier::new(id_tok.value.clone().unwrap_or_default(), Span::new(id_tok.line, id_tok.col, id_tok.line, id_tok.col));
+        if !self.match_token(TokenType::Eq) {
+            return Err(ParseError::new(self.current_span(), "Expected '=' in assignment".to_string()));
+        }
+        if self.check(TokenType::Print) {
+            let print_stmt = self.parse_print_statement()?;
+            let span = match &print_stmt { Statement::Print { span, .. } => span.clone(), _ => Span::dummy() };
+            let lam = Expr::Lambda(vec![print_stmt], span);
+            return Ok(Statement::Assignment { target: target.clone(), value: lam, span: target.span.clone() });
+        } else if self.check(TokenType::Do) {
+            let do_stmt = self.parse_do_statement()?;
+            let span = match &do_stmt { Statement::WhileBlock { span, .. } => span.clone(), Statement::DoBlock { span, .. } => span.clone(), _ => Span::dummy() };
+            let lam = match do_stmt {
+                Statement::WhileBlock { .. } => Expr::Lambda(vec![do_stmt.clone()], span),
+                Statement::DoBlock { targets, alias: _, repeats: _, body, span: _ } if targets.is_empty() => Expr::Lambda(body.clone(), span),
+                other => Expr::Lambda(vec![other.clone()], span),
+            };
+            return Ok(Statement::Assignment { target: target.clone(), value: lam, span: target.span.clone() });
+        }
+        let first = self.parse_expression(0);
+        let expr = if self.check(TokenType::Comma) {
+            let mut items = vec![first];
+            while self.check(TokenType::Comma) {
+                self.advance();
+                items.push(self.parse_expression(0));
+            }
+            let start = items.first().unwrap().span();
+            let end = items.last().unwrap().span();
+            let span = Span::new(start.start_line, start.start_col, end.end_line, end.end_col);
+            Expr::List { items, span }
+        } else {
+            first
+        };
+        if self.check(TokenType::Newline) { self.advance(); }
+        Ok(Statement::Assignment { target: target.clone(), value: expr, span: target.span.clone() })
+    }
+
+    fn parse_priority_override(&mut self) -> Result<Statement, ParseError> {
+        let a = self.advance();
+        let higher = Identifier::new(a.value.clone().unwrap_or_default(), Span::new(a.line, a.col, a.line, a.col));
+        if !self.match_token(TokenType::Over) {
+            return Err(ParseError::new(self.current_span(), "Expected OVER in priority override".to_string()));
+        }
+        if !self.check(TokenType::Identifier) {
+            return Err(ParseError::new(self.current_span(), "Expected identifier after OVER".to_string()));
+        }
+        let b = self.advance();
+        let lower = Identifier::new(b.value.clone().unwrap_or_default(), Span::new(b.line, b.col, b.line, b.col));
+        if self.check(TokenType::Newline) { self.advance(); }
+        let span = Span::new(a.line, a.col, b.line, b.col);
+        Ok(Statement::PriorityOverride { higher, lower, span })
+    }
+
+    /// Parse an ATTEMPT(err_var) / TRY(err_var) block — pasta try/except.
+    ///
+    /// New form (emits Statement::AttemptBlock):
+    ///   ATTEMPT(err_num):
+    ///       DO:
+    ///           <try-body>
+    ///       END
+    ///   ELSE:
+    ///       DO:
+    ///           <else-body>
+    ///       RET.NOW(err_num)    ← optional; err_num is in scope here
+    ///       END
+    ///   END
+    ///
+    /// Legacy bare form (back-compat, emits Statement::If(true, ...)):
+    ///   TRY:
+    ///     <try-body>
+    ///   OTHERWISE:
+    ///     <fallback>
+    fn parse_try_statement(&mut self) -> Result<Statement, ParseError> {
+        let start_tok = self.advance(); // consume TRY / ATTEMPT
+        let start_span = Span::new(start_tok.line, start_tok.col, start_tok.line, start_tok.col);
+
+        // ── New ATTEMPT(err_var) form ─────────────────────────────────────────
+        if self.check(TokenType::LParen) {
+            self.advance(); // consume `(`
+
+            let err_tok = self.peek().clone();
+            let err_var = if err_tok.kind == TokenType::Identifier {
+                self.advance();
+                Identifier::new(
+                    err_tok.value.clone().unwrap_or_default(),
+                    start_span.clone(),
+                )
+            } else {
+                return Err(ParseError::new(
+                    start_span.clone(),
+                    format!(
+                        "ATTEMPT expects an identifier inside parentheses, got {:?}",
+                        err_tok.kind
+                    ),
+                ));
+            };
+
+            if !self.match_token(TokenType::RParen) {
+                return Err(ParseError::new(
+                    start_span.clone(),
+                    "Expected `)` after ATTEMPT error variable",
+                ));
+            }
+            // optional `:` or `DO` before the indented body
+            let _ = self.match_token(TokenType::Colon) || self.match_token(TokenType::Do);
+
+            let try_body = self.parse_do_body(&start_span)?;
+
+            let else_body = if self.match_token(TokenType::Otherwise) {
+                let _ = self.match_token(TokenType::Do) || self.match_token(TokenType::Colon);
+                self.parse_do_body(&start_span)?
+            } else {
+                vec![]
+            };
+
+            while self.check(TokenType::Newline) { self.advance(); }
+
+            return Ok(Statement::AttemptBlock {
+                err_var,
+                try_body,
+                else_body,
+                span: start_span,
+            });
+        }
+
+        // ── Legacy bare TRY (no parens) — back-compat ────────────────────────
+        let _ = self.match_token(TokenType::Colon) || self.match_token(TokenType::Do);
+
+        let try_body = self.parse_do_body(&start_span)?;
+
+        let else_body = if self.match_token(TokenType::Otherwise) {
+            let _ = self.match_token(TokenType::Do) || self.match_token(TokenType::Colon);
+            Some(self.parse_do_body(&start_span)?)
+        } else {
+            None
+        };
+
+        while self.check(TokenType::Newline) { self.advance(); }
+
+        let cond = Expr::Bool(true, start_span.clone());
+        Ok(Statement::If {
+            conditions: vec![cond],
+            then_body: try_body,
+            else_body,
+            span: start_span,
+        })
+    }
+
+    fn parse_expr_statement(&mut self) -> Result<Statement, ParseError> {
+        let expr = self.parse_expression(0);
+        if self.check(TokenType::Newline) { self.advance(); }
+        let span = expr.span();
+        Ok(Statement::ExprStmt { expr, span })
+    }
+
+    fn peek_is_assign(&self) -> bool {
+        // lookahead for '=' after identifier
+        if self.pos + 1 < self.tokens.len() {
+            return self.tokens[self.pos + 1].kind == TokenType::Eq;
+        }
+        false
+    }
+
+    fn peek_is_priority_override(&self) -> bool {
+        // lookahead for OVER after identifier
+        if self.pos + 1 < self.tokens.len() {
+            return self.tokens[self.pos + 1].kind == TokenType::Over;
+        }
+        false
+    }
+
+    // ── Expression parsing (precedence climbing) ──────────────────────────────
+
+    /// Returns true if `kind` can start a primary expression (and thus
+    /// participate in implicit juxtaposition / space-concat).
+    fn can_start_primary(kind: &TokenType) -> bool {
+        matches!(kind,
+            TokenType::String
+            | TokenType::Number
+            | TokenType::Bool
+            | TokenType::Identifier
+            | TokenType::LParen
+            | TokenType::LBracket
+        )
+    }
+
+    fn parse_expression(&mut self, min_prec: i32) -> Expr {
+        let mut left = self.parse_unary();
+        left = self.parse_postfix(left);
+        loop {
+            let tok = self.peek().clone();
+            let prec = self.get_prec(&tok.kind);
+
+            // Implicit juxtaposition / space-concat:
+            // "Hello " name  =>  "Hello " + name
+            // Only applies at the top level (min_prec == 0) to avoid ambiguity
+            // inside higher-precedence subexpressions, and only when the next
+            // token can start a primary and is NOT a statement-level keyword.
+            if prec == 0 && min_prec == 0 && Self::can_start_primary(&tok.kind)
+                && !matches!(tok.kind, TokenType::Newline | TokenType::Eof
+                    | TokenType::End | TokenType::Otherwise | TokenType::If
+                    | TokenType::While | TokenType::Do | TokenType::Def
+                    | TokenType::Print | TokenType::Set)
+            {
+                let right = self.parse_unary();
+                let right = self.parse_postfix(right);
+                let span = Span::new(left.span().start_line, left.span().start_col,
+                                     right.span().end_line, right.span().end_col);
+                left = Expr::Binary { op: BinaryOp::Add, left: Box::new(left), right: Box::new(right), span };
+                continue;
+            }
+
+            if prec < min_prec || prec == 0 { break; }
+            let op_tok = self.advance();
+            let op = self.token_to_binop(&op_tok.kind);
+            let next_min = prec + 1;
+            let right = self.parse_expression(next_min);
+            let span = Span::new(left.span().start_line, left.span().start_col, right.span().end_line, right.span().end_col);
+            left = Expr::Binary { op, left: Box::new(left), right: Box::new(right), span };
+        }
+        left
+    }
+
+    fn parse_postfix(&mut self, mut expr: Expr) -> Expr {
+        loop {
+            if self.check(TokenType::LBracket) {
+                let bracket_tok = self.advance();
+                let mut indices = Vec::new();
+                while !self.check(TokenType::RBracket) && !self.is_eof() {
+                    indices.push(self.parse_expression(0));
+                    if self.check(TokenType::Comma) { self.advance(); } else { break; }
+                }
+                let end_tok = if self.check(TokenType::RBracket) { self.advance() } else { Token::new(TokenType::RBracket, None, bracket_tok.line, bracket_tok.col) };
+                let span = Span::new(expr.span().start_line, expr.span().start_col, end_tok.line, end_tok.col);
+                expr = Expr::Index { base: Box::new(expr), indices, span };
+            } else {
+                break;
+            }
+        }
+        expr
+    }
+
+    fn parse_unary(&mut self) -> Expr {
+        if self.match_token(TokenType::Minus) {
+            let rhs = self.parse_unary();
+            let zero = Expr::Number(0.0, rhs.span());
+            let span = rhs.span();
+            Expr::Binary { op: BinaryOp::Sub, left: Box::new(zero), right: Box::new(rhs), span }
+        } else if self.match_token(TokenType::Not) {
+            let rhs = self.parse_unary();
+            let zero = Expr::Number(0.0, rhs.span());
+            let span = rhs.span();
+            Expr::Binary { op: BinaryOp::Not, left: Box::new(zero), right: Box::new(rhs), span }
+        } else {
+            self.parse_primary()
+        }
+    }
+
+    fn parse_primary(&mut self) -> Expr {
+        let tok = self.peek().clone();
+        match tok.kind {
+            TokenType::Number => {
+                let t = self.advance();
+                let mut text = t.value.clone().unwrap_or_default();
+                text.retain(|c| c != '_');
+                let n = text.parse::<f64>().unwrap_or(0.0);
+                Expr::Number(n, Span::new(t.line, t.col, t.line, t.col))
+            }
+            TokenType::String => {
+                let t = self.advance();
+                Expr::String(t.value.clone().unwrap_or_default(), Span::new(t.line, t.col, t.line, t.col))
+            }
+            TokenType::Bool => {
+                let t = self.advance();
+                let b = t.value.as_ref().map(|s| s.eq_ignore_ascii_case("true")).unwrap_or(false);
+                Expr::Bool(b, Span::new(t.line, t.col, t.line, t.col))
+            }
+            TokenType::Identifier | TokenType::Class => {
+                // ── lambda expression: lambda param1, param2: expr ────────────
+                if self.peek().value.as_deref().map(|s| s.eq_ignore_ascii_case("lambda")).unwrap_or(false) {
+                    let lam_tok = self.advance(); // consume "lambda"
+                    let lam_span = Span::new(lam_tok.line, lam_tok.col, lam_tok.line, lam_tok.col);
+                    // collect param names until ':'
+                    let mut params: Vec<Identifier> = Vec::new();
+                    while !self.check(TokenType::Colon) && !self.is_eof() && !self.check(TokenType::Newline) {
+                        if self.check(TokenType::Identifier) {
+                            let p = self.advance();
+                            params.push(Identifier::new(p.value.unwrap_or_default(), Span::new(p.line, p.col, p.line, p.col)));
+                        } else if self.check(TokenType::Comma) {
+                            self.advance(); // skip comma between params
+                        } else {
+                            break;
+                        }
+                    }
+                    if self.check(TokenType::Colon) { self.advance(); } // consume ':'
+                    // parse body expression
+                    let body_expr = self.parse_expression(0);
+                    // Build an assignment for each param so the lambda body can reference them,
+                    // then return the expression. We store the lambda as a DEF-style body that
+                    // first binds param names from a magic __args__ list injected at call time.
+                    // For now: build a minimal lambda that uses the param names as globals
+                    // (same pattern as DEF functions — caller sets globals before invoking).
+                    // The body is: [ExprStmt(body_expr)] wrapped in a Lambda.
+                    let body_stmt = Statement::ExprStmt { expr: body_expr.clone(), span: lam_span.clone() };
+                    // Wrap param assignments: each param = __arg_N__ (resolved at call site)
+                    let mut stmts: Vec<Statement> = params.iter().enumerate().map(|(i, p): (usize, &Identifier)| {
+                        Statement::Assignment {
+                            target: p.clone(),
+                            value: Expr::Identifier(Identifier::new(format!("__arg_{}__", i), lam_span.clone())),
+                            span: lam_span.clone(),
+                        }
+                    }).collect();
+                    stmts.push(body_stmt);
+                    return Expr::Lambda(stmts, lam_span);
+                }
+                // ─────────────────────────────────────────────────────────────
+                let id_tok = self.advance();
+                let id = Identifier::new(id_tok.value.clone().unwrap_or_default(), Span::new(id_tok.line, id_tok.col, id_tok.line, id_tok.col));
+                if self.check(TokenType::LParen) {
+                    self.advance(); // consume '('
+                    let mut args = Vec::new();
+                    while !self.check(TokenType::RParen) && !self.is_eof() {
+                        args.push(self.parse_expression(0));
+                        if self.check(TokenType::Comma) { self.advance(); } else { break; }
+                    }
+                    if self.check(TokenType::RParen) {
+                        let r = self.advance();
+                        let span = Span::new(id.span.start_line, id.span.start_col, r.line, r.col);
+                        // emit as a plain Call — executor dispatches to builtin or user fn
+                        return Expr::Call { callee: Box::new(Expr::Identifier(id)), args, span };
+                    }
+                }
+                Expr::Identifier(id)
+            }
+            TokenType::LParen => {
+                self.advance();
+                let e = self.parse_expression(0);
+                if self.check(TokenType::RParen) { self.advance(); }
+                e
+            }
+            TokenType::LBracket => {
+                // list literal
+                self.advance();
+                let mut items = Vec::new();
+                while !self.check(TokenType::RBracket) && !self.is_eof() {
+                    items.push(self.parse_expression(0));
+                    if self.check(TokenType::Comma) { self.advance(); } else { break; }
+                }
+                if self.check(TokenType::RBracket) { let r = self.advance(); let span = Span::new(items.first().map(|i: &Expr| i.span().start_line).unwrap_or(0), 0, r.line, r.col); return Expr::List { items, span }; }
+                Expr::List { items, span: Span::dummy() }
+            }
+            _ => {
+                // fallback: consume token as raw
+                let t = self.advance();
+                Expr::Raw(t.value.unwrap_or_default(), Span::new(t.line, t.col, t.line, t.col))
+            }
+        }
+    }
+}

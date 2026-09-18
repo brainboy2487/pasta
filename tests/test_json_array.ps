@@ -1,0 +1,7 @@
+FROM json USE loads, dumps END
+
+s = read_file("tests/json_array.json")
+v = loads(s)
+PRINT dumps(v)
+IF v[4][2]["seven"] != 7: RAISE("array: nested object mismatch") END
+PRINT "OK: json_array"

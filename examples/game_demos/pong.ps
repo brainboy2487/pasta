@@ -1,0 +1,299 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Pong — examples/game_demos/pong.ps
+#
+# Single-player Pong written in Pasta v0.01a.
+# You control the left paddle; the right paddle is driven by a simple AI.
+#
+# Controls:  W / Up     — move paddle up
+#            S / Down   — move paddle down
+#            Space      — pause / resume
+#            Escape     — quit
+#            Enter      — restart after a winner is declared
+#
+# Run:  cargo run --features x11 -- examples/game_demos/pong.ps
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Window / gameplay constants ────────────────────────────────────────────────
+WIN_W        = 800
+WIN_H        = 480
+FPS          = 60
+SCORE_TO_WIN = 5
+
+PADDLE_W     = 14
+PADDLE_H     = 84
+PADDLE_SPEED = 8
+AI_SPEED     = 6
+
+BALL_SIZE    = 12
+BALL_SPEED_X = 6
+BALL_SPEED_Y = 4
+SERVE_DELAY  = 30
+
+LEFT_X       = 28
+RIGHT_X      = WIN_W - 28 - PADDLE_W
+
+# ── Colors ────────────────────────────────────────────────────────────────────
+COL_BG       = color(12, 16, 24)
+COL_LINE     = color(55, 65, 85)
+COL_PADDLE   = color(220, 225, 235)
+COL_BALL     = color(245, 245, 255)
+COL_SCORE_L  = color(90, 200, 255)
+COL_SCORE_R  = color(255, 140, 120)
+COL_PAUSE    = color(255, 210, 80)
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+DEF mid_paddle_y():
+    RET.NOW(): WIN_H / 2 - PADDLE_H / 2
+END
+
+DEF mid_ball_x():
+    RET.NOW(): WIN_W / 2 - BALL_SIZE / 2
+END
+
+DEF mid_ball_y():
+    RET.NOW(): WIN_H / 2 - BALL_SIZE / 2
+END
+
+DEF clamp(v, low, high):
+    IF v < low:
+        RET.NOW(): low
+    END
+    IF v > high:
+        RET.NOW(): high
+    END
+    RET.NOW(): v
+END
+
+DEF make_ball(direction):
+    vy = BALL_SPEED_Y
+    IF rand.int(0, 1) == 0:
+        vy = 0 - BALL_SPEED_Y
+    END
+    RET.NOW(): {
+        "x": mid_ball_x(),
+        "y": mid_ball_y(),
+        "vx": direction * BALL_SPEED_X,
+        "vy": vy
+    }
+END
+
+DEF bounce_vy(offset):
+    IF offset < -24:
+        RET.NOW(): 0 - BALL_SPEED_Y - 1
+    END
+    IF offset < -8:
+        RET.NOW(): 0 - BALL_SPEED_Y
+    END
+    IF offset > 24:
+        RET.NOW(): BALL_SPEED_Y + 1
+    END
+    IF offset > 8:
+        RET.NOW(): BALL_SPEED_Y
+    END
+    RET.NOW(): 0
+END
+
+DEF fill_box(x, y, w, h, color_value):
+    SET_COLOR(color_value)
+    canvas_fill_rect(win, x, y, x + w, y + h)
+END
+
+DEF draw_score_pips(base_x, score, color_value):
+    i = 0
+    WHILE i < score:
+        fill_box(base_x + i * 18, 20, 12, 12, color_value)
+        i = i + 1
+    END
+END
+
+DEF draw_pause_icon():
+    fill_box(WIN_W / 2 - 24, 20, 10, 28, COL_PAUSE)
+    fill_box(WIN_W / 2 + 14, 20, 10, 28, COL_PAUSE)
+END
+
+DEF draw_scene(left_y, right_y, ball_x, ball_y, left_score, right_score, paused):
+    fill_box(0, 0, WIN_W, WIN_H, COL_BG)
+
+    dash_y = 12
+    WHILE dash_y < WIN_H:
+        fill_box(WIN_W / 2 - 2, dash_y, 4, 18, COL_LINE)
+        dash_y = dash_y + 30
+    END
+
+    draw_score_pips(120, left_score, COL_SCORE_L)
+    draw_score_pips(WIN_W - 120 - SCORE_TO_WIN * 18, right_score, COL_SCORE_R)
+
+    fill_box(LEFT_X, left_y, PADDLE_W, PADDLE_H, COL_PADDLE)
+    fill_box(RIGHT_X, right_y, PADDLE_W, PADDLE_H, COL_PADDLE)
+    fill_box(ball_x, ball_y, BALL_SIZE, BALL_SIZE, COL_BALL)
+
+    IF paused:
+        draw_pause_icon()
+    END
+END
+
+# ── Startup ───────────────────────────────────────────────────────────────────
+win = WINDOW("Pasta Pong", WIN_W, WIN_H)
+SET_DRAW_TARGET(win)
+fps_init(FPS)
+
+PRINT "Pasta Pong — W/S or Up/Down move, Space pauses, Escape quits"
+
+running = true
+WHILE running AND window_poll(win):
+    left_score = 0
+    right_score = 0
+    left_y = mid_paddle_y()
+    right_y = mid_paddle_y()
+    serve_dir = 1
+    ball = make_ball(serve_dir)
+    ball_x = dict_get(ball, "x")
+    ball_y = dict_get(ball, "y")
+    ball_vx = dict_get(ball, "vx")
+    ball_vy = dict_get(ball, "vy")
+    serve_timer = SERVE_DELAY
+    paused = false
+    winner = ""
+
+    PRINT "New Pong match started"
+
+    WHILE running AND window_poll(win) AND winner == "":
+        fps_begin(FPS)
+
+        key = WINDOW_KEY(win)
+        IF key == "Escape":
+            running = false
+        END
+        IF key == " ":
+            IF paused:
+                paused = false
+            OTHERWISE:
+                paused = true
+            END
+        END
+
+        IF NOT paused:
+            IF key == "w" OR key == "W" OR key == "Up":
+                left_y = left_y - PADDLE_SPEED
+            END
+            IF key == "s" OR key == "S" OR key == "Down":
+                left_y = left_y + PADDLE_SPEED
+            END
+            left_y = clamp(left_y, 0, WIN_H - PADDLE_H)
+
+            ball_mid = ball_y + BALL_SIZE / 2
+            ai_mid = right_y + PADDLE_H / 2
+            IF ball_mid < ai_mid - 6:
+                right_y = right_y - AI_SPEED
+            END
+            IF ball_mid > ai_mid + 6:
+                right_y = right_y + AI_SPEED
+            END
+            right_y = clamp(right_y, 0, WIN_H - PADDLE_H)
+
+            IF serve_timer > 0:
+                serve_timer = serve_timer - 1
+            OTHERWISE:
+                ball_x = ball_x + ball_vx
+                ball_y = ball_y + ball_vy
+
+                IF ball_y <= 0:
+                    ball_y = 0
+                    ball_vy = 0 - ball_vy
+                END
+                IF ball_y + BALL_SIZE >= WIN_H:
+                    ball_y = WIN_H - BALL_SIZE
+                    ball_vy = 0 - ball_vy
+                END
+
+                IF ball_vx < 0:
+                    IF ball_x <= LEFT_X + PADDLE_W AND ball_x + BALL_SIZE >= LEFT_X:
+                        IF ball_y + BALL_SIZE >= left_y AND ball_y <= left_y + PADDLE_H:
+                            ball_x = LEFT_X + PADDLE_W
+                            ball_vx = BALL_SPEED_X
+                            offset = ball_y + BALL_SIZE / 2 - (left_y + PADDLE_H / 2)
+                            ball_vy = bounce_vy(offset)
+                        END
+                    END
+                END
+
+                IF ball_vx > 0:
+                    IF ball_x + BALL_SIZE >= RIGHT_X AND ball_x <= RIGHT_X + PADDLE_W:
+                        IF ball_y + BALL_SIZE >= right_y AND ball_y <= right_y + PADDLE_H:
+                            ball_x = RIGHT_X - BALL_SIZE
+                            ball_vx = 0 - BALL_SPEED_X
+                            offset = ball_y + BALL_SIZE / 2 - (right_y + PADDLE_H / 2)
+                            ball_vy = bounce_vy(offset)
+                        END
+                    END
+                END
+
+                IF ball_x < 0 - BALL_SIZE:
+                    right_score = right_score + 1
+                    PRINT "CPU scores — Player " + str(left_score) + " : " + str(right_score) + " CPU"
+                    left_y = mid_paddle_y()
+                    right_y = mid_paddle_y()
+                    serve_dir = 1
+                    ball = make_ball(serve_dir)
+                    ball_x = dict_get(ball, "x")
+                    ball_y = dict_get(ball, "y")
+                    ball_vx = dict_get(ball, "vx")
+                    ball_vy = dict_get(ball, "vy")
+                    serve_timer = SERVE_DELAY
+                END
+
+                IF ball_x > WIN_W:
+                    left_score = left_score + 1
+                    PRINT "Player scores — Player " + str(left_score) + " : " + str(right_score) + " CPU"
+                    left_y = mid_paddle_y()
+                    right_y = mid_paddle_y()
+                    serve_dir = -1
+                    ball = make_ball(serve_dir)
+                    ball_x = dict_get(ball, "x")
+                    ball_y = dict_get(ball, "y")
+                    ball_vx = dict_get(ball, "vx")
+                    ball_vy = dict_get(ball, "vy")
+                    serve_timer = SERVE_DELAY
+                END
+            END
+
+            IF left_score >= SCORE_TO_WIN:
+                winner = "Player"
+                paused = true
+            END
+            IF right_score >= SCORE_TO_WIN:
+                winner = "CPU"
+                paused = true
+            END
+        END
+
+        draw_scene(left_y, right_y, ball_x, ball_y, left_score, right_score, paused)
+        SWAP_BUFFER(win)
+        fps_end()
+        fps_tick()
+    END
+
+    IF winner != "" AND running:
+        PRINT winner + " wins! Press Enter to restart or Escape to quit"
+        WHILE running AND window_poll(win):
+            fps_begin(FPS)
+            draw_scene(left_y, right_y, ball_x, ball_y, left_score, right_score, true)
+            SWAP_BUFFER(win)
+
+            key = WINDOW_KEY(win)
+            IF key == "Enter":
+                BREAK
+            END
+            IF key == "Escape":
+                running = false
+                BREAK
+            END
+
+            fps_end()
+            fps_tick()
+        END
+    END
+END
+
+WINDOW_CLOSE(win)
+PRINT "Pasta Pong exited."

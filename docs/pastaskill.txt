@@ -1,0 +1,286 @@
+Pasta language skill
+
+Use this guide as the current, runtime-verified reference for generating Pasta code in this repository.
+
+-------------
+Primary rules
+-------------
+
+1. Prefer `name = expr` for assignment. `SET`, `LET`, and `MAKE` exist, but `=` is the safest default.
+2. Define functions with `DEF name(args): ... END`.
+3. Prefer `RETURN value` or `RET.NOW(): value`.
+4. Prefer colon-and-indent blocks for larger code and brace blocks only for short control-flow.
+5. Use uppercase statement keywords in generated code: `DEF`, `IF`, `FOR`, `WHILE`, `TRY`, `PRINT`.
+6. Lists use `[]`, dictionaries use `{"key": value}`, and indexing uses `value[index]`.
+7. Many runtime helpers are snake_case builtins such as `list_append`, `dict_get`, `READ_FILE`, `WRITE_LINES`.
+8. Do not generate `GLOB.DEF`; it is planned but not implemented.
+9. For module imports, use `FROM ... USE ... END` for `.pm` modules and `IMPORT` / `INCLUDE` / `REQUIRE` / `USE` only for header-style `.ph` loading.
+10. For terminal UIs, import the `term` module instead of writing raw ANSI management inline.
+
+## Verified syntax patterns
+
+### Functions
+
+```pasta
+DEF add(a, b):
+    RETURN a + b
+END
+
+PRINT add(2, 3)
+```
+
+### Conditionals and loops
+
+```pasta
+total = 0
+FOR n IN [1, 2, 3]:
+    IF n == 2:
+        total = total + 10
+    OTHERWISE:
+        total = total + n
+    END
+END
+
+PRINT total
+```
+
+Brace form also works:
+
+```pasta
+FOR n IN [1, 2, 3] {
+    IF n == 2 {
+        PRINT "two"
+    } OTHERWISE {
+        PRINT n
+    }
+}
+```
+
+### Error handling
+
+```pasta
+TRY:
+    PRINT risky_call()
+OTHERWISE:
+    PRINT "caught error"
+END
+```
+
+### Collections
+
+```pasta
+items = []
+list_append(items, "a")
+list_append(items, "b")
+
+record = {"left": items[0], "right": items[1]}
+PRINT dict_get(record, "left") + ":" + dict_get(record, "right")
+PRINT list_len(items)
+```
+
+### String and list helpers
+
+```pasta
+text = "abcdef"
+PRINT substr(text, 2, 3)
+PRINT join(split("a,b,c", ","), "-")
+
+nums = [1, 2, 3, 4]
+PRINT list_slice(nums, 1, 3)
+```
+
+### File I/O
+
+```pasta
+lines = ["alpha", "beta", "gamma"]
+WRITE_LINES("sample.txt", lines)
+
+loaded = READ_LINES("sample.txt")
+PRINT loaded[1]
+PRINT FILE_EXISTS("sample.txt")
+```
+
+### Headless graphics
+
+```pasta
+c = CANVAS(4, 2)
+DRAW_GRID(c, 2, 1)
+DRAW_GRID_RUNS(c, [
+    [1, 0, 1, 4294967295]
+])
+PRINT canvas_get_pixel(c, 2, 0)
+```
+
+## Module and header imports
+
+### Inline `.pm` module imports
+
+```pasta
+FROM mathutil USE add END
+PRINT add(1, 2)
+```
+
+### Inline alias imports
+
+```pasta
+FROM graphics: USE color_rgb AS rgb END
+PRINT rgb(1, 2, 3)
+```
+
+### Indented `FROM:` form
+
+```pasta
+FROM:
+    term:
+        USE:
+            screen_size
+            wait_key
+        END
+END
+
+PRINT screen_size()
+```
+
+### Header-style import statements
+
+Use these for `.ph`-style loading, not for `.pm` symbol imports.
+
+```pasta
+INCLUDE "headers/common"
+IMPORT "stdlib/math"
+```
+
+A direct path also works:
+
+```pasta
+INCLUDE "/tmp/custom_header.ph"
+```
+
+## Terminal UI patterns
+
+The `term` module is the preferred surface for full-screen terminal programs.
+
+### Basic terminal screen lifecycle
+
+```pasta
+FROM term USE screen_begin, screen_end, write_at, flush_output, wait_key END
+
+screen_begin()
+write_at(1, 1, "hello from term")
+flush_output()
+wait_key(1000)
+screen_end()
+```
+
+### Reading keys
+
+```pasta
+FROM term USE poll_key, wait_key END
+
+key = poll_key()
+IF key == "":
+    key = wait_key(250)
+END
+
+PRINT key
+```
+
+Observed key names include:
+
+- printable characters as literal one-character strings
+- `Left`, `Right`, `Up`, `Down`
+- `Enter`, `Tab`, `Backspace`, `Delete`
+- `Home`, `End`, `PageUp`, `PageDown`
+- control keys like `Ctrl+X`
+
+### Basic editor-style redraw loop
+
+```pasta
+FROM term USE screen_begin, screen_end, clear_row, move_to, write_text, wait_key, flush_output END
+
+screen_begin()
+
+WHILE True:
+    clear_row(1)
+    move_to(1, 1)
+    write_text("Press q to quit")
+    flush_output()
+
+    key = wait_key(250)
+    IF key == "q":
+        BREAK
+    END
+END
+
+screen_end()
+```
+
+## Shell and REPL usage
+
+### REPL meta commands
+
+```text
+:help
+:env
+:threads
+:shell
+```
+
+### Running scripts
+
+```bash
+./target/debug/pasta examples/hello.ps
+./target/debug/pasta -e PRINT 1 + 2
+```
+
+### Shell script execution
+
+Inside `:shell`, both of these are valid:
+
+```text
+run examples/hello.ps
+./some_script.ps
+```
+
+### `pedit` shell builtin
+
+The integrated shell now exposes `pedit` as a command that launches the root `pedit.ps` editor script:
+
+```text
+:shell
+pedit notes.ps
+```
+
+Current verified editor flow:
+
+- opens an empty or existing file
+- moves with arrow keys, Home/End, PageUp/PageDown
+- inserts printable characters and Tab spaces
+- splits lines with Enter
+- merges or deletes with Backspace and Delete
+- saves with `Ctrl+O` or `Ctrl+S`
+- exits with `Ctrl+X`
+
+## Generation guidance
+
+- Keep scripts direct and imperative.
+- Prefer small helper functions over deep nesting.
+- Use current helper names exactly as implemented.
+- Prefer `READ_LINES` / `WRITE_LINES` for text buffers and editors.
+- Prefer `FROM term USE ... END` for text UIs rather than reaching for low-level `term_*` builtins directly.
+- Keep graphics scripts headless when possible so they work in CI.
+- For `.pm` imports, keep module syntax explicit and local:
+  - `FROM module USE name END`
+  - `FROM module: USE name AS alias END`
+- For `.ph` loading, keep the mental model separate:
+  - `IMPORT "path"`
+  - `INCLUDE "path"`
+
+## Avoid these traps
+
+- Do not assume Python syntax works unchanged.
+- Do not use outdated import examples that blur `.pm` modules and `.ph` headers.
+- Do not use `WITH name AS alias` for imports.
+- Do not rely on `GLOB.DEF`.
+- Do not assume every shell command is a language builtin; some flows, like `pedit`, live inside the integrated shell.
+- Do not generate terminal editors against plain `INPUT()` loops when `term` is available.

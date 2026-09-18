@@ -1,0 +1,48 @@
+Plan Overview
+
+Goals (primary)
+- Deterministic, auditable inference with Rule 42 bounded parse steps.
+- CPU-first performance via lazy block contraction and tiered generators (Hot/Warm/Cold).
+- Reproducible vectorization & low-latency retrieval for real‑time QA.
+
+---
+
+High-level roadmap (4 phases, mapped to your doc)
+| Phase | Duration | Key Deliverables | Success Metric |
+|---|---:|---|---:|
+| Phase 0 — Foundation | Days | Heap-based TAP shortlist; Warm inner-loop; Separable Cold generator; microbench harness | TAP selection O(K log S); Warm latency target ≤10ns/elem |
+| Phase 1 — Tuning | 2–4 weeks | Rank sweeps; float32 path; block LRU cache; quantization pipeline | RP cosine ≥0.999 vs golden; stable numeric behavior |
+| Phase 2 — Integration | 4–8 weeks | Deterministic multithreading; dynamic tier policy; TAP budget counters; C ABI + Python FFI | Deterministic outputs across runs; API stability |
+| Phase 3 — Hardening | 8–16 weeks | SIMD intrinsics; embedded integer kernels; telemetry; docs & benchmarks | Production latency SLA; cross-platform benchmarks |
+
+---
+
+Implementation tasks (per module)
+- tap.c: Implement MPHF lookup for features; implement heap-based shortlist; instrument op counters. (MPHF required for O(1) worst-case lookups.)
+- contract.c: Blocked lazy contraction; Warm: store U row-major, V packed-transposed; Cold: separable f(i)g(j) generator.
+- cooc.c: Sparse cooccurrence with 64-bit composite keys; Robin‑Hood hash for speed.
+- rp.c / forwardfeed.c: Deterministic hash_sign64 projection; normalization invariants and golden-test parity.
+- io.c / mmappedindex.c: vectors.bin memory-mapped index; brute-force O(dN) baseline retrieval for prototyping.
+
+---
+
+Testing & validation
+- Unit: Golden Python vs C parity (cosine ≥0.999).
+- Microbench: Block-size sweep, Warm rank sweep, Cold generator latency.
+- Protocol 9: Vectorization smoke test (I/O, numeric stability, RP invariant, deterministic match).
+- Protocol 10: End‑to‑end Vectorize→Retrieve→Response latency ≤5s (local) and qualitative coherence checks.
+
+---
+
+Key decisions & clarifying questions
+- Target hardware (server CPU family, embedded ARM, cache sizes)?
+- Typical n, K, RP_dim, and corpus size (N)?
+- Tolerance ε for omitted mass (W_om) and TAP shortlist S (suggest S ≤ 16)?
+
+---
+
+Risks, mitigations, and trade-offs
+- Memory vs compute trade: Warm reconstruction increases compute; mitigate with SIMD and packed layouts. (SIMD critical in Phase 3.)
+- MPHF generation cost: MPHF is static but may require offline generation; keep fallback safe-path for dynamic vocab.
+- Numerical drift in parallel reductions: enforce fixed reduction trees and 64‑bit accumulators for fixed‑point builds.
+- Retrieval scale: brute-force O(dN) is fine for prototyping; plan HNSW or other ANN for production.

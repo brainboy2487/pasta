@@ -1,0 +1,42 @@
+{"id": "7298cae73bd75008", "key": "nnb", "type": "other", "responses": ["cgetdata"]}
+{"id": "65f9b4173609700c", "key": "content", "type": "other", "responses": ["hashnnparseraddargument--manifest"]}
+{"id": "834e2b235f15101f", "key": "requestsnnfrom", "type": "other", "responses": ["bs4"]}
+{"id": "eaea14393980d033", "key": "script", "type": "other", "responses": ["supports"]}
+{"id": "3230ef40285b5036", "key": "sourcesnnit", "type": "other", "responses": ["writes"]}
+{"id": "3fe235922b671037", "key": "actionstoretrue", "type": "other", "responses": ["helpdo", "helpskip"]}
+{"id": "6fe5df7bc4c6e038", "key": "item", "type": "other", "responses": ["in"]}
+{"id": "7fede48f7ce4e039", "key": "please", "type": "other", "responses": ["build"]}
+{"id": "753422a5532d5039", "key": "textnnnorm", "type": "other", "responses": ["jointextsplitnnelsennnorm"]}
+{"id": "b8ddbb40276ff03b", "key": "--url", "type": "other", "responses": ["url"]}
+{"id": "8130894ca0ee1046", "key": "whitespacennif", "type": "other", "responses": ["textnnnorm"]}
+{"id": "8bd523a5c1b5304a", "key": "entriesnnprintfwrote", "type": "other", "responses": ["lenentries"]}
+{"id": "3acbc336cae4304b", "key": "build", "type": "other", "responses": ["project", "first"]}
+{"id": "dd85e13c28d07056", "key": "exceptionnnpassnnpage", "type": "other", "responses": ["fhttpsenwikipediaorgwikititlennhtml"]}
+{"id": "5862615ebc03f05b", "key": "for", "type": "other", "responses": ["magennthis", "a", "prompt"]}
+{"id": "ee5116e115f15060", "key": "urlendswithjsonnnjurl", "type": "other", "responses": ["urlrstrip"]}
+{"id": "87ae2c4399c16070", "key": "seenhashesnnprintskipping", "type": "other", "responses": ["duplicate"]}
+{"id": "19d2298146e74072", "key": "three", "type": "other", "responses": ["main"]}
+{"id": "a59348b407ad5075", "key": "defaultnonennargs", "type": "other", "responses": ["parserparseargsnnout"]}
+{"id": "bd44a381b1a8908f", "key": "set", "type": "other", "responses": ["of"]}
+{"id": "a477bee38fafd094", "key": "ennprintcoherence", "type": "other", "responses": ["checker"]}
+{"id": "66d9726205687099", "key": "iterate", "type": "other", "responses": ["a", "overrides"]}
+{"id": "2020e437cf8e60a2", "key": "argspromptsplitnnprintgenerating", "type": "other", "responses": ["reply"]}
+{"id": "1c994449ea2110ab", "key": "python3", "type": "other", "responses": ["pythoncoherencecheckerpynntrynncoh"]}
+{"id": "7d1cf541a15c70b1", "key": "openoutpath", "type": "other", "responses": ["w"]}
+{"id": "570e2e8ff2ace0b5", "key": "truennexcept", "type": "other", "responses": ["exceptionnnrequests", "exception"]}
+{"id": "99307931733030d0", "key": "pgettextseparator", "type": "other", "responses": ["striptruennif"]}
+{"id": "aff42e6bc20c80d7", "key": "entriesnnprintno", "type": "other", "responses": ["entries"]}
+{"id": "3e31b0cc61a410da", "key": "noscript", "type": "other", "responses": ["header"]}
+{"id": "d0595387674300de", "key": "fetchwikipediatitlennelif", "type": "other", "responses": ["redditcom"]}
+{"id": "1859e0cb2dc530e3", "key": "urlparseargsurlnntitle", "type": "other", "responses": ["ppathrsplit"]}
+{"id": "cb4e7d619d3c70e7", "key": "writes", "type": "other", "responses": ["output"]}
+{"id": "eb5091b03aa890ef", "key": "outnnprintrunning", "type": "other", "responses": ["training"]}
+{"id": "5476916ee040c0f9", "key": "project", "type": "other", "responses": ["first"]}
+{"id": "4f24006e9db38103", "key": "defaultsourcesnnif", "type": "other", "responses": ["argssourcesnntrynnwith"]}
+{"id": "632822e958825114", "key": "listnnfor", "type": "other", "responses": ["item"]}
+{"id": "e23a87fcbfaa8125", "key": "error", "type": "other", "responses": ["strenncontinuennif"]}
+{"id": "6f9c39d1f637912b", "key": "argsmanifestnnexcept", "type": "other", "responses": ["exception"]}
+{"id": "7b64b7f46a104132", "key": "entriesnnosmakedirsospathdirnameoutpath", "type": "other", "responses": ["existoktruennwith"]}
+{"id": "df317d1690fe613b", "key": "nnlead", "type": "other", "responses": ["datagetlead"]}
+{"id": "5b206d766e4ea140", "key": "linestripnnif", "type": "other", "responses": ["not"]}
+{"id": "05b349dd24508157", "key": "stder

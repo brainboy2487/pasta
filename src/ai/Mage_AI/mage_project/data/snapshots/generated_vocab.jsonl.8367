@@ -1,0 +1,10 @@
+{"id": "9d098c7021ace1c4", "key": "duptxt", "type": "other", "responses": ["hash"]}
+{"id": "8d04674c24a1340b", "key": "id", "type": "other", "responses": ["local-0"]}
+{"id": "f399bde8e81ec4a4", "key": "text", "type": "other", "responses": ["repeat"]}
+{"id": "56318f568286a594", "key": "local-0", "type": "other", "responses": ["text"]}
+{"id": "0599706ff452a97c", "key": "e54615127850087a03645dce7f681a52e435ceeaa3bc5c0181f7ce013e5be500", "type": "other", "responses": ["scrapedat"]}
+{"id": "66cb9ee24ece39a9", "key": "scrapedat", "type": "other", "responses": ["1769396568"]}
+{"id": "db03d884928ed9b5", "key": "source", "type": "other", "responses": ["duptxt"]}
+{"id": "b28de49d99c5fada", "key": "repeat", "type": "other", "responses": ["token"]}
+{"id": "f112574ce4615b4a", "key": "token", "type": "other", "responses": ["repeat", "source"]}
+{"id": "bd67fafe2933cfe4", "key": "hash", "type": "other", "responses": ["e54615127850087a03645dce7f681a52e435ceeaa3bc5c0181f7ce013e5be500"]}

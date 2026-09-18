@@ -1,0 +1,56 @@
+MAGE Project TODOs (trimmed)
+=============================
+
+Summary
+-------
+This file lists high-priority, actionable next steps for MAGE after recent housekeeping (presentation wiring, JSONL validator, docs normalization, gen_mphf tooling and CI additions).
+
+Immediate (Phase 0 → 1)
+- Define API surface: finalize `include/mage/api.h` and public headers; produce short API docs and examples.
+- Implement MPHF core: complete a production MPHF implementation in `src/utils/mphf.c` (CHD/BMZ or equivalent), add `include/mage/mphf.h`, and unit tests. Integrate with `tools/gen_mphf` where appropriate.
+- Implement TAP internals: finish `src/core/tap.c` with MPHF lookup, heap-based shortlist (O(K log S)), Rule‑42 op counters, confidence/early-commit logic, and tests.
+- Implement mmapped index IO: finish `src/io/mmappedindex.c`, manifest readers, and API adapters (`mage_api_mmapped_*`).
+
+Near-term (short sprints)
+- Contract lazy block: implement lazy BxB contraction in `src/core/contract.c` and add block LRU caching.
+- Deterministic RP & math: implement `hash_sign64` and RP projection in `src/core/rp.c`, and add golden parity tests against Python prototypes.
+- Tokenizer & normalization: harden `src/utils/tokenizer.c` (Unicode NFC, whitespace collapsing) and add tests.
+
+Testing & CI
+- Expand unit tests and Python golden tests; add CI gates that fail on parity regressions and validation failures.
+- Improve CI packaging: ensure `tools/gen_mphf` and `bin/` are included in release artifacts and add a lightweight packaging script for releases.
+
+Performance & hardening
+- Warm generator inner-loop SIMD optimization and microbench harnesses.
+- Add telemetry, logging improvements, static analysis (clang-tidy), and formatting rules (clang-format) to CI.
+
+Housekeeping (completed)
+- Presentation wiring (CLI/GUI) — implemented.
+- JSONL loader & `tools/validate_vocab.py` — implemented and integrated into CI.
+- Docs normalization and canonical `data/vocab/generated_vocab.jsonl` path — completed.
+- Misleading-indentation warnings fixed and other compiler warnings addressed.
+- `tools/gen_mphf` compiled and Makefile/CI targets added.
+- CI workflow added to build/validate/test/package artifacts.
+
+Recent progress (new)
+- Implemented a Python-first training pipeline and tools:
+	- `python/tools/train_vocab.py` (vocab builder)
+	- `python/tools/train_pipeline.py` (orchestrator: vocab, MPHF, vectorize, snapshot)
+	- `python/tools/vectorize.py` (Python vectorizer fallback)
+- Hardened `python/tools/scraper.py` to parse local JSONL, dedupe, and call the Python pipeline by default.
+- Stabilized Python FFI: fixed ctypes pointer handling in `python/mage/ffi.py` to avoid double-free crashes.
+- Updated `src/core/mage_parser.c` to avoid external coherence checker blocking on short token replies.
+- Integrated pipeline into CLI:
+	- `mage_cli train` now prefers the Python pipeline when available.
+	- `python/tools/scraper.py` falls back to the CLI only if Python pipeline missing.
+- Added `Makefile` target `train-pipeline` for convenience.
+- Added `docs/training.md` with quick run instructions and troubleshooting.
+- Ran full integration suite locally; scenarios A–H passed after the above changes.
+
+Next action suggestions (pick one)
+1) Implement `src/utils/mphf.c` (MPHF core).
+2) Finish `src/core/tap.c` internals and add parity tests.
+3) Implement `src/io/mmappedindex.c` and wire retrieval API.
+4) Debug and (optionally) fix the native C trainer (`mage_train_from_file`) to remove reliance on the Python pipeline.
+5) Run full CI (`./ci/run_ci_locally.sh`) to validate packaging, MPHF generation, and Python integration under CI conditions.
+

@@ -1,0 +1,18 @@
+[
+  { "command": "hello", "desc": "Greet the Mage CLI", "usage": "hello" },
+  { "command": "hi", "desc": "Short form greeting", "usage": "hi" },
+  { "command": "help", "desc": "Show a short help hint", "usage": "help" },
+  { "command": "help -all", "desc": "List all available commands and options", "usage": "help -all" },
+  { "command": "version", "desc": "Show Mage version", "usage": "version" },
+  { "command": "about", "desc": "Show information about Mage", "usage": "about" },
+  { "command": "ping", "desc": "Health check; replies 'pong'", "usage": "ping" },
+  { "command": "status", "desc": "Show a short status message", "usage": "status" },
+  { "command": "uptime", "desc": "Show uptime (not implemented)", "usage": "uptime" },
+  { "command": "info", "desc": "Show detailed info summary", "usage": "info" },
+  { "command": "exit", "desc": "Exit the interactive session", "usage": "exit" },
+  { "command": "quit", "desc": "Exit the interactive session (alias)", "usage": "quit" },
+  { "command": "license", "desc": "Show license / legal info", "usage": "license" },
+  { "command": "contact", "desc": "Show contact / contribution info", "usage": "contact" },
+  { "command": "thanks", "desc": "Polite acknowledgement", "usage": "thanks" }
+  ,{ "command": "train <file>", "desc": "Train next-word frequencies from a plaintext file and update generated vocab", "usage": "train <path-to-text-file>" }
+]

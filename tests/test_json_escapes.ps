@@ -1,0 +1,10 @@
+FROM json USE loads, dumps END
+
+s = read_file("tests/json_escapes.json")
+v = loads(s)
+PRINT dumps(v)
+IF v["quote"] != "He said \"Hello\"": RAISE("escapes: quote mismatch") END
+IF v["backslash"] != "C:\\path": RAISE("escapes: backslash mismatch") END
+IF v["newline"] != "Line1\nLine2": RAISE("escapes: newline mismatch") END
+IF v["tab"] != "\t": RAISE("escapes: tab mismatch") END
+PRINT "OK: json_escapes"

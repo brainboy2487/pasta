@@ -1,0 +1,99 @@
+# Pasta v0.01a script tests — functions, returns, recursion, lambdas (20 checks)
+
+DEF out_num(label, value):
+    PRINT label + ":" + str(value)
+END
+
+DEF out_text(label, value):
+    PRINT label + ":" + value
+END
+
+DEF add(a, b):
+    RET.NOW(): a + b
+END
+
+DEF area(w, h):
+    RET.NOW(): w * h
+END
+
+DEF sign_name(n):
+    IF n < 0:
+        RET.NOW(): "neg"
+    END
+    IF n == 0:
+        RET.NOW(): "zero"
+    END
+    RET.NOW(): "pos"
+END
+
+DEF fact(n):
+    IF n <= 1:
+        RET.NOW(): 1
+    END
+    RET.NOW(): n * fact(n - 1)
+END
+
+DEF fib(n):
+    IF n <= 2:
+        RET.NOW(): 1
+    END
+    RET.NOW(): fib(n - 1) + fib(n - 2)
+END
+
+DEF local_shadow():
+    x = 9
+    RET.NOW(): x
+END
+
+DEF count_items(items):
+    RET.NOW(): list_len(items)
+END
+
+DEF sum_to(n):
+    i = 0
+    total = 0
+    WHILE i < n:
+        i = i + 1
+        total = total + i
+    END
+    RET.NOW(): total
+END
+
+DEF head(items):
+    RET.NOW(): items[0]
+END
+
+DEF tail_sum(items):
+    RET.NOW(): items[1] + items[2]
+END
+
+DEF use_return(a, b):
+    RETURN a * b
+END
+
+adder = LAMBDA a b: a + b END
+square = LAMBDA x: x * x END
+dec = LAMBDA x: x - 1 END
+
+x = 5
+
+out_num("P03T01", add(2, 3))              # EXPECT: P03T01:5
+out_num("P03T02", area(4, 5))             # EXPECT: P03T02:20
+out_text("P03T03", sign_name(-3))         # EXPECT: P03T03:neg
+out_text("P03T04", sign_name(0))          # EXPECT: P03T04:zero
+out_text("P03T05", sign_name(4))          # EXPECT: P03T05:pos
+out_num("P03T06", fact(5))                # EXPECT: P03T06:120
+out_num("P03T07", fib(6))                 # EXPECT: P03T07:8
+out_num("P03T08", adder(2, 5))            # EXPECT: P03T08:7
+out_num("P03T09", square(5))              # EXPECT: P03T09:25
+out_num("P03T10", local_shadow())         # EXPECT: P03T10:9
+out_num("P03T11", x)                      # EXPECT: P03T11:5
+out_num("P03T12", count_items([1, 2, 3])) # EXPECT: P03T12:3
+out_num("P03T13", sum_to(4))              # EXPECT: P03T13:10
+out_num("P03T14", head([9, 8, 7]))        # EXPECT: P03T14:9
+out_num("P03T15", tail_sum([2, 3, 4]))    # EXPECT: P03T15:7
+out_num("P03T16", dec(10))                # EXPECT: P03T16:9
+out_num("P03T17", use_return(3, 4))       # EXPECT: P03T17:12
+out_num("P03T18", sum_to(1))              # EXPECT: P03T18:1
+out_num("P03T19", fact(1))                # EXPECT: P03T19:1
+out_num("P03T20", fib(2))                 # EXPECT: P03T20:1

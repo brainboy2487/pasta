@@ -1,0 +1,235 @@
+// src/parser/grammar.rs
+//! Refactored grammar reference for the PASTA language (EBNF-style).
+//!
+//! This file is the canonical, human-readable grammar used by the parser
+//! implementation and for documentation. It is intentionally explicit about
+//! object-family declarations, mutation tables, SPAWN blocks, DEF DO ... UNTIL
+//! with LX annotations, and the OBJ.<GROUP>.MUT header form.
+//!
+//! Notation:
+//!  - `::=` defines a production
+//!  - `|` separates alternatives
+//!  - `{ ... }` zero-or-more repetition
+//!  - `[ ... ]` optional
+//!  - `(...)` grouping
+//!  - terminals are lowercase or punctuation; nonterminals are Capitalized
+//!  - `INDENT` / `DEDENT` / `NEWLINE` are produced by the lexer
+
+/// EBNF grammar reference for the PASTA language.
+///
+/// Parsed by humans and documentation tools only — not used at runtime.
+pub const GRAMMAR: &str = r#"
+Program ::= { Statement } EOF
+
+// ---------------------------------------------------------------------------
+// Statements
+// ---------------------------------------------------------------------------
+Statement ::=
+      ObjDecl
+    | SpawnBlock
+    | DefDoUntil
+    | Assignment
+    | DoStatement
+    | WhileStatement
+    | IfStatement
+    | PriorityOverride
+    | ConstraintStatement
+    | FunctionDef
+    | ExprStatement
+    | EndStatement
+
+// ---------------------------------------------------------------------------
+// Object family declaration (explicit OBJ header)
+// ---------------------------------------------------------------------------
+// Example:
+//   OBJ.NRML.MUT Monster(health, size):
+//     FIELD health = 100
+//     DEF MUTATION_TABLE: ...
+//     CONSTRUCTOR(params): ... END
+//   END
+ObjDecl ::=
+    "OBJ" "." FamilyGroup "." "MUT" Identifier "(" [ ParamList ] ")" ":" NEWLINE
+    INDENT { ObjMember } DEDENT "END" NEWLINE?
+
+FamilyGroup ::= "NRML" | "LIST" | "ARY" | "TNSR"
+
+ObjMember ::=
+      FieldDecl
+    | MutationTable
+    | ConstructorDecl
+    | MethodDecl
+    | OtherMember
+
+FieldDecl ::= "FIELD" Identifier "=" Expr NEWLINE
+
+MutationTable ::=
+    "DEF" "MUTATION_TABLE" ":" NEWLINE
+    INDENT { MutEntry } DEDENT "END" NEWLINE?
+
+MutEntry ::= "MUT" Identifier "=" MutBody NEWLINE
+
+MutBody ::= "DO" Block "END" | "DO" SimpleStmt
+
+ConstructorDecl ::=
+    "CONSTRUCTOR" "(" "params" ")" ":" NEWLINE
+    INDENT { Statement } DEDENT "END" NEWLINE?
+
+MethodDecl ::=
+    "DEF" Identifier "(" [ ParamList ] ")" ":" NEWLINE
+    INDENT { Statement } DEDENT "END" NEWLINE?
+
+OtherMember ::= /* placeholder for future member kinds */ NEWLINE
+
+// ---------------------------------------------------------------------------
+// SPAWN block
+// ---------------------------------------------------------------------------
+// Example:
+//   SPAWN:
+//     goblin.NRML.MUT @ player.LIST.MUT:
+//       child_name.CSM.MUT()
+//     END
+//   END
+SpawnBlock ::=
+    "SPAWN" ":" NEWLINE INDENT { SpawnEntry } DEDENT "END" NEWLINE?
+
+SpawnEntry ::=
+    SpawnLHS ":" NEWLINE INDENT { Statement } DEDENT "END" NEWLINE?
+
+SpawnLHS ::=
+    Expr "." FamilyGroup "." "MUT" [ "@" Expr "." FamilyGroup "." "MUT" ]
+
+// ---------------------------------------------------------------------------
+// DEF DO ... UNTIL with optional LX annotation
+// ---------------------------------------------------------------------------
+// Example:
+//   DEF DO heartbeat UNTIL self.health <= 0:
+//     ...
+//   END (LX UNTIL self.health <= 0)
+DefDoUntil ::=
+    "DEF" "DO" Identifier "UNTIL" Condition ":" NEWLINE
+    INDENT { Statement } DEDENT "END" [ "(" "LX" "UNTIL" Condition ")" ] NEWLINE?
+
+// ---------------------------------------------------------------------------
+// DO / WHILE / FOR blocks
+// ---------------------------------------------------------------------------
+DoStatement ::=
+    "DO" [ TargetList ] [ "AS" Identifier ] [ "FOR" ExprList ] ":" NEWLINE
+    INDENT { Statement } DEDENT
+
+WhileStatement ::=
+    "DO" [ TargetList ] "WHILE" Condition ":" NEWLINE INDENT { Statement } DEDENT
+
+TargetList ::= Identifier { "," Identifier }
+ExprList ::= Expr { "," Expr }
+
+// ---------------------------------------------------------------------------
+// Assignment, function def, and simple statements
+// ---------------------------------------------------------------------------
+Assignment ::=
+    ( "set" Identifier "=" Expr NEWLINE )
+  | ( Identifier "=" Expr NEWLINE )
+
+FunctionDef ::=
+    "DEF" Identifier [ "(" ParamList ")" ] ":" NEWLINE INDENT { Statement } DEDENT "END" NEWLINE?
+
+ExprStatement ::= Expr NEWLINE
+
+EndStatement ::= "END" NEWLINE
+
+// ---------------------------------------------------------------------------
+// IF / ATTEMPT / TRY / PRIORITY / CONSTRAINT
+// ---------------------------------------------------------------------------
+IfStatement ::=
+    "IF" Condition ":" NEWLINE INDENT { Statement } DEDENT [ "OTHERWISE" ":" NEWLINE INDENT { Statement } DEDENT ]
+
+// ATTEMPT block — pasta equivalent of try/except.
+// ATTEMPT and TRY are interchangeable (aliases). ELSE and OTHERWISE are interchangeable.
+// err_var is bound to the runtime error message string in the else_body scope.
+//
+// Example:
+//   ATTEMPT(err_num):
+//       DO:
+//           x FOR y
+//       END
+//   ELSE:
+//       DO:
+//           z WHILE y > x
+//       RET.NOW(err_num)
+//       END
+//   END
+AttemptBlock ::=
+    ("ATTEMPT" | "TRY") "(" Identifier ")" ":" NEWLINE
+    INDENT { Statement } DEDENT
+    [ ("ELSE" | "OTHERWISE") ":" NEWLINE INDENT { Statement } DEDENT ]
+    "END" NEWLINE?
+
+// Legacy bare TRY — preserved for back-compat, no error binding.
+TryLegacy ::=
+    "TRY" [ "DO" | ":" ] NEWLINE INDENT { Statement } DEDENT
+    [ "OTHERWISE" [ "DO" | ":" ] NEWLINE INDENT { Statement } DEDENT ]
+
+PriorityOverride ::= Identifier "OVER" Identifier NEWLINE
+
+ConstraintStatement ::=
+    Expr [ Relation ] Expr "LIMIT" "OVER" Expr NEWLINE
+
+Relation ::= "approaches" | "equals" | "is" | "is not" | ">" | "<" | ">=" | "<=" | "minimize" | "maximize" | "in"
+
+// ---------------------------------------------------------------------------
+// Expressions
+// ---------------------------------------------------------------------------
+Expr ::=
+      CombineExpr
+    | BinaryExpr
+    | CallExpr
+    | ListExpr
+    | IndexExpr
+    | Primary
+
+// Combine is syntactically the same as additive '+' but semantically typed:
+// when operands are object instances or constructors, '+' denotes family combine.
+CombineExpr ::= Expr "+" Expr
+
+BinaryExpr ::= Expr BinaryOp Expr
+
+BinaryOp ::= "+" | "-" | "*" | "/" | "==" | "!=" | "<" | ">" | "<=" | ">=" | "and" | "or" | "@" | "≈" | "≠" | "≡"
+
+CallExpr ::= Primary "(" [ ArgList ] ")"
+
+ArgList ::= Arg { "," Arg }
+Arg ::= Identifier "=" Expr | Expr
+
+ListExpr ::= "[" [ Expr { "," Expr } ] "]"
+
+IndexExpr ::= Expr "[" ExprList "]"
+
+Primary ::=
+      Number
+    | String
+    | Bool
+    | Identifier
+    | ConstructorCall
+    | "(" Expr ")"
+
+ConstructorCall ::= Identifier "(" [ ArgList ] ")"
+
+// ---------------------------------------------------------------------------
+// Conditions and simple statements used inside blocks
+// ---------------------------------------------------------------------------
+Condition ::= Expr (("==" | "!=" | "<" | "<=" | ">" | ">=") Expr)?
+
+SimpleStmt ::= Assignment | ExprStatement | PrintStmt
+
+PrintStmt ::= "PRINT" ExprList NEWLINE
+
+Block ::= { Statement }
+
+// ---------------------------------------------------------------------------
+// Lexical forms (informal)
+// ---------------------------------------------------------------------------
+// Identifier ::= /[A-Za-z_][A-Za-z0-9_]*/
+// Number ::= /[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?/
+// String ::= /"([^"\\]|\\.)*"/
+// Bool   ::= "true" | "false"
+// NEWLINE, INDENT, DEDENT are produced by the lexer
+"#;

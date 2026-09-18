@@ -1,0 +1,362 @@
+OBJ.NRML Item(name, category, power, price, available):
+    FIELD name = name
+    FIELD category = category
+    FIELD power = power
+    FIELD price = price
+    FIELD available = available
+END
+
+OBJ.NRML Enemy(name, hp, damage, gold, intro):
+    FIELD name = name
+    FIELD hp = hp
+    FIELD damage = damage
+    FIELD gold = gold
+    FIELD intro = intro
+END
+
+OBJ.NRML Player(name, hp, max_hp, attack, gold):
+    FIELD name = name
+    FIELD hp = hp
+    FIELD max_hp = max_hp
+    FIELD attack = attack
+    FIELD gold = gold
+END
+
+OBJ.NRML Room(name, description, north, south, east, west, danger, boss, treasure_tag, treasure_claimed, cleared):
+    FIELD name = name
+    FIELD description = description
+    FIELD north = north
+    FIELD south = south
+    FIELD east = east
+    FIELD west = west
+    FIELD danger = danger
+    FIELD boss = boss
+    FIELD treasure_tag = treasure_tag
+    FIELD treasure_claimed = treasure_claimed
+    FIELD cleared = cleared
+END
+
+DEF make_item(label, category, power, price):
+    RETURN Item(1, 2, label, category, power, price, true)
+END
+
+DEF make_enemy_for_room(room_name):
+    IF room_name == "Hall":
+        roll = rand(2)
+        IF roll == 0:
+            RETURN Enemy(1, 2, "Tunnel Slime", 10, 2, 4, "A Tunnel Slime drops from the ceiling!")
+        END
+        RETURN Enemy(1, 2, "Cave Bat", 9, 3, 5, "A Cave Bat swoops down from the dark!")
+    END
+    IF room_name == "Armory":
+        roll = rand(2)
+        IF roll == 0:
+            RETURN Enemy(1, 2, "Rust Goblin", 13, 4, 7, "A Rust Goblin charges from behind a broken rack!")
+        END
+        RETURN Enemy(1, 2, "Bone Guard", 14, 4, 8, "A Bone Guard rises and blocks your path!")
+    END
+    IF room_name == "Shrine":
+        roll = rand(2)
+        IF roll == 0:
+            RETURN Enemy(1, 2, "Ash Wisp", 15, 5, 10, "An Ash Wisp curls out of the shrine flame!")
+        END
+        RETURN Enemy(1, 2, "Crypt Shade", 16, 5, 10, "A Crypt Shade unfolds from the stone wall!")
+    END
+    RETURN Enemy(1, 2, "Lost Spirit", 10, 3, 4, "A Lost Spirit wanders into view.")
+END
+
+DEF make_boss():
+    RETURN Enemy(1, 2, "Bone Tyrant", 28, 7, 30, "The Bone Tyrant rises from the throne and roars!")
+END
+
+DEF make_treasure(tag):
+    IF tag == "potion":
+        RETURN make_item("Greater Potion", "potion", 8, 12)
+    END
+    IF tag == "blade":
+        RETURN make_item("Iron Blade", "weapon", 2, 15)
+    END
+    IF tag == "charm":
+        RETURN make_item("Sun Charm", "trinket", 1, 18)
+    END
+    RETURN None
+END
+
+DEF room_by_name(room_name):
+    IF room_name == "Entrance":
+        RETURN entrance
+    END
+    IF room_name == "Hall":
+        RETURN hall
+    END
+    IF room_name == "Armory":
+        RETURN armory
+    END
+    IF room_name == "Shrine":
+        RETURN shrine
+    END
+    IF room_name == "Lair":
+        RETURN lair
+    END
+    RETURN entrance
+END
+
+DEF print_help():
+    PRINT "Commands: help, look, status, inventory, search, fight, use potion, move north, move south, move east, move west, quit"
+END
+
+DEF show_status(hero):
+    PRINT hero["name"] + " HP " + str(hero["hp"]) + "/" + str(hero["max_hp"]) + " | ATK " + str(hero["attack"]) + " | GOLD " + str(hero["gold"])
+END
+
+DEF show_inventory(items):
+    PRINT "Inventory:"
+    idx = 0
+    shown = 0
+    WHILE idx < list_len(items):
+        item = items[idx]
+        IF item["available"]:
+            PRINT "- " + item["name"] + " [" + item["category"] + "]"
+            shown = shown + 1
+        END
+        idx = idx + 1
+    END
+    IF shown == 0:
+        PRINT "- empty"
+    END
+END
+
+DEF first_available_by_category(items, wanted):
+    idx = 0
+    WHILE idx < list_len(items):
+        item = items[idx]
+        IF item["available"] AND item["category"] == wanted:
+            RETURN item
+        END
+        idx = idx + 1
+    END
+    RETURN None
+END
+
+DEF print_room(room):
+    PRINT ""
+    PRINT "== " + room["name"] + " =="
+    PRINT room["description"]
+    exits = []
+    IF room["north"] != "":
+        list_append(exits, "north")
+    END
+    IF room["south"] != "":
+        list_append(exits, "south")
+    END
+    IF room["east"] != "":
+        list_append(exits, "east")
+    END
+    IF room["west"] != "":
+        list_append(exits, "west")
+    END
+    PRINT "Exits: " + join(exits, ", ")
+    IF room["boss"] AND room["cleared"] == false:
+        PRINT "A throne of bones waits in the gloom."
+    END
+END
+
+entrance = Room(1, 2, "Entrance", "A cracked stairway opens into a damp stone foyer.", "Hall", "", "Armory", "", 0, false, "", false, true)
+hall = Room(1, 2, "Hall", "A torchlit corridor stretches into echoing darkness.", "Shrine", "Entrance", "", "", 40, false, "potion", false, false)
+armory = Room(1, 2, "Armory", "Splintered shields and rusted weapons litter the floor.", "", "", "", "Entrance", 55, false, "blade", false, false)
+shrine = Room(1, 2, "Shrine", "A forgotten shrine hums with warm golden light.", "Lair", "Hall", "", "Armory", 65, false, "charm", false, false)
+lair = Room(1, 2, "Lair", "The final chamber is lined with skulls and broken banners.", "", "Shrine", "", "", 0, true, "", false, false)
+
+inventory = []
+starter_blade = make_item("Rusty Sword", "weapon", 2, 5)
+starter_potion = make_item("Potion", "potion", 6, 4)
+list_append(inventory, starter_blade)
+list_append(inventory, starter_potion)
+
+player = Player(1, 2, "Ari", 24, 24, 5, 0)
+player["attack"] = player["attack"] + starter_blade["power"]
+
+current_room = entrance
+active_enemy = None
+running = true
+game_won = false
+
+PRINT "=== Pasta Object Dungeon ==="
+PRINT "Reach the lair, survive random encounters, and defeat the Bone Tyrant."
+print_help()
+print_room(current_room)
+
+WHILE running:
+    IF active_enemy == None:
+        IF current_room["boss"] AND current_room["cleared"] == false:
+            active_enemy = make_boss()
+            PRINT active_enemy["intro"]
+        OTHERWISE:
+            IF current_room["cleared"] == false AND current_room["danger"] > 0 AND rand(100) < current_room["danger"]:
+                active_enemy = make_enemy_for_room(current_room["name"])
+                PRINT active_enemy["intro"]
+            END
+        END
+    END
+
+    command = lower(trim(INPUT("> ")))
+
+    IF command == "":
+        PRINT "Type help to see the command list."
+    OTHERWISE:
+        IF command == "help":
+            print_help()
+        ELSE:
+            IF command == "look":
+                print_room(current_room)
+                IF active_enemy != None:
+                    PRINT "Enemy here: " + active_enemy["name"] + " (HP " + str(active_enemy["hp"]) + ")"
+                END
+            OTHERWISE:
+                IF command == "status":
+                    show_status(player)
+                OTHERWISE:
+                    IF command == "inventory":
+                        show_inventory(inventory)
+                    OTHERWISE:
+                        IF command == "search":
+                            IF active_enemy != None:
+                                PRINT "You cannot search while an enemy is attacking!"
+                            OTHERWISE:
+                                IF current_room["treasure_claimed"] OR current_room["treasure_tag"] == "":
+                                    PRINT "You search the room but find nothing useful."
+                                OTHERWISE:
+                                    loot = make_treasure(current_room["treasure_tag"])
+                                    current_room["treasure_claimed"] = true
+                                    IF loot == None:
+                                        PRINT "Dust and broken stone are all that remain."
+                                    OTHERWISE:
+                                        list_append(inventory, loot)
+                                        PRINT "You found " + loot["name"] + "."
+                                        IF loot["category"] == "weapon" OR loot["category"] == "trinket":
+                                            player["attack"] = player["attack"] + loot["power"]
+                                            PRINT "Your attack rises to " + str(player["attack"]) + "."
+                                        END
+                                    END
+                                END
+                            END
+                        OTHERWISE:
+                            IF command == "fight":
+                                IF active_enemy == None:
+                                    PRINT "There is nothing here to fight."
+                                OTHERWISE:
+                                    damage = player["attack"] + rand(3)
+                                    PRINT player["name"] + " strikes " + active_enemy["name"] + " for " + str(damage) + " damage."
+                                    active_enemy["hp"] = active_enemy["hp"] - damage
+                                    IF active_enemy["hp"] < 0:
+                                        active_enemy["hp"] = 0
+                                    END
+                                    IF active_enemy["hp"] == 0:
+                                        PRINT active_enemy["name"] + " is defeated!"
+                                        player["gold"] = player["gold"] + active_enemy["gold"]
+                                        PRINT "You gain " + str(active_enemy["gold"]) + " gold."
+                                        current_room["cleared"] = true
+                                        IF current_room["boss"]:
+                                            game_won = true
+                                            running = false
+                                        END
+                                        active_enemy = None
+                                    OTHERWISE:
+                                        enemy_damage = active_enemy["damage"] + rand(2)
+                                        PRINT active_enemy["name"] + " hits back for " + str(enemy_damage) + " damage."
+                                        player["hp"] = player["hp"] - enemy_damage
+                                        IF player["hp"] < 0:
+                                            player["hp"] = 0
+                                        END
+                                        PRINT player["name"] + " now has " + str(player["hp"]) + " HP."
+                                        IF player["hp"] == 0:
+                                            running = false
+                                        END
+                                    END
+                                END
+                            OTHERWISE:
+                                IF command == "use potion":
+                                    potion = first_available_by_category(inventory, "potion")
+                                    IF potion == None:
+                                        PRINT "You have no usable potion."
+                                    OTHERWISE:
+                                        potion["available"] = false
+                                        heal = potion["power"]
+                                        player["hp"] = player["hp"] + heal
+                                        IF player["hp"] > player["max_hp"]:
+                                            player["hp"] = player["max_hp"]
+                                        END
+                                        PRINT "You drink " + potion["name"] + " and recover to " + str(player["hp"]) + " HP."
+                                        IF active_enemy != None:
+                                            enemy_damage = active_enemy["damage"]
+                                            PRINT active_enemy["name"] + " punishes the pause for " + str(enemy_damage) + " damage."
+                                            player["hp"] = player["hp"] - enemy_damage
+                                            IF player["hp"] < 0:
+                                                player["hp"] = 0
+                                            END
+                                            IF player["hp"] == 0:
+                                                running = false
+                                            END
+                                        END
+                                    END
+                                OTHERWISE:
+                                    IF command == "quit":
+                                        running = false
+                                    OTHERWISE:
+                                        IF starts_with(command, "move "):
+                                            IF active_enemy != None:
+                                                PRINT "You cannot escape until the fight is over."
+                                            OTHERWISE:
+                                                parts = split(command, " ")
+                                                direction = ""
+                                                IF list_len(parts) > 1:
+                                                    direction = parts[1]
+                                                END
+                                                next_name = ""
+                                                IF direction == "north":
+                                                    next_name = current_room["north"]
+                                                END
+                                                IF direction == "south":
+                                                    next_name = current_room["south"]
+                                                END
+                                                IF direction == "east":
+                                                    next_name = current_room["east"]
+                                                END
+                                                IF direction == "west":
+                                                    next_name = current_room["west"]
+                                                END
+                                                IF next_name == "":
+                                                    PRINT "You cannot go that way."
+                                                OTHERWISE:
+                                                    current_room = room_by_name(next_name)
+                                                    print_room(current_room)
+                                                END
+                                            END
+                                        OTHERWISE:
+                                            PRINT "Unknown command. Type help for options."
+                                        END
+                                    END
+                                END
+                            END
+                        END
+                    END
+                END
+            END
+        END
+    END
+END
+
+IF game_won:
+    PRINT ""
+    PRINT "Victory! The Bone Tyrant falls and the dungeon grows quiet."
+    PRINT "Final gold: " + str(player["gold"])
+    PRINT "Final attack: " + str(player["attack"])
+OTHERWISE:
+    PRINT ""
+    IF player["hp"] == 0:
+        PRINT "Ari falls in the dungeon. Game over."
+    OTHERWISE:
+        PRINT "You leave the dungeon alive to fight another day."
+    END
+    PRINT "Final gold: " + str(player["gold"])
+END

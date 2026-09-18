@@ -1,0 +1,49 @@
+FROM term USE tty_available, screen_begin, screen_end, screen_size, clear_row, write_at, flush_output, wait_key END
+
+IF NOT tty_available():
+    PRINT "term_key_probe requires an interactive terminal"
+    sys.exit(1)
+END
+
+ticks = 0
+last_key = "(none)"
+status = "Waiting for key input..."
+
+screen_begin()
+
+WHILE True:
+    dims = screen_size()
+    rows = dims[1]
+
+    clear_row(1)
+    write_at(1, 1, "term_key_probe.ps")
+
+    clear_row(3)
+    write_at(3, 1, "Press any key. Ctrl+X or Ctrl+C should exit.")
+
+    clear_row(5)
+    write_at(5, 1, "Last key: " + last_key)
+
+    clear_row(7)
+    write_at(7, 1, "Heartbeat: " + str(ticks))
+
+    clear_row(rows)
+    write_at(rows, 1, status)
+    flush_output()
+
+    key = wait_key(250)
+    IF key == "":
+        ticks = ticks + 1
+        CONTINUE
+    END
+
+    last_key = key
+    status = "Captured: " + key
+
+    IF key == "Ctrl+X" OR key == "Ctrl+C":
+        BREAK
+    END
+END
+
+screen_end()
+PRINT "last_key=" + last_key

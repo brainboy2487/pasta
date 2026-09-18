@@ -1,0 +1,11 @@
+FROM json USE loads, dumps END
+
+# Simple roundtrip and field checks
+s = read_file("tests/json_simple.json")
+v = loads(s)
+PRINT dumps(v)
+IF v["a"] != 1: RAISE("json_simple: a mismatch") END
+IF v["b"] != True: RAISE("json_simple: b mismatch") END
+IF v["c"] != None: RAISE("json_simple: c mismatch") END
+IF v["d"] != "text": RAISE("json_simple: d mismatch") END
+PRINT "OK: json_simple"

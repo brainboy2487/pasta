@@ -1,0 +1,119 @@
+### Overview  
+A clean, linear checklist gives you a reliable path from “compiler‑clean Pasta” to “full graphical Mandelbrot written in pure Pasta.” Each step is self‑contained, testable, and safe to commit before moving on. This avoids the trap of mixing language work, runtime work, and graphics work all at once.
+
+---
+
+## Language and runtime foundation  
+These steps ensure Pasta can express and execute the loops and math Mandelbrot needs.
+
+### 1. Verify lexer stability  
+- Confirm the three lexer fixes are present:  
+  - `..` emits `DotDot`  
+  - `"STEP"` maps to `TokenType::Step`  
+  - duplicate `'/'` arm removed  
+- Run `cargo build --release`  
+- Run a small lex test: `FOR i IN 0..10 STEP 2:` should tokenize cleanly.
+
+### 2. Add a `range(start, end)` builtin  
+- Add a new `Value::Range { start, end, current }` variant.  
+- Add a builtin function `range(a, b)` that returns this value.  
+- Add a simple iterator method in the interpreter to advance `current` until `end`.  
+- Add unit tests:  
+  - `range(0,3)` → yields `0,1,2`  
+  - `range(2,2)` → yields nothing  
+  - `range(5,3)` → yields nothing (or error, depending on your design)
+
+### 3. Extend the interpreter’s `ForIn` handler  
+- Detect when the iterable is a `Value::Range`.  
+- Loop from `start` to `end`, assigning the loop variable each iteration.  
+- Ensure loop variable is scoped correctly (local to the loop body).  
+- Add tests:  
+  - `FOR i IN range(0,3): PRINT i` prints `0 1 2`.
+
+### 4. Confirm numeric expression support  
+- Ensure `+`, `-`, `*`, `/`, and comparisons work on floats.  
+- Ensure function calls like `iterate_point(x0, y0, max_iter)` evaluate correctly.  
+- Add a test for the Mandelbrot inner iteration function.
+
+---
+
+## Graphics subsystem  
+These steps turn Pasta into a language capable of drawing pixels in a native window.
+
+### 5. Implement the X11 backend  
+- Fill in `XOpenDisplay`, `XCreateSimpleWindow`, `XCreateGC`.  
+- Implement `XPutImage` using the canvas byte buffer.  
+- Implement event polling with `XPending` and `XNextEvent`.  
+- Add WM_DELETE_WINDOW handling so closing the window sets `open = false`.  
+- Add a Rust smoke test that:  
+  - creates a window,  
+  - draws a gradient into a canvas,  
+  - calls `blit`,  
+  - keeps the window open until closed.
+
+### 6. Implement graphics builtins  
+- In `graphics/builtins.rs`, wire each builtin to your runtime:  
+  - `WINDOW(title, w, h)`  
+  - `CANVAS(w, h)`  
+  - `PIXEL(canvas, x, y, r, g, b)`  
+  - `BLIT(window, canvas)`  
+  - `WINDOW_OPEN(window)`  
+  - `CLOSE(window)`  
+- Add tests for canvas pixel writes and window creation.
+
+### 7. Register graphics builtins  
+- Call `graphics::register_builtins(rt)` during runtime initialization, or  
+- Call it from your import handler when `FROM: <graphics>` appears.  
+- Add a test script that draws a single red pixel and displays it.
+
+---
+
+## Pure Pasta Mandelbrot  
+These steps complete the end‑to‑end pipeline.
+
+### 8. Write the Mandelbrot function in Pasta  
+- Implement `iterate_point(x0, y0, max_iter)` in Pasta.  
+- Implement `mandelbrot(width, height, max_iter)` using:  
+  - `CANVAS`  
+  - `PIXEL`  
+  - `BLIT`  
+  - `range(0, width)` and `range(0, height)`  
+- Start with a small resolution (e.g., `200×150`) and low iteration count.
+
+### 9. Add a redraw loop  
+- After drawing the fractal once, enter:  
+  - `WHILE WINDOW_OPEN(win): END`  
+- Confirm the window stays open and responds to close events.
+
+### 10. Increase resolution and iteration count  
+- Move to `800×600` and `max_iter = 1000`.  
+- Confirm performance is acceptable.  
+- If needed, optimize:  
+  - reuse `XImage` instead of recreating it each frame,  
+  - reduce Python‑style overhead in the interpreter loop,  
+  - add optional `STEP` support for faster iteration.
+
+---
+
+## Optional enhancements  
+These are not required for a working Mandelbrot, but they improve the experience.
+
+### 11. Add color palettes  
+- Implement a small Pasta function that maps iteration counts to RGB.  
+- Add smooth coloring using fractional iteration counts.
+
+### 12. Add zoom and pan  
+- Add mouse event handling in the X11 backend.  
+- Add Pasta functions to update the viewport and redraw.
+
+### 13. Add a `range(start, end, step)` builtin  
+- Extend the range object to support step values.  
+- Update `ForIn` to use the step.  
+- Add syntax sugar later (`0..n STEP 2`).
+
+---
+
+## Final step  
+Once all items above are complete, you will have a fully functional graphical Mandelbrot viewer written entirely in Pasta, running on your Linux X11 backend, with a clean language/runtime/graphics stack.
+
+Is it helpful if the next output is a **single consolidated TODO file** formatted exactly the way you prefer for your project (indented, numbered, or grouped by subsystem)?

@@ -1,0 +1,64 @@
+# Pasta v0.01a script tests — memory pointers, PEEK/POKE, FREE (20 checks)
+
+DEF out_num(label, value):
+    PRINT label + ":" + str(value)
+END
+
+DEF out_text(label, value):
+    PRINT label + ":" + value
+END
+
+ALLOC.MEM(4) -> buf1
+POKE(buf1, 0, 65)
+POKE(buf1, 1, 66)
+POKE(buf1, 3, 255)
+
+out_num("P08T01", PEEK(buf1, 0))          # EXPECT: P08T01:65
+out_num("P08T02", PEEK(buf1, 1))          # EXPECT: P08T02:66
+
+POKE(buf1, 1, 90)
+out_num("P08T03", PEEK(buf1, 1))          # EXPECT: P08T03:90
+out_num("P08T04", PEEK(buf1, 3))          # EXPECT: P08T04:255
+
+POKE(buf1, 2, 300)
+out_num("P08T05", PEEK(buf1, 2))          # EXPECT: P08T05:255
+out_num("P08T06", PEEK(buf1, 2))          # EXPECT: P08T06:255
+
+ALLOC.MEM(4) -> buf2
+POKE(buf2, 0, 1)
+POKE(buf2, 1, 2)
+POKE(buf2, 2, 3)
+POKE(buf2, 3, 4)
+
+out_num("P08T07", PEEK(buf2, 0))          # EXPECT: P08T07:1
+out_num("P08T08", PEEK(buf2, 3))          # EXPECT: P08T08:4
+out_num("P08T09", PEEK(buf2, 0) + PEEK(buf2, 1) + PEEK(buf2, 2) + PEEK(buf2, 3)) # EXPECT: P08T09:10
+out_num("P08T10", PEEK(buf1, 0))          # EXPECT: P08T10:65
+out_num("P08T11", PEEK(buf1, 1))          # EXPECT: P08T11:90
+
+ALLOC.MEM(5) -> buf3
+i = 0
+WHILE i < 5:
+    POKE(buf3, i, i * 2)
+    i = i + 1
+END
+
+out_num("P08T12", PEEK(buf3, 0))          # EXPECT: P08T12:0
+out_num("P08T13", PEEK(buf3, 1))          # EXPECT: P08T13:2
+out_num("P08T14", PEEK(buf3, 4))          # EXPECT: P08T14:8
+out_num("P08T15", PEEK(buf3, 0) + PEEK(buf3, 1) + PEEK(buf3, 2) + PEEK(buf3, 3) + PEEK(buf3, 4)) # EXPECT: P08T15:20
+
+out_num("P08T16", PEEK(buf1, 0) + PEEK(buf1, 1)) # EXPECT: P08T16:155
+out_num("P08T17", PEEK(buf2, 1) * PEEK(buf2, 2)) # EXPECT: P08T17:6
+out_num("P08T18", PEEK(buf3, 2) + PEEK(buf3, 4)) # EXPECT: P08T18:12
+
+FREE(buf2)
+out_num("P08T19", PEEK(buf1, 3))          # EXPECT: P08T19:255
+
+FREE(buf1)
+FREE(buf3)
+
+ALLOC.MEM(1) -> buf4
+POKE(buf4, 0, 42)
+out_num("P08T20", PEEK(buf4, 0))          # EXPECT: P08T20:42
+FREE(buf4)

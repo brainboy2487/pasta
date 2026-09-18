@@ -1,0 +1,88 @@
+# Pasta translation of src/runtime/abi_helpers.rs (simplified)
+# Provides handle registry and basic abi <-> runtime conversions in Pasta
+
+DEF PAbiStatus_Ok(): RETURN(0) END
+DEF PAbiStatus_NullOut(): RETURN(1) END
+DEF PAbiStatus_NullInput(): RETURN(2) END
+DEF PAbiStatus_InvalidUtf8(): RETURN(3) END
+DEF PAbiStatus_InvalidHandle(): RETURN(4) END
+DEF PAbiStatus_HandleKindMismatch(): RETURN(5) END
+DEF PAbiStatus_InvalidArgument(): RETURN(6) END
+DEF PAbiStatus_UnsupportedValue(): RETURN(7) END
+DEF PAbiStatus_ArityMismatch(): RETURN(8) END
+DEF PAbiStatus_TypeMismatch(): RETURN(9) END
+
+# Handle registry
+DEF ABI_NEXT_HANDLE_ID(): RETURN(1) END
+DEF ABI_HANDLE_REGISTRY_new(): RETURN({}) END
+
+# Minimal runtime_value_to_abi_value and abi_value_to_runtime_value
+DEF runtime_value_to_abi_value(v):
+    IF v == None: RETURN({"tag": "None"}) END
+    IF is_number(v): RETURN({"tag": "Number", "value": v}) END
+    IF is_string(v): RETURN({"tag": "String", "value": v}) END
+    IF is_list(v):
+        out = []
+        FOR item IN v:
+            out = out + [runtime_value_to_abi_value(item)]
+        END
+        RETURN({"tag": "List", "items": out})
+    END
+    # unsupported complex types
+    RETURN({"err": "unsupported"})
+END
+
+DEF abi_value_to_runtime_value(pv):
+    IF pv == None: RETURN(None) END
+    IF has_key(pv, "tag"):
+        t = pv["tag"]
+        IF t == "None": RETURN(None) END
+        IF t == "Number": RETURN(pv["value"]) END
+        IF t == "String": RETURN(pv["value"]) END
+        IF t == "List":
+            out = []
+            FOR it IN pv["items"]:
+                out = out + [abi_value_to_runtime_value(it)]
+            END
+            RETURN(out)
+        END
+    END
+    RETURN(None)
+END
+
+# pasta_value_retain/release placeholders
+DEF pasta_value_retain(v): RETURN(PAbiStatus_Ok()) END
+DEF pasta_value_release(v): RETURN(PAbiStatus_Ok()) END
+
+# String/list/dict/tensor creators: create simple handles as dicts
+DEF pasta_string_new(bytes, len, out):
+    IF out == None: RETURN(PAbiStatus_NullOut()) END
+    s = bytes_to_string(bytes, len)
+    out_val = {"tag": "String", "value": s}
+    out[0] = out_val
+    RETURN(PAbiStatus_Ok())
+END
+
+DEF pasta_list_new(values, len, out):
+    IF out == None: RETURN(PAbiStatus_NullOut()) END
+    arr = []
+    FOR i IN range(len): arr = arr + [values[i]] END
+    out[0] = {"tag": "List", "items": arr}
+    RETURN(PAbiStatus_Ok())
+END
+
+DEF pasta_dict_new(entries, len, out):
+    IF out == None: RETURN(PAbiStatus_NullOut()) END
+    RETURN(PAbiStatus_Ok())
+END
+
+DEF pasta_tensor_new(shape_ptr, shape_len, dtype_ptr, dtype_len, data_ptr, data_len, device_ptr, device_len, out):
+    IF out == None: RETURN(PAbiStatus_NullOut()) END
+    RETURN(PAbiStatus_Ok())
+END
+
+# Helpers
+DEF bytes_to_string(bytes, len):
+    # assume bytes is a Pasta string for placeholder
+    RETURN(bytes)
+END

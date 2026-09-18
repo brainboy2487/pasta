@@ -1,0 +1,7 @@
+FROM json USE loads, dumps END
+
+s = read_file("tests/json_unicode.json")
+v = loads(s)
+PRINT dumps(v)
+IF v["u_escape"] != v["u_char"]: RAISE("unicode: mismatch") END
+PRINT "OK: json_unicode"

@@ -1,0 +1,38 @@
+// src/stdlib/graphics/canvas.rs
+//! CPU pixel buffer (RGBA8) and SharedCanvas wrapper.
+
+use std::sync::{Arc, Mutex};
+
+pub struct Canvas {
+    pub width: usize,
+    pub height: usize,
+    pub pixels: Vec<u32>, // 0xAARRGGBB
+}
+
+impl Canvas {
+    pub fn new(width: usize, height: usize) -> Self {
+        Self { width, height, pixels: vec![0xFF000000u32; width * height] }
+    }
+
+    pub fn clear(&mut self, color: u32) { self.pixels.fill(color); }
+
+    pub fn set_pixel(&mut self, x: isize, y: isize, color: u32) {
+        if x < 0 || y < 0 { return; }
+        let (x, y) = (x as usize, y as usize);
+        if x >= self.width || y >= self.height { return; }
+        self.pixels[y * self.width + x] = color;
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(self.pixels.as_ptr() as *const u8, self.pixels.len() * 4)
+        }
+    }
+}
+
+pub type SharedCanvas = Arc<Mutex<Canvas>>;
+
+pub fn rgb_to_u32(r: u8, g: u8, b: u8) -> u32 {
+    let a: u8 = 0xFF;
+    ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
+}

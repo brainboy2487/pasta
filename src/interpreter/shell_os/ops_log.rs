@@ -1,0 +1,195 @@
+#![allow(missing_docs)]
+//! ops_log.rs
+//! Robust, thread-safe append-only operations log for shell_os.
+//!
+//! Public API:
+//! - `log_op(cmd, target, result)` — simple convenience function (best-effort).
+//! - `OpsLog` — configurable logger instance (thread-safe).
+//! - `set_global_log_path` / `set_rotation_size_bytes` — runtime configuration.
+
+use std::env;
+use std::fs::{OpenOptions, rename};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use chrono::Utc;
+use once_cell::sync::Lazy;
+
+/// Default maximum log file size before rotation (5 MiB).
+const DEFAULT_ROTATE_BYTES: u64 = 5 * 1024 * 1024;
+
+/// Compute default ops log path: $SHELL_OS_OPS_LOG or $HOME/.local/share/shell_os/ops.log
+fn default_ops_log_path() -> PathBuf {
+    if let Ok(p) = env::var("SHELL_OS_OPS_LOG") {
+        return PathBuf::from(p);
+    }
+    let mut p = env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."));
+    p.push(".local");
+    p.push("share");
+    p.push("shell_os");
+    let _ = std::fs::create_dir_all(&p);
+    p.push("ops.log");
+    p
+}
+
+/// Minimal append-only ops log entry (human readable).
+#[derive(Debug, Clone)]
+pub struct OpEntry {
+    pub timestamp: String,
+    pub user: String,
+    pub cmd: String,
+    pub target: String,
+    pub result: String,
+}
+
+impl OpEntry {
+    fn to_line(&self) -> String {
+        format!(
+            "{} | user={} | cmd={} | target={} | result={}\n",
+            self.timestamp, self.user, self.cmd, self.target, self.result
+        )
+    }
+}
+
+/// Thread-safe append-only ops log instance.
+#[derive(Clone)]
+pub struct OpsLog {
+    path: Arc<Mutex<PathBuf>>,
+    rotate_bytes: Arc<Mutex<u64>>,
+}
+
+impl OpsLog {
+    /// Create a new OpsLog using the default path and rotation size.
+    pub fn new() -> Self {
+        OpsLog {
+            path: Arc::new(Mutex::new(default_ops_log_path())),
+            rotate_bytes: Arc::new(Mutex::new(DEFAULT_ROTATE_BYTES)),
+        }
+    }
+
+    /// Create with explicit path and rotation size (bytes).
+    pub fn with_config(path: PathBuf, rotate_bytes: u64) -> Self {
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or_else(|| Path::new(".")));
+        OpsLog {
+            path: Arc::new(Mutex::new(path)),
+            rotate_bytes: Arc::new(Mutex::new(rotate_bytes)),
+        }
+    }
+
+    /// Set the log file path at runtime.
+    pub fn set_path(&self, p: PathBuf) {
+        let _ = std::fs::create_dir_all(p.parent().unwrap_or_else(|| Path::new(".")));
+        if let Ok(mut guard) = self.path.lock() {
+            *guard = p;
+        }
+    }
+
+    /// Set rotation threshold in bytes.
+    pub fn set_rotation_size_bytes(&self, bytes: u64) {
+        if let Ok(mut guard) = self.rotate_bytes.lock() {
+            *guard = bytes;
+        }
+    }
+
+    /// Append an operation entry (best-effort). Returns `Ok(())` on success, `Err(String)` on failure.
+    pub fn append(&self, cmd: &str, target: &str, result: &str) -> Result<(), String> {
+        let path = {
+            let guard = self.path.lock().map_err(|e| format!("lock error: {}", e))?;
+            guard.clone()
+        };
+
+        // Ensure parent dir exists
+        if let Some(parent) = path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                // best-effort: continue but report
+                eprintln!("ops_log: failed to create dir {:?}: {}", parent, e);
+            }
+        }
+
+        // Rotate if needed
+        if let Ok(meta) = std::fs::metadata(&path) {
+            if let Ok(rb) = self.rotate_bytes.lock() {
+                if meta.len() >= *rb {
+                    // rotate: rename ops.log -> ops.log.1 (overwrite if exists)
+                    let rotated = path.with_extension("log.1");
+                    let _ = std::fs::remove_file(&rotated);
+                    if let Err(e) = rename(&path, &rotated) {
+                        eprintln!("ops_log: rotation rename failed: {}", e);
+                    }
+                }
+            }
+        }
+
+        let ts = Utc::now().to_rfc3339();
+        let user = env::var("USER").unwrap_or_else(|_| "unknown".into());
+        let entry = OpEntry {
+            timestamp: ts,
+            user,
+            cmd: cmd.to_string(),
+            target: target.to_string(),
+            result: result.to_string(),
+        };
+        let line = entry.to_line();
+
+        match OpenOptions::new().create(true).append(true).open(&path) {
+            Ok(mut f) => {
+                if let Err(e) = f.write_all(line.as_bytes()) {
+                    let msg = format!("ops_log: write failed: {}", e);
+                    eprintln!("{}", msg);
+                    return Err(msg);
+                }
+                Ok(())
+            }
+            Err(e) => {
+                let msg = format!("ops_log: open failed {:?}: {}", path, e);
+                eprintln!("{}", msg);
+                Err(msg)
+            }
+        }
+    }
+
+    /// Read the current log file contents (best-effort).
+    pub fn read_all(&self) -> Result<String, String> {
+        let path = {
+            let guard = self.path.lock().map_err(|e| format!("lock error: {}", e))?;
+            guard.clone()
+        };
+        std::fs::read_to_string(&path).map_err(|e| format!("read failed: {}", e))
+    }
+
+    /// Clear the log file (truncate).
+    pub fn clear(&self) -> Result<(), String> {
+        let path = {
+            let guard = self.path.lock().map_err(|e| format!("lock error: {}", e))?;
+            guard.clone()
+        };
+        match OpenOptions::new().create(true).write(true).truncate(true).open(&path) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("truncate failed: {}", e)),
+        }
+    }
+}
+
+/// Global logger instance (convenience).
+pub static LOGGER: Lazy<OpsLog> = Lazy::new(OpsLog::new);
+
+/// Convenience function matching the original API: best-effort append, ignores errors.
+pub fn log_op(cmd: &str, target: &str, result: &str) {
+    if let Err(e) = LOGGER.append(cmd, target, result) {
+        // best-effort: print to stderr but do not panic
+        eprintln!("ops_log::log_op error: {}", e);
+    }
+}
+
+/// Set the global log path at runtime (useful for tests).
+pub fn set_global_log_path<P: AsRef<Path>>(p: P) {
+    LOGGER.set_path(p.as_ref().to_path_buf());
+}
+
+/// Set the global rotation size in bytes.
+pub fn set_rotation_size_bytes(bytes: u64) {
+    LOGGER.set_rotation_size_bytes(bytes);
+}
+

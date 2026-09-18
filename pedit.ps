@@ -1,0 +1,138 @@
+UNTITLED_NAME = "untitled"
+
+DEF normalize_lines(lines):
+    IF list_len(lines) == 0:
+        RETURN [""]
+    END
+    RETURN lines
+END
+
+DEF first_user_arg():
+    args = sys.args()
+    IF list_len(args) > 2:
+        RETURN args[2]
+    END
+    RETURN ""
+END
+
+DEF load_buffer(file_path):
+    IF file_path != "" AND FILE_EXISTS(file_path):
+        RETURN normalize_lines(READ_LINES(file_path))
+    END
+    RETURN [""]
+END
+
+DEF save_buffer(file_path, lines):
+    WRITE_LINES(file_path, lines)
+END
+
+DEF display_name(file_path):
+    IF file_path == "":
+        RETURN UNTITLED_NAME
+    END
+    RETURN file_path
+END
+
+DEF buffer_snapshot(lines):
+    out = ""
+    idx = 0
+    WHILE idx < list_len(lines):
+        out = out + lines[idx] + "\n"
+        idx = idx + 1
+    END
+    RETURN out
+END
+
+DEF status_bar(file_path, dirty, row, col, status_msg):
+    dirty_flag = ""
+    IF dirty:
+        dirty_flag = " *"
+    END
+    pos = "Ln " + str(row + 1) + ", Col " + str(col + 1)
+    IF status_msg != "":
+        RETURN display_name(file_path) + dirty_flag + " | " + pos + " | " + status_msg
+    END
+    RETURN display_name(file_path) + dirty_flag + " | " + pos + " | Ctrl+O Save  Ctrl+X Exit"
+END
+
+DEF prompt_line(prompt_text, initial_text):
+    RETURN TERM_EDIT_LINE(prompt_text, initial_text)
+END
+
+IF NOT TERM_IS_TTY():
+    PRINT "pedit requires an interactive terminal"
+    sys.exit(1)
+END
+
+file_path = first_user_arg()
+lines = load_buffer(file_path)
+row = 0
+col = 0
+dirty = False
+status_msg = ""
+
+WHILE True:
+    before_snapshot = buffer_snapshot(lines)
+    result = TERM_EDIT_BUFFER(lines, status_bar(file_path, dirty, row, col, status_msg), row, col, 0)
+    lines = normalize_lines(result[0])
+    action = result[1]
+    row = result[2]
+    col = result[3]
+
+    IF buffer_snapshot(lines) != before_snapshot:
+        dirty = True
+    END
+
+    IF action == "Ctrl+O":
+        target_path = file_path
+        IF target_path == "":
+            save_prompt = prompt_line("Save as: ", "")
+            IF save_prompt[1] != "Enter":
+                status_msg = "Save cancelled"
+                CONTINUE
+            END
+            target_path = trim(save_prompt[0])
+        END
+        IF target_path == "":
+            status_msg = "Save cancelled"
+            CONTINUE
+        END
+        save_buffer(target_path, lines)
+        file_path = target_path
+        dirty = False
+        status_msg = "Saved " + target_path
+        CONTINUE
+    END
+
+    IF action == "Ctrl+C":
+        action = "Ctrl+X"
+    END
+
+    IF action == "Ctrl+X":
+        IF dirty:
+            confirm_prompt = prompt_line("Unsaved changes. Quit without saving? (y/N): ", "")
+            IF confirm_prompt[1] != "Enter":
+                status_msg = "Quit cancelled"
+                CONTINUE
+            END
+            confirm = upper(trim(confirm_prompt[0]))
+            IF confirm != "Y" AND confirm != "YES":
+                status_msg = "Quit cancelled"
+                CONTINUE
+            END
+        END
+        BREAK
+    END
+
+    IF action == "Timeout":
+        status_msg = "Editor timed out"
+        CONTINUE
+    END
+
+    IF action == "Ctrl+D":
+        status_msg = "Editor closed"
+        CONTINUE
+    END
+
+    status_msg = "Returned with action: " + action
+END

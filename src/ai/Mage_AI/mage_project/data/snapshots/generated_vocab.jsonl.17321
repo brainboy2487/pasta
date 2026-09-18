@@ -1,0 +1,103 @@
+{"id":"hello","key":"hello","responses":["Hello — how can I help you today?"],"type":"utterance"}
+{"id":"hi","key":"hi","responses":["Hi there — what would you like to do?"],"type":"utterance"}
+{"id":"hey","key":"hey","responses":["Hey — I’m listening."],"type":"utterance"}
+{"id":"good morning","key":"good morning","responses":["Good morning — how can I make your day easier?"],"type":"utterance"}
+{"id":"good afternoon","key":"good afternoon","responses":["Good afternoon — what can I do for you?"],"type":"utterance"}
+{"id":"good evening","key":"good evening","responses":["Good evening — need anything before the day ends?"],"type":"utterance"}
+{"id":"thanks","key":"thanks","responses":["You’re welcome — glad I could help."],"type":"utterance"}
+{"id":"thank you","key":"thank you","responses":["My pleasure — happy to help."],"type":"utterance"}
+{"id":"please","key":"please","responses":["Sure — what would you like me to do?"],"type":"utterance"}
+{"id":"sorry","key":"sorry","responses":["No problem — we can fix that together."],"type":"utterance"}
+{"id":"help","key":"help","responses":["I can help — tell me what you need."],"type":"utterance"}
+{"id":"support","key":"support","responses":["I’m here to support you — what’s the issue?"],"type":"utterance"}
+{"id":"problem","key":"problem","responses":["I’m sorry you’re having trouble — describe the problem and I’ll assist."],"type":"utterance"}
+{"id":"issue","key":"issue","responses":["Let’s troubleshoot this — what happened?"],"type":"utterance"}
+{"id":"question","key":"question","responses":["Ask away — I’ll do my best to answer."],"type":"utterance"}
+{"id":"how","key":"how","responses":["Could you give me a bit more detail so I can explain?"],"type":"utterance"}
+{"id":"what","key":"what","responses":["What specifically would you like to know?"],"type":"utterance"}
+{"id":"why","key":"why","responses":["I can explain the reasons — which part should I start with?"],"type":"utterance"}
+{"id":"when","key":"when","responses":["I can check the schedule — which date or time do you mean?"],"type":"utterance"}
+{"id":"where","key":"where","responses":["I can look that up — which location are you referring to?"],"type":"utterance"}
+{"id":"who","key":"who","responses":["I can find that — who or which person do you mean?"],"type":"utterance"}
+{"id":"status","key":"status","responses":["I’ll check the current status and report back."],"type":"utterance"}
+{"id":"progress","key":"progress","responses":["Here’s the latest progress update I have."],"type":"utterance"}
+{"id":"update","key":"update","responses":["I’ll fetch the latest update now."],"type":"utterance"}
+{"id":"cancel","key":"cancel","responses":["Okay — I’ll cancel that for you. Confirm if you want me to proceed."],"type":"utterance"}
+{"id":"stop","key":"stop","responses":["Stopping now — let me know if you want to resume."],"type":"utterance"}
+{"id":"pause","key":"pause","responses":["Paused — tell me when to continue."],"type":"utterance"}
+{"id":"resume","key":"resume","responses":["Resuming now — picking up where we left off."],"type":"utterance"}
+{"id":"restart","key":"restart","responses":["Restarting the process — one moment."],"type":"utterance"}
+{"id":"reset","key":"reset","responses":["I’ll reset that setting — confirm if you want to continue."],"type":"utterance"}
+{"id":"save","key":"save","responses":["I’ll save your changes now."],"type":"utterance"}
+{"id":"delete","key":"delete","responses":["I’m ready to delete that — confirm and I’ll proceed."],"type":"utterance"}
+{"id":"remove","key":"remove","responses":["I can remove it — please confirm which item."],"type":"utterance"}
+{"id":"add","key":"add","responses":["What would you like to add? Give me the details."],"type":"utterance"}
+{"id":"create","key":"create","responses":["I can create that for you — what should you name it?"],"type":"utterance"}
+{"id":"new","key":"new","responses":["Great — tell me what new item you want to make."],"type":"utterance"}
+{"id":"open","key":"open","responses":["Opening it now — which file or app?"],"type":"utterance"}
+{"id":"close","key":"close","responses":["Closing that now."],"type":"utterance"}
+{"id":"send","key":"send","responses":["I’ll send it — who should receive it?"],"type":"utterance"}
+{"id":"share","key":"share","responses":["I can share this — who should I share with?"],"type":"utterance"}
+{"id":"email","key":"email","responses":["I can draft an email — what should it say?"],"type":"utterance"}
+{"id":"message","key":"message","responses":["I’ll prepare a message — who is the recipient?"],"type":"utterance"}
+{"id":"call","key":"call","responses":["I can place a call — who should I call and when?"],"type":"utterance"}
+{"id":"schedule","key":"schedule","responses":["I’ll add that to your calendar — what date and time?"],"type":"utterance"}
+{"id":"remind","key":"remind","responses":["I’ll set a reminder — when would you like it?"],"type":"utterance"}
+{"id":"alarm","key":"alarm","responses":["Alarm set — what time should it go off?"],"type":"utterance"}
+{"id":"timer","key":"timer","responses":["Timer started — how long should it run?"],"type":"utterance"}
+{"id":"meeting","key":"meeting","responses":["I’ll schedule the meeting — who should attend?"],"type":"utterance"}
+{"id":"appointment","key":"appointment","responses":["I’ll book the appointment — preferred date and time?"],"type":"utterance"}
+{"id":"travel","key":"travel","responses":["I can help with travel plans — where are you going?"],"type":"utterance"}
+{"id":"flight","key":"flight","responses":["I’ll look up flights — what are your travel dates?"],"type":"utterance"}
+{"id":"hotel","key":"hotel","responses":["I’ll search hotels — what city and dates?"],"type":"utterance"}
+{"id":"directions","key":"directions","responses":["I’ll get directions — where are you starting from?"],"type":"utterance"}
+{"id":"map","key":"map","responses":["Showing the map now — which area do you want?"],"type":"utterance"}
+{"id":"weather","key":"weather","responses":["I’ll fetch the weather for your location."],"type":"utterance"}
+{"id":"forecast","key":"forecast","responses":["Here’s the forecast for the next few days."],"type":"utterance"}
+{"id":"news","key":"news","responses":["I’ll pull the latest headlines for you."],"type":"utterance"}
+{"id":"headline","key":"headline","responses":["Here’s a summary of the top headline."],"type":"utterance"}
+{"id":"search","key":"search","responses":["What should I search for?"],"type":"utterance"}
+{"id":"find","key":"find","responses":["Tell me what you want me to find."],"type":"utterance"}
+{"id":"lookup","key":"lookup","responses":["I’ll look that up and return results."],"type":"utterance"}
+{"id":"translate","key":"translate","responses":["Which language should I translate to?"],"type":"utterance"}
+{"id":"define","key":"define","responses":["I’ll provide a definition — which word?"],"type":"utterance"}
+{"id":"synonym","key":"synonym","responses":["I’ll list synonyms — which word do you want alternatives for?"],"type":"utterance"}
+{"id":"antonym","key":"antonym","responses":["I’ll list antonyms — which word do you mean?"],"type":"utterance"}
+{"id":"spell","key":"spell","responses":["I’ll spell that word for you."],"type":"utterance"}
+{"id":"calculate","key":"calculate","responses":["What calculation do you need? Provide the numbers."],"type":"utterance"}
+{"id":"convert","key":"convert","responses":["I can convert units — which units and value?"],"type":"utterance"}
+{"id":"math","key":"math","responses":["Tell me the math problem and I’ll solve it."],"type":"utterance"}
+{"id":"sum","key":"sum","responses":["I’ll compute the sum — give me the numbers."],"type":"utterance"}
+{"id":"average","key":"average","responses":["I’ll calculate the average — provide the dataset."],"type":"utterance"}
+{"id":"percent","key":"percent","responses":["I’ll compute the percentage — give me the values."],"type":"utterance"}
+{"id":"currency","key":"currency","responses":["Which currencies should I convert between?"],"type":"utterance"}
+{"id":"price","key":"price","responses":["I’ll check the current price for that item."],"type":"utterance"}
+{"id":"buy","key":"buy","responses":["I can help you buy that — do you want recommendations?"],"type":"utterance"}{"key": "framework", "responses": ["optimizes"]}
+{"key": "n", "responses": ["ndeterministic", "nthe"]}
+{"key": "inputs", "responses": ["n"]}
+{"key": "markov", "responses": ["answer"]}
+{"key": "id", "responses": ["local-0"]}
+{"key": "across", "responses": ["identical"]}
+{"key": "identical", "responses": ["inputs"]}
+{"key": "memory", "responses": ["usage"]}
+{"key": "text", "responses": ["the", "processing"]}
+{"key": "nthe", "responses": ["tiered"]}
+{"key": "answer", "responses": ["generation"]}
+{"key": "optimizes", "responses": ["memory"]}
+{"key": "local-0", "responses": ["text"]}
+{"key": "tiered", "responses": ["tensor"]}
+{"key": "outputs", "responses": ["across"]}
+{"key": "reproducible", "responses": ["outputs"]}
+{"key": "the", "responses": ["markov"]}
+{"key": "generation", "responses": ["engine"]}
+{"key": "engine", "responses": ["implements"]}
+{"key": "ensures", "responses": ["reproducible"]}
+{"key": "implements", "responses": ["efficient"]}
+{"key": "usage", "responses": ["through"]}
+{"key": "efficient", "responses": ["text"]}
+{"key": "through", "responses": ["lazy"]}
+{"key": "ndeterministic", "responses": ["inference"]}
+{"key": "inference", "responses": ["ensures"]}
+{"key": "lazy", "responses": ["evaluation"]}
+{"key": "processing", "responses": ["n"]}
+{"key": "tensor", "responses": ["framework"]}

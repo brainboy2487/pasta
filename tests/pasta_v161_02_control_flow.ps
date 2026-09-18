@@ -1,0 +1,156 @@
+# Pasta v0.01a script tests — control flow and block syntax (20 checks)
+
+DEF out_num(label, value):
+    PRINT label + ":" + str(value)
+END
+
+value = 0
+IF true:
+    value = 11
+END
+out_num("P02T01", value)                  # EXPECT: P02T01:11
+
+value = 0
+IF false:
+    value = 1
+OTHERWISE:
+    value = 22
+END
+out_num("P02T02", value)                  # EXPECT: P02T02:22
+
+value = 0
+UNLESS false:
+    value = 33
+END
+out_num("P02T03", value)                  # EXPECT: P02T03:33
+
+i = 0
+sum_total = 0
+WHILE i < 4:
+    i = i + 1
+    sum_total = sum_total + i
+END
+out_num("P02T04", sum_total)              # EXPECT: P02T04:10
+
+sum_total = 0
+FOR n IN [2, 4, 6]:
+    sum_total = sum_total + n
+END
+out_num("P02T05", sum_total)              # EXPECT: P02T05:12
+
+i = 0
+sum_total = 0
+WHILE i < 5:
+    i = i + 1
+    IF i == 3:
+        BREAK
+    END
+    sum_total = sum_total + i
+END
+out_num("P02T06", sum_total)              # EXPECT: P02T06:3
+
+i = 0
+sum_total = 0
+WHILE i < 5:
+    i = i + 1
+    IF i == 2:
+        CONTINUE
+    END
+    IF i == 5:
+        BREAK
+    END
+    sum_total = sum_total + i
+END
+out_num("P02T07", sum_total)              # EXPECT: P02T07:8
+
+count = 0
+FOR n IN [1, 2, 3, 4]:
+    IF n == 2 OR n == 4:
+        count = count + 1
+    END
+END
+out_num("P02T08", count)                  # EXPECT: P02T08:2
+
+value = 0
+IF true {
+    value = 9
+}
+out_num("P02T09", value)                  # EXPECT: P02T09:9
+
+value = 0
+IF false {
+    value = 1
+} OTHERWISE {
+    value = 10
+}
+out_num("P02T10", value)                  # EXPECT: P02T10:10
+
+sum_total = 0
+FOR n IN [1, 2, 3] {
+    sum_total = sum_total + n
+}
+out_num("P02T11", sum_total)              # EXPECT: P02T11:6
+
+count = 0
+WHILE count < 3 {
+    count = count + 1
+}
+out_num("P02T12", count)                  # EXPECT: P02T12:3
+
+value = 0
+IF true AND true:
+    value = 13
+END
+out_num("P02T13", value)                  # EXPECT: P02T13:13
+
+value = 0
+IF false OR true:
+    value = 14
+END
+out_num("P02T14", value)                  # EXPECT: P02T14:14
+
+count = 0
+WHILE false:
+    count = count + 1
+END
+out_num("P02T15", count)                  # EXPECT: P02T15:0
+
+sum_total = 0
+FOR n IN []:
+    sum_total = sum_total + n
+END
+out_num("P02T16", sum_total)              # EXPECT: P02T16:0
+
+sum_total = 0
+FOR n IN range(4):
+    sum_total = sum_total + n
+END
+out_num("P02T17", sum_total)              # EXPECT: P02T17:10
+
+count = 0
+outer = 0
+WHILE outer < 2:
+    inner = 0
+    WHILE inner < 3:
+        count = count + 1
+        inner = inner + 1
+    END
+    outer = outer + 1
+END
+out_num("P02T18", count)                  # EXPECT: P02T18:6
+
+i = 0
+count = 0
+WHILE i < 4:
+    IF i != 2:
+        count = count + 1
+    END
+    i = i + 1
+END
+out_num("P02T19", count)                  # EXPECT: P02T19:3
+
+value = 0
+UNLESS true:
+    value = 99
+END
+out_num("P02T20", value)                  # EXPECT: P02T20:0

@@ -1,0 +1,381 @@
+### Overview
+
+Here’s a concrete, implementation‑oriented plan to get from “idea” to a working Pasta package system:
+
+1. Define syntax and grammar (Menu, Dish, Course, pLock, registry index).  
+2. Implement core data models in your host language (Rust/Pasta).  
+3. Implement local layouts (project, pantry, mirrors config).  
+4. Implement registry format + a minimal HTTP server.  
+5. Implement the resolver + `.pLock` generation.  
+6. Implement the CLI commands that tie it all together.  
+7. Add deprecation/broken handling and mirror auth.
+
+I’ll walk through these in order.
+
+---
+
+## 1. Define the Pasta syntax and grammar
+
+**Goal:** Make the parser changes small and deterministic.
+
+1. **Add new top‑level constructs to the grammar:**
+   - `MENU = "name" ... END`
+   - `DISH "name" ... END`
+   - `COURSE "name" ... END`
+   - `PLOCK "name" ... END`
+   - `DISH INDEX "name" ... END`
+
+2. **Menu syntax (project manifest):**
+
+   ```pasta
+   MENU = "mandelbrot_viewer"
+
+       USE COURSE
+           rendering_suite
+           gui_suite
+
+       FROM DIR "src/main.ps"
+
+       INC DISHES
+           graphics >= 0.3
+           math >= 1.0
+       END
+
+   END
+   ```
+
+   - Enforce: at least one entry in `INC DISHES`.
+
+3. **Dish descriptor syntax (inside a dish bundle):**
+
+   ```pasta
+   DISH "graphics"
+       version "0.3.1"
+       serves Canvas, Color, Image
+   END
+   ```
+
+4. **Course syntax (local dependency bundle):**
+
+   ```pasta
+   COURSE "rendering_suite"
+       INC DISHES
+           graphics >= 0.3
+           math >= 1.0
+           colors >= 2.0
+       END
+   END
+   ```
+
+   - Courses are **never published**; they live in the project.
+
+5. **pLock syntax (lockfile):**
+
+   ```pasta
+   PLOCK "mandelbrot_viewer"
+
+       DISH "graphics"
+           version "0.3.1"
+           checksum "abc123"
+           mirror "https://pasta.market"
+       END
+
+       DISH "math"
+           version "1.2.4"
+           checksum "def456"
+           mirror "https://pasta.market"
+       END
+
+   END
+   ```
+
+6. **Registry index syntax:**
+
+   ```pasta
+   DISH INDEX "graphics"
+
+       VERSION "0.3.1"
+           checksum "abc123"
+           file "graphics-0.3.1.tar.gz"
+           deprecated false
+       END
+
+       VERSION "0.3.0"
+           checksum "def456"
+           file "graphics-0.3.0.tar.gz"
+           deprecated true
+           reason "Old API"
+           replacement "0.3.1"
+       END
+
+   END
+   ```
+
+7. **Extend the parser:**
+   - Add productions for these blocks.
+   - Map them into internal AST nodes: `Menu`, `Course`, `DishDescriptor`, `PLock`, `DishIndex`.
+
+---
+
+## 2. Implement core data models
+
+**Goal:** Have clean, in‑memory representations.
+
+1. **Menu model:**
+
+   - **Fields:**
+     - `name: String`
+     - `entry: PathBuf`
+     - `courses: Vec<String>`
+     - `direct_dishes: Vec<RequestedDish>`  
+       where `RequestedDish { name: String, constraint: VersionReq }`
+
+2. **Course model:**
+
+   - **Fields:**
+     - `name: String`
+     - `dishes: Vec<RequestedDish>`
+
+3. **Dish model (resolved):**
+
+   - **Fields:**
+     - `name: String`
+     - `version: Version`
+     - `checksum: String`
+     - `mirror: Url`
+
+4. **DishIndex model (registry):**
+
+   - **Fields:**
+     - `name: String`
+     - `versions: Vec<DishIndexEntry>`  
+       `DishIndexEntry { version, checksum, file, deprecated, reason, replacement, broken }`
+
+5. **PLock model:**
+
+   - **Fields:**
+     - `project_name: String`
+     - `dishes: Vec<LockedDish>`  
+       `LockedDish { name, version, checksum, mirror }`
+
+---
+
+## 3. Define on‑disk layouts
+
+**Goal:** Make file locations predictable and simple.
+
+1. **Project layout:**
+
+   ```text
+   project/
+       menu.pasta        # MENU block
+       courses/          # optional, local COURSE files
+       src/              # code
+       .pLock            # lockfile
+   ```
+
+2. **Pantry layout (local cache):**
+
+   ```text
+   ~/.pasta/pantry/
+       namespace/
+           dish/
+               version/
+                   dish.pasta   # descriptor
+                   src/...      # unpacked source
+   ```
+
+3. **Mirrors config (local):**
+
+   ```pasta
+   MIRRORS
+
+       MIRROR "primary"
+           url "https://pasta.market"
+           token "env:PASTA_PRIMARY_TOKEN"
+       END
+
+       MIRROR "backup"
+           url "https://mirror1.pasta.dev"
+           token "env:PASTA_BACKUP_TOKEN"
+       END
+
+   END
+   ```
+
+---
+
+## 4. Implement the registry
+
+**Goal:** Minimal HTTP server that serves dish indices and bundles.
+
+1. **On disk (server side):**
+
+   ```text
+   /registry/
+       namespace/
+           dish/
+               index.pasta
+               dish-0.3.1.tar.gz
+               dish-0.3.0.tar.gz
+   ```
+
+2. **HTTP endpoints:**
+
+   - `GET /namespace/dish/index.pasta` → returns `DISH INDEX` file.
+   - `GET /namespace/dish/{file}` → returns tarball.
+   - `POST /namespace/dish` → publish new version (auth required).
+
+3. **Publishing flow (`pasta publish`):**
+
+   - Parse local `DISH` descriptor.
+   - Tar up source + descriptor.
+   - Compute checksum.
+   - POST tarball + metadata to registry.
+   - Registry:
+     - verifies auth,
+     - writes tarball,
+     - updates `index.pasta` (append new `VERSION` block).
+
+---
+
+## 5. Implement the resolver
+
+**Goal:** Turn Menu + Courses into a flat set of resolved dishes, then write `.pLock`.
+
+1. **Load Menu:**
+   - Parse `menu.pasta` → `Menu`.
+
+2. **Load Courses:**
+   - For each course name in `Menu.courses`, load `courses/{name}.pasta` → `Course`.
+
+3. **Collect requested dishes:**
+   - Start with `Menu.direct_dishes`.
+   - Add all dishes from each `Course`.
+   - Merge by name, combine constraints (e.g., `>= 0.3` and `>= 0.4` → `>= 0.4`).
+   - If constraints conflict → error with clear message.
+
+4. **Resolve each requested dish:**
+   - Check pantry for any version satisfying constraint.
+   - If none:
+     - For each mirror (in order):
+       - Fetch `index.pasta` for that dish.
+       - Pick highest version satisfying constraint.
+       - Skip `broken` versions.
+       - If `deprecated`, mark for warning.
+       - Download tarball.
+       - Verify checksum.
+       - Unpack into pantry.
+   - Build `LockedDish` with chosen version, checksum, mirror.
+
+5. **Write `.pLock`:**
+   - Create `PLOCK "project_name"` block.
+   - For each `LockedDish`, emit a `DISH` block.
+   - Overwrite `.pLock` atomically (write temp, rename).
+
+---
+
+## 6. Implement CLI commands
+
+**Goal:** Make the system usable end‑to‑end.
+
+1. **`pasta init`:**
+   - Create `menu.pasta` with a skeleton `MENU`.
+   - Optionally create `courses/` directory.
+
+2. **`pasta add <dish> [constraint]`:**
+   - Edit `menu.pasta`:
+     - Add entry under `INC DISHES`.
+   - Run resolver.
+   - Update `.pLock`.
+
+3. **`pasta course new <name>`:**
+   - Create `courses/<name>.pasta` with a skeleton `COURSE`.
+
+4. **`pasta course add <course> <dish> [constraint]`:**
+   - Edit `courses/<course>.pasta` to add dish.
+   - Run resolver.
+   - Update `.pLock`.
+
+5. **`pasta lock` / `pasta resolve`:**
+   - Re‑run resolver from scratch.
+   - Rewrite `.pLock`.
+
+6. **`pasta pantry list/remove`:**
+   - List cached dishes.
+   - Remove selected ones (local unpublish).
+
+7. **`pasta publish`:**
+   - Package current dish (for library projects).
+   - Publish to registry.
+
+---
+
+## 7. Deprecation and broken handling
+
+**Goal:** Make failures informative, not mysterious.
+
+1. **When resolving from registry:**
+   - If `broken == true`:
+     - Do not select that version.
+     - If no other version satisfies constraint → hard error:
+       - Show `reason` and `fix`/`replacement` if present.
+   - If `deprecated == true`:
+     - Allow selection.
+     - Record `deprecated` flag in memory for warnings.
+
+2. **When running `pasta resolve` or `pasta build`:**
+   - If any locked dish is deprecated:
+     - Print warnings with reasons and suggested replacements.
+
+---
+
+## 8. Mirror authentication
+
+**Goal:** Only trust valid mirrors.
+
+1. **At startup:**
+   - Parse `MIRRORS` config.
+   - Resolve tokens from env if specified.
+
+2. **On fetch:**
+   - For each mirror:
+     - Attach auth header (e.g., `Authorization: Bearer <token>`).
+     - Require HTTPS.
+     - Verify response signature if you add signing later.
+     - Verify checksum after download.
+
+3. **On failure:**
+   - Try next mirror.
+   - If all fail → error with list of attempted mirrors.
+
+---
+
+## 9. Implementation order (practical roadmap)
+
+1. **Phase 1: Syntax + parser**
+   - Implement `MENU`, `COURSE`, `DISH`, `PLOCK`, `DISH INDEX` parsing.
+
+2. **Phase 2: Local only**
+   - Implement `Menu`, `Course`, `Dish`, `PLock` models.
+   - Implement resolver that only uses a local “fake registry” directory.
+   - Implement `.pLock` writing.
+
+3. **Phase 3: Pantry + registry index**
+   - Implement pantry layout and loading.
+   - Implement reading `DISH INDEX` from disk.
+   - Implement checksum verification.
+
+4. **Phase 4: HTTP registry**
+   - Wrap the on‑disk registry with a minimal HTTP server.
+   - Implement fetch logic in the resolver.
+
+5. **Phase 5: CLI**
+   - Wire `pasta init`, `pasta add`, `pasta course`, `pasta resolve`, `pasta publish`.
+
+6. **Phase 6: Deprecation/broken + mirrors**
+   - Add deprecation/broken fields to `DISH INDEX`.
+   - Implement warnings/errors.
+   - Implement mirror config + auth.
+
+

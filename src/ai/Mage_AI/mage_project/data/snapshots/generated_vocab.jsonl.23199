@@ -1,0 +1,9 @@
+
+{"id":"gen0001","key":"a","responses":["tiny"]}
+{"id":"gen0002","key":"world","responses":["this"]}
+{"id":"gen0003","key":"is","responses":["a"]}
+{"id":"gen0004","key":"corpus","responses":["hello"]}
+{"id":"gen0005","key":"training","responses":["corpus"]}
+{"id":"gen0006","key":"this","responses":["is"]}
+{"id":"gen0007","key":"hello","responses":["world","mage"]}
+{"id":"gen0008","key":"tiny","responses":["training"]}

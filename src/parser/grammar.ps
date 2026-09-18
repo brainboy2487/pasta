@@ -1,0 +1,119 @@
+# Grammar reference translated from src/parser/grammar.rs
+# Human-readable EBNF for PASTA. Used for documentation and by any tooling that
+# wants the canonical grammar in Pasta script form. Not required at runtime.
+
+DEF grammar_text():
+    RETURN("""
+Program ::= { Statement } EOF
+
+// Statements
+Statement ::=
+      ObjDecl
+    | SpawnBlock
+    | DefDoUntil
+    | Assignment
+    | DoStatement
+    | WhileStatement
+    | IfStatement
+    | PriorityOverride
+    | ConstraintStatement
+    | FunctionDef
+    | ExprStatement
+    | EndStatement
+
+// Object family declaration
+ObjDecl ::=
+    "OBJ" "." FamilyGroup "." "MUT" Identifier "(" [ ParamList ] ")" ":" NEWLINE
+    INDENT { ObjMember } DEDENT "END" NEWLINE?
+
+FamilyGroup ::= "NRML" | "LIST" | "ARY" | "TNSR"
+
+ObjMember ::=
+      FieldDecl
+    | MutationTable
+    | ConstructorDecl
+    | MethodDecl
+    | OtherMember
+
+FieldDecl ::= "FIELD" Identifier "=" Expr NEWLINE
+
+MutationTable ::=
+    "DEF" "MUTATION_TABLE" ":" NEWLINE INDENT { MutEntry } DEDENT "END" NEWLINE?
+
+MutEntry ::= "MUT" Identifier "=" MutBody NEWLINE
+MutBody ::= "DO" Block "END" | "DO" SimpleStmt
+
+ConstructorDecl ::=
+    "CONSTRUCTOR" "(" "params" ")" ":" NEWLINE INDENT { Statement } DEDENT "END" NEWLINE?
+
+MethodDecl ::=
+    "DEF" Identifier "(" [ ParamList ] ")" ":" NEWLINE INDENT { Statement } DEDENT "END" NEWLINE?
+
+// SPAWN block
+SpawnBlock ::=
+    "SPAWN" ":" NEWLINE INDENT { SpawnEntry } DEDENT "END" NEWLINE?
+
+SpawnEntry ::= SpawnLHS ":" NEWLINE INDENT { Statement } DEDENT "END" NEWLINE?
+SpawnLHS ::= Expr "." FamilyGroup "." "MUT" [ "@" Expr "." FamilyGroup "." "MUT" ]
+
+// DEF DO ... UNTIL
+DefDoUntil ::=
+    "DEF" "DO" Identifier "UNTIL" Condition ":" NEWLINE INDENT { Statement } DEDENT "END" [ "(" "LX" "UNTIL" Condition ")" ] NEWLINE?
+
+// DO / WHILE / FOR
+DoStatement ::=
+    "DO" [ TargetList ] [ "AS" Identifier ] [ "FOR" ExprList ] NEWLINE INDENT { Statement } DEDENT "END"
+
+WhileStatement ::=
+    "DO" [ TargetList ] NEWLINE INDENT { Statement } DEDENT "WHILE" Condition "END"
+
+TargetList ::= Identifier { "," Identifier }
+ExprList ::= Expr { "," Expr }
+
+// Assignment / function / simple stmts
+Assignment ::= ( "set" Identifier "=" Expr NEWLINE ) | ( Identifier "=" Expr NEWLINE )
+FunctionDef ::= "DEF" Identifier [ "(" ParamList ")" ] ":" NEWLINE INDENT { Statement } DEDENT "END" NEWLINE?
+ExprStatement ::= Expr NEWLINE
+EndStatement ::= "END" NEWLINE
+
+// IF / ATTEMPT / TRY / PRIORITY / CONSTRAINT
+IfStatement ::=
+    "IF" Condition ":" NEWLINE INDENT { Statement } DEDENT [ "OTHERWISE" ":" NEWLINE INDENT { Statement } DEDENT ]
+
+AttemptBlock ::= ("ATTEMPT" | "TRY") "(" Identifier ")" ":" NEWLINE INDENT { Statement } DEDENT [ ("ELSE" | "OTHERWISE") ":" NEWLINE INDENT { Statement } DEDENT ] "END" NEWLINE?
+
+PriorityOverride ::= Identifier "OVER" Identifier NEWLINE
+ConstraintStatement ::= Expr [ Relation ] Expr "LIMIT" "OVER" Expr NEWLINE
+Relation ::= "approaches" | "equals" | "is" | "is not" | ">" | "<" | ">=" | "<=" | "minimize" | "maximize" | "in"
+
+// Expressions
+Expr ::= CombineExpr | BinaryExpr | CallExpr | ListExpr | IndexExpr | Primary
+CombineExpr ::= Expr "+" Expr
+BinaryExpr ::= Expr BinaryOp Expr
+BinaryOp ::= "+" | "-" | "*" | "/" | "==" | "!=" | "<" | ">" | "<=" | ">=" | "and" | "or" | "@" | "≈" | "≠" | "≡"
+CallExpr ::= Primary "(" [ ArgList ] ")"
+ArgList ::= Arg { "," Arg }
+Arg ::= Identifier "=" Expr | Expr
+ListExpr ::= "[" [ Expr { "," Expr } ] "]"
+IndexExpr ::= Expr "[" ExprList "]"
+Primary ::= Number | String | Bool | Identifier | ConstructorCall | "(" Expr ")"
+ConstructorCall ::= Identifier "(" [ ArgList ] ")"
+Condition ::= Expr (("==" | "!=" | "<" | "<=" | ">" | ">=") Expr)?
+SimpleStmt ::= Assignment | ExprStatement | PrintStmt
+PrintStmt ::= "PRINT" ExprList NEWLINE
+Block ::= { Statement }
+
+// Lexical forms (informal) for documentation
+// Identifier ::= /[A-Za-z_][A-Za-z0-9_]*/
+// Number ::= /[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?/
+// String ::= /"([^"\\]|\\.)*"/
+// Bool   ::= "true" | "false"
+// NEWLINE, INDENT, DEDENT are produced by the lexer
+""")
+
+DEF get_grammar():
+    RETURN(grammar_text())
+
+# Simple helper that returns family groups list
+DEF family_groups():
+    RETURN(["NRML", "LIST", "ARY", "TNSR"])

@@ -1,0 +1,48 @@
+# Alias table in Pasta script (translation of src/lexer/alias.rs)
+
+DEF AliasTable_new():
+    map = {
+        # core keywords
+        "def": "DEF", "define": "DEF", "function": "DEF", "func": "DEF",
+        "do": "DO", "run": "DO", "start": "DO",
+        "and": "AND", "or": "OR", "not": "NOT",
+        "for": "FOR", "in": "IN", "as": "AS",
+        "over": "OVER", "limit": "LIMIT", "end": "END",
+        "pause": "PAUSE", "unpause": "UNPAUSE", "restart": "RESTART",
+        "wait": "WAIT", "set": "SET", "if": "IF", "then": "THEN",
+        "try": "TRY", "attempt": "TRY", "otherwise": "OTHERWISE", "else": "OTHERWISE",
+        "obj": "OBJ", "spawn": "SPAWN", "unless": "UNLESS", "until": "UNTIL",
+        "pass": "PASS", "break": "BREAK", "continue": "CONTINUE",
+        "true": "TRUE", "false": "FALSE", "none": "NONE", "null": "NONE",
+        "print": "PRINT", "while": "WHILE", "set": "SET",
+        "mut": "MUT", "import": "IMPORT", "from": "FROM",
+        # pointer system
+        "goto": "GOTO", "loop": "LOOP", "pull": "PULL", "push": "PUSH",
+        "alloc": "ALLOC", "free": "FREE", "info": "INFO", "ref": "REF",
+        "seek": "SEEK", "swap": "SWAP", "does_parent_exist": "DOES_PARENT_EXIST",
+    }
+    RETURN({"map": map})
+
+DEF AliasTable_normalize(tbl, word, is_do_line):
+    IF word == None: RETURN(None) END
+    lower = str.lower(word)
+    # contextual rule: "before" => OVER only on do lines
+    IF lower == "before" AND NOT is_do_line:
+        RETURN(None)
+    END
+    IF has_key(tbl["map"], lower):
+        RETURN(tbl["map"][lower])
+    END
+    RETURN(None)
+
+# small helpers
+DEF AliasTable_add_alias(tbl, canonical, alias):
+    tbl["map"][str.lower(alias)] = str.upper(canonical)
+    RETURN(None)
+
+DEF AliasTable_contains_canonical(tbl, canonical):
+    up = str.upper(canonical)
+    FOR k IN dict_keys(tbl["map"]):
+        IF tbl["map"][k] == up: RETURN(true) END
+    END
+    RETURN(false)

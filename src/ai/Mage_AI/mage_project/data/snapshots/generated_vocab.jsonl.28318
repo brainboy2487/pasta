@@ -1,0 +1,120 @@
+{"id": "7298cae73bd75008", "key": "nnb", "type": "other", "responses": ["cgetdata"]}
+{"id": "65f9b4173609700c", "key": "content", "type": "other", "responses": ["hashnnparseraddargument--manifest"]}
+{"id": "834e2b235f15101f", "key": "requestsnnfrom", "type": "other", "responses": ["bs4"]}
+{"id": "eaea14393980d033", "key": "script", "type": "other", "responses": ["supports"]}
+{"id": "3230ef40285b5036", "key": "sourcesnnit", "type": "other", "responses": ["writes"]}
+{"id": "3fe235922b671037", "key": "actionstoretrue", "type": "other", "responses": ["helpdo", "helpskip"]}
+{"id": "6fe5df7bc4c6e038", "key": "item", "type": "other", "responses": ["in"]}
+{"id": "7fede48f7ce4e039", "key": "please", "type": "other", "responses": ["build"]}
+{"id": "753422a5532d5039", "key": "textnnnorm", "type": "other", "responses": ["jointextsplitnnelsennnorm"]}
+{"id": "b8ddbb40276ff03b", "key": "--url", "type": "other", "responses": ["url"]}
+{"id": "8130894ca0ee1046", "key": "whitespacennif", "type": "other", "responses": ["textnnnorm"]}
+{"id": "8bd523a5c1b5304a", "key": "entriesnnprintfwrote", "type": "other", "responses": ["lenentries"]}
+{"id": "3acbc336cae4304b", "key": "build", "type": "other", "responses": ["project", "first"]}
+{"id": "dd85e13c28d07056", "key": "exceptionnnpassnnpage", "type": "other", "responses": ["fhttpsenwikipediaorgwikititlennhtml"]}
+{"id": "5862615ebc03f05b", "key": "for", "type": "other", "responses": ["magennthis", "a", "prompt"]}
+{"id": "ee5116e115f15060", "key": "urlendswithjsonnnjurl", "type": "other", "responses": ["urlrstrip"]}
+{"id": "87ae2c4399c16070", "key": "seenhashesnnprintskipping", "type": "other", "responses": ["duplicate"]}
+{"id": "19d2298146e74072", "key": "three", "type": "other", "responses": ["main"]}
+{"id": "a59348b407ad5075", "key": "defaultnonennargs", "type": "other", "responses": ["parserparseargsnnout"]}
+{"id": "bd44a381b1a8908f", "key": "set", "type": "other", "responses": ["of"]}
+{"id": "a477bee38fafd094", "key": "ennprintcoherence", "type": "other", "responses": ["checker"]}
+{"id": "66d9726205687099", "key": "iterate", "type": "other", "responses": ["a", "overrides"]}
+{"id": "2020e437cf8e60a2", "key": "argspromptsplitnnprintgenerating", "type": "other", "responses": ["reply"]}
+{"id": "1c994449ea2110ab", "key": "python3", "type": "other", "responses": ["pythoncoherencecheckerpynntrynncoh"]}
+{"id": "7d1cf541a15c70b1", "key": "openoutpath", "type": "other", "responses": ["w"]}
+{"id": "570e2e8ff2ace0b5", "key": "truennexcept", "type": "other", "responses": ["exceptionnnrequests", "exception"]}
+{"id": "99307931733030d0", "key": "pgettextseparator", "type": "other", "responses": ["striptruennif"]}
+{"id": "aff42e6bc20c80d7", "key": "entriesnnprintno", "type": "other", "responses": ["entries"]}
+{"id": "3e31b0cc61a410da", "key": "noscript", "type": "other", "responses": ["header"]}
+{"id": "d0595387674300de", "key": "fetchwikipediatitlennelif", "type": "other", "responses": ["redditcom"]}
+{"id": "1859e0cb2dc530e3", "key": "urlparseargsurlnntitle", "type": "other", "responses": ["ppathrsplit"]}
+{"id": "cb4e7d619d3c70e7", "key": "writes", "type": "other", "responses": ["output"]}
+{"id": "eb5091b03aa890ef", "key": "outnnprintrunning", "type": "other", "responses": ["training"]}
+{"id": "5476916ee040c0f9", "key": "project", "type": "other", "responses": ["first"]}
+{"id": "4f24006e9db38103", "key": "defaultsourcesnnif", "type": "other", "responses": ["argssourcesnntrynnwith"]}
+{"id": "632822e958825114", "key": "listnnfor", "type": "other", "responses": ["item"]}
+{"id": "e23a87fcbfaa8125", "key": "error", "type": "other", "responses": ["strenncontinuennif"]}
+{"id": "6f9c39d1f637912b", "key": "argsmanifestnnexcept", "type": "other", "responses": ["exception"]}
+{"id": "7b64b7f46a104132", "key": "entriesnnosmakedirsospathdirnameoutpath", "type": "other", "responses": ["existoktruennwith"]}
+{"id": "df317d1690fe613b", "key": "nnlead", "type": "other", "responses": ["datagetlead"]}
+{"id": "5b206d766e4ea140", "key": "linestripnnif", "type": "other", "responses": ["not"]}
+{"id": "05b349dd24508157", "key": "stderrnnsysexit5nnexcept", "type": "other", "responses": ["filenotfounderrornnprinttraining"]}
+{"id": "0a5cbac5f6c1d166", "key": "itnn-", "type": "other", "responses": ["no"]}
+{"id": "cca6e00e7cf8b167", "key": "available", "type": "other", "responses": ["requestsbs4"]}
+{"id": "faa566ef6314b16c", "key": "generate", "type": "other", "responses": ["after"]}
+{"id": "38cdbd4a89de1176", "key": "rtextnndef", "type": "other", "responses": ["fetchwikipediatitlennif"]}
+{"id": "6c7674b383166182", "key": "after", "type": "other", "responses": ["trainingnnparseraddargument--no-train"]}
+{"id": "eb6bc5c020973190", "key": "argsnotrainnntraincmd", "type": "other", "responses": ["binmagecli"]}
+{"id": "5264a477fc47f197", "key": "instead", "type": "other", "responses": ["of"]}
+{"id": "429c6d5a1044c19b", "key": "urlparsenntrynnimport", "type": "other", "responses": ["requestsnnfrom"]}
+{"id": "0231f0523e9dd1a1", "key": "jsonl", "type": "other", "responses": ["or", "lines", "path"]}
+{"id": "7eaa082ed0cf01a7", "key": "nonennbeautifulsoup", "type": "other", "responses": ["nonennhasnet"]}
+{"id": "c927051cbef701b3", "key": "import", "type": "other", "responses": ["urlparsenntrynnimport", "beautifulsoupnnhasnet"]}
+{"id": "73f446549f6eb1b6", "key": "chunksnnreturn", "type": "other", "responses": ["extracttextfromhtmlnjoinchunksnnexcept"]}
+{"id": "25322f7d4746e1b6", "key": "a", "type": "other", "responses": ["single", "local", "small", "generation", "provided"]}
+{"id": "15ecc7918f9001bb", "key": "subprocessruncohcmd", "type": "other", "responses": ["inputouttext"]}
+{"id": "58345bf2bb8e31bb", "key": "timeout15nnrraiseforstatusnnreturn", "type": "other", "responses": ["rtextnndef"]}
+{"id": "166833888de7a1c7", "key": "readlocalfileargslocalnnentriesappendid", "type": "other", "responses": ["flocal-0"]}
+{"id": "911f72e06500f1c9", "key": "filenotfounderrornnprintcli", "type": "other", "responses": ["binary"]}
+{"id": "eb8b4449912741d6", "key": "argparsennimport", "type": "other", "responses": ["sysnnimport"]}
+{"id": "90adfaebbb5ba1d9", "key": "argspromptnngencmd", "type": "other", "responses": ["binmagecli"]}
+{"id": "2146411669a6f1e8", "key": "filesysstderrnnprintouttextnnsysexit0nnprintdonennif", "type": "other", "responses": ["name"]}
+{"id": "492724ebd37871eb", "key": "hasnetnntrynnjurl", "type": "other", "responses": ["urlnnif"]}
+{"id": "836941850dc341f3", "key": "nnwritten", "type": "other", "responses": ["0nnnnif"]}
+{"id": "3b4c02e0d1a491fc", "key": "usrbinenv", "type": "other", "responses": ["python3nnscraper"]}
+{"id": "34a99acca51aa203", "key": "openpath", "type": "other", "responses": ["r"]}
+{"id": "5eed4b4f5433d205", "key": "wikipediamachinelearning", "type": "other", "responses": ["type"]}
+{"id": "6ee618f44ab4923c", "key": "textsappenddgettitlennif", "type": "other", "responses": ["dgetselftext"]}
+{"id": "ad6c4dc8f7703254", "key": "texttruennfinal", "type": "other", "responses": ["cohstdoutstrip"]}
+{"id": "d3b0aecacb891257", "key": "argsurlnnp", "type": "other", "responses": ["urlparseargsurlnntitle"]}
+{"id": "1f382c83642fa260", "key": "htmlparsernnfor", "type": "other", "responses": ["sct"]}
+{"id": "e5233ad5ba17f268", "key": "binmagecli", "type": "other", "responses": ["train", "please", "argspromptsplitnnprintgenerating"]}
+{"id": "49939d436e3fb271", "key": "rcstdoutstripnnif", "type": "other", "responses": ["rcreturncode"]}
+{"id": "79ae9c7c539aa271", "key": "chunksappendstextnnif", "type": "other", "responses": ["chunksnnreturn"]}
+{"id": "1b117ec035406283", "key": "failed", "type": "other", "responses": ["rcstderr", "to", "returning"]}
+{"id": "b4c41a8e3b698284", "key": "user-agent", "type": "other", "responses": ["mage-scraper10"]}
+{"id": "2d13fe471c7d328a", "key": "textnnexcept", "type": "other", "responses": ["exception"]}
+{"id": "03d583f5ea2ad28c", "key": "fetchgenericurlnnhtml", "type": "other", "responses": ["fetchurlurlnnreturn"]}
+{"id": "004613b5c1a8c29b", "key": "ennprintfwarning", "type": "other", "responses": ["failed"]}
+{"id": "23d0658335e002bf", "key": "scrapennparseraddargument--local", "type": "other", "responses": ["helpread"]}
+{"id": "72c3469cfcb442ce", "key": "final", "type": "other", "responses": ["coherence-checked"]}
+{"id": "2207d584fcf162d9", "key": "trainingnnparseraddargument--no-train", "type": "other", "responses": ["actionstoretrue"]}
+{"id": "0da6e44adb00c2e1", "key": "subprocessrungencmd", "type": "other", "responses": ["checkfalse"]}
+{"id": "0ad7e561129832eb", "key": "with", "type": "other", "responses": ["id"]}
+{"id": "e72c36da0ddee30a", "key": "requestsgetapi", "type": "other", "responses": ["headersheaders"]}
+{"id": "9a87e2340086830e", "key": "missing", "type": "other", "responses": ["build"]}
+{"id": "b0cf7cb119c5a310", "key": "sourcesiternnidx", "type": "other", "responses": ["1nnname"]}
+{"id": "1c1151f35ce0331a", "key": "returning", "type": "other", "responses": ["raw"]}
+{"id": "398e8437ea40f31f", "key": "else", "type": "other", "responses": ["outtextnnprintn---"]}
+{"id": "c42006304a2af324", "key": "pythoncoherencecheckerpynntrynncoh", "type": "other", "responses": ["subprocessruncohcmd"]}
+{"id": "5298464e703df32a", "key": "inputouttext", "type": "other", "responses": ["checkfalse"]}
+{"id": "61d6423a3fcd532d", "key": "hasnetnnapi", "type": "other", "responses": ["fhttpsenwikipediaorgapirestv1pagemobile-sectionstitlenntrynnr"]}
+{"id": "5d0cd7226e5fc334", "key": "datadatagetchildren", "type": "other", "responses": ["nnd"]}
+{"id": "2b8023e9cd1dc337", "key": "objnntextsappendobjtextnncontinuennexcept", "type": "other", "responses": ["exceptionnnpassnntextsappendlinennreturn"]}
+{"id": "4ed847ab4b281337", "key": "supports", "type": "other", "responses": ["three"]}
+{"id": "e65ec4e95fd7e33c", "key": "requestsbs4", "type": "other", "responses": ["missingnnr"]}
+{"id": "12b69137d2196345", "key": "rjsonnnchunks", "type": "other", "responses": ["nnlead"]}
+{"id": "3f62911eed598348", "key": "chunksappendstextnnrem", "type": "other", "responses": ["datagetremaining"]}
+{"id": "8c77d1079038534c", "key": "redditrprogramming", "type": "other", "responses": ["type"]}
+{"id": "a7901461658c4355", "key": "fetchurlurlnnif", "type": "other", "responses": ["not"]}
+{"id": "239d53cc0e0d3367", "key": "argssourcesnntrynnwith", "type": "other", "responses": ["openargssources"]}
+{"id": "cafad5b5cc66336f", "key": "filesysstderrnnsysexit2nnelif", "type": "other", "responses": ["argsurlnntrynnif"]}
+{"id": "fa58307e674fa37d", "key": "false", "type": "other", "responses": ["error"]}
+{"id": "9e1c57dff046c38f", "key": "nnndef", "type": "other", "responses": ["mainnnparser"]}
+{"id": "d71e97c7aa4723ac", "key": "generatednnreply", "type": "other", "responses": ["through"]}
+{"id": "8c8dfc49d350c3af", "key": "in", "type": "other", "responses": ["s", "sfindallpnnt", "leadnnfor", "leadsectionsnnif", "sscript"]}
+{"id": "a975ad91405853d6", "key": "nnruntime", "type": "other", "responses": ["inttimetimennout"]}
+{"id": "351c6b43b0c193e3", "key": "outnnmanifestwritten", "type": "other", "responses": ["lenentriesnnif"]}
+{"id": "5a5c1ecf266c13f4", "key": "cli", "type": "other", "responses": ["not"]}
+{"id": "4a5986ed805223f6", "key": "data", "type": "other", "responses": ["in"]}
+{"id": "88878828bc67c404", "key": "nnjointextsnndef", "type": "other", "responses": ["writejsonloutpath"]}
+{"id": "8d04674c24a1340b", "key": "id", "type": "other", "responses": ["sgetid", "text", "pythonprogramminglanguagennname", "machinelearningnnname", "fname-idx"]}
+{"id": "a45411c5f3fbf417", "key": "existoktruennwith", "type": "other", "responses": ["openoutpath"]}
+{"id": "6cdbbe1a77974429", "key": "outnnsources", "type": "other", "responses": ["nnwritten"]}
+{"id": "6a3e82979ba47429", "key": "dgettitle", "type": "other", "responses": ["textsappenddgettitlennif"]}
+{"id": "6a499cd82874743e", "key": "json", "type": "other", "responses": ["path"]}
+{"id": "94f106461ff06457", "key": "0nnseenhashes", "type": "other", "responses": ["setnnmanifest"]}
+{"id": "24321fc5b8efa45c", "key": "fallbacknnhtml", "type": "other", "responses": ["fetchurlurlnnreturn"]}
+{"id": "bdd2c712e7472462", "key": "sha256", "type": "other", "responses": ["of"]}
+{"id": "6c5a7be6820d247b", "key": "leadnnfor", "type": "other", "responses": ["s"]}

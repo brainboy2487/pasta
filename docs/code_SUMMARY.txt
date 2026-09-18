@@ -1,0 +1,1045 @@
+PS C:\Users\Brittany Garrison\Downloads\pasta\pasta> git rev-parse --abbrev-ref HEAD
+>> git status --porcelain
+fix/gate-traces
+ M .cargo/config.toml
+ M .github/workflows/rust.yml
+ M Cargo.lock
+ M Cargo.toml
+ M README.md
+ D TokenType::Step,
+ M docs/README.md
+ M examples/game_demos/pong
+ M examples/game_demos/pong.ps
+ M examples/game_demos/snake
+ M examples/game_demos/snake.ps
+ M examples/game_demos/tetris.ps
+ M src/ai/Mage_AI/mage_project/ci/run_ci_locally.sh
+ M src/ai/Mage_AI/mage_project/examples/simple_client
+ M src/ai/Mage_AI/mage_project/python/coherence_checker.py
+ M src/ai/Mage_AI/mage_project/tests/unit/test_mmappedindex
+ M src/ai/Mage_AI/mage_project/tests/unit/test_vectors_writer
+ M src/ai/Mage_AI/mage_project/tools/check_lib_tokenizer
+ M src/ai/Mage_AI/mage_project/tools/dump_mphf
+ M src/ai/Mage_AI/mage_project/tools/gen_mphf
+ M src/ai/Mage_AI/mage_project/tools/gen_mphf_chd
+ M src/ai/Mage_AI/mage_project/tools/mage_markov
+ M src/ai/Mage_AI/mage_project/tools/markov3_from_M
+ M src/ai/Mage_AI/mage_project/tools/print_norm
+ M src/ai/Mage_AI/mage_project/tools/print_tokens
+ M src/ai/Mage_AI/mage_project/tools/test_contract
+ M src/ai/Mage_AI/mage_project/tools/test_contract_local
+ M src/ai/Mage_AI/mage_project/tools/test_mmappedindex
+ M src/ai/Mage_AI/mage_project/tools/test_mphf
+ M src/ai/Mage_AI/mage_project/tools/test_mphf_build
+ M src/ai/Mage_AI/mage_project/tools/test_tap
+ M src/ai/Mage_AI/mage_project/tools/test_tokenizer
+ M src/ai/Mage_AI/mage_project/tools/write_vectors
+ M src/bin/pasta.rs
+ M src/compiler/mod.rs
+ M src/interpreter/ex_eval.rs
+ M src/interpreter/executor.rs
+ M src/interpreter/repl.rs
+ M src/interpreter/shell.rs
+ M src/interpreter/shell_os/cli/cli.rs
+ M src/lib.rs
+ M src/meatballs/agent/Cargo.toml
+ M src/mod_loader/mod.rs
+ M src/mod_loader/mod_api.rs
+ M src/mod_loader/mod_load.rs
+ M src/parser/ast.rs
+ M src/parser/parser.rs
+ M src/pasta_async/Cargo.toml
+ M src/readline.rs
+ M src/runtime/native_module.rs
+ D src/stdlib/graphics/backend/x11.rs:101:17
+ D src/stdlib/graphics/backend/x11.rs:122:17
+ M src/stdlib/term.rs
+ M src/threading/thread_api.rs
+ M tests/cli_smoke.rs
+ D tests/import_system.rs
+ M tests/math_tests.rs
+ M tests/pasta_v161_01_arithmetic.ps
+ M tests/pasta_v161_02_control_flow.ps
+ M tests/pasta_v161_03_functions.ps
+ M tests/pasta_v161_04_lists_ranges.ps
+ M tests/pasta_v161_05_strings_dicts_regex.ps
+ M tests/pasta_v161_06_errors_types.ps
+ M tests/pasta_v161_07_file_io.ps
+ M tests/pasta_v161_08_memory.ps
+ M tests/pasta_v161_09_graphics_headless.ps
+ M tests/pasta_v161_10_language_surface.ps
+ M tests/print
+?? .local/
+?? AUDIT_COMPLETE.md
+?? DOCUMENTATION_INDEX.md
+?? FINISHING_PLAN.md
+?? PHASE11_ONWARD.txt
+?? PHASE2_COMPLETE.md
+?? PHASE3_COMPLETE.md
+?? PHASE3_COMPLETION_CHECKLIST.md
+?? PHASES_5_TO_30_COMPREHENSIVE_PLAN.md
+?? PHASES_7_TO_10_IMPLEMENTATION_GUIDE.md
+?? PHASES_7_TO_10_VISION.md
+?? PHASE_4A_SPRINT_PLAN.md
+?? QUICK_REFERENCE_SELF_HOSTING.md
+?? SELF_HOSTING_INDEX.md
+?? SELF_HOSTING_ROADMAP.md
+?? SELF_HOSTING_STRATEGIC_VISION.md
+?? SELF_HOSTING_SUMMARY.md
+?? SESSION_ACCOMPLISHMENTS.md
+?? TokenType_Step,
+?? VERSION_UPDATES.md
+?? WINDOWS_AUDIT_SUMMARY.md
+?? WINDOWS_COMPATIBILITY_AUDIT.md
+?? WINDOWS_IMPLEMENTATION_CHECKLIST.md
+?? WINDOWS_IMPLEMENTATION_COMPLETE.md
+?? WINDOWS_IMPLEMENTATION_INDEX.md
+?? WINDOWS_PHASE3_COMPLETE.md
+?? WINDOWS_ROADMAP.md
+?? WORKING_ANCHOR.md
+?? compiler_todo.txt
+?? dist/
+?? scripts/
+?? sort_function_guide.txt
+?? src/bin/console_diag.rs
+?? src/bin/pasta-lsp.rs
+?? src/stdlib/graphics/backend/x11.rs_101_17
+?? src/stdlib/graphics/backend/x11.rs_122_17
+?? src/threading/async_bridge.rs
+?? tests/01_arithmetic_bindings.ps
+?? tests/01_basic_print.ps
+?? tests/01_string_probe.ps
+?? tests/04_basic_while.ps
+?? tests/05_nested_while.ps
+?? tests/06_functions_and_lambdas.ps
+?? tests/07_do_multi_alias_repeat.ps
+?? tests/08_test_RET.ps
+?? tests/09_big_test.ps
+?? tests/09_big_test.txt
+?? tests/10_full_suite.ps
+?? tests/10_full_suite.txt
+?? tests/10_small_test_30.ps
+?? tests/THREADS_plan.txt
+?? tests/_gfx_smoke.ps
+?? tests/bubble_sort.ps
+?? tests/bubble_sort.ps.bak_20260316_163326
+?? tests/lex_range.rs
+?? tests/mand_test.ps
+?? tests/mod_loader_compile_mode.rs
+?? tests/phase1_libloading_integration.rs
+?? tests/phase2_terminal_io.rs
+?? tests/phase3_readline_windows.rs
+?? tests/phase5_sort_smoke.ps
+?? tests/phase7_thread_parallel_smoke.ps
+?? tests/range_behavior.rs
+?? tests/rewrite_test.ps
+?? tests/script_smoke.rs
+?? tests/sort_behavior.rs
+?? tests/test_advanced.ps
+?? tests/test_graphic.pasta
+?? tests/test_graphics.pasta
+?? tests/test_graphics.ps
+?? tests/test_shapes.ps
+?? tests/test_suite.ps
+?? tests/thread_parallel_phase7.rs
+?? tests/tmp_test_loop.ps
+?? tests/tmp_verify.ps
+?? tests/tooling_phase7_cli.rs
+?? tests/verify_clean.ps
+?? tests/version_check.ps
+?? vs_BuildTools.exe
+?? windows_implement.txt
+PS C:\Users\Brittany Garrison\Downloads\pasta\pasta>
+
+PS C:\Users\Brittany Garrison\Downloads\pasta\pasta> Get-Content src/threading/async_bridge.rs -TotalCount 240
+//! Bridge adapter between `pasta_async` traits and the main PASTA thread registry.
+//!
+//! This keeps async orchestration and interpreter threading on one backend.
+
+use std::path::{Path, PathBuf};
+
+use anyhow::anyhow;
+use pasta_async::api::{AsyncRuntime, Continuation, Error, SnapshotMeta, TaskHandle, TaskId};
+use pasta_async::{io, serialize};
+use serde_json::{json, Value as JsonValue};
+
+use crate::interpreter::environment::Value;
+use crate::threading::thread_api;
+use crate::threading::threads::list_threads;
+
+/// Thread-registry-backed implementation of `pasta_async::api::AsyncRuntime`.
+#[derive(Debug, Clone)]
+pub struct RegistryAsyncRuntime {
+    /// Root directory for async snapshot files.
+    pub snapshot_root: PathBuf,
+}
+
+impl Default for RegistryAsyncRuntime {
+    fn default() -> Self {
+        Self {
+            snapshot_root: PathBuf::from("snapshots"),
+        }
+    }
+}
+
+impl RegistryAsyncRuntime {
+    /// Construct with a custom snapshot root directory.
+    pub fn new(snapshot_root: PathBuf) -> Self {
+        Self { snapshot_root }
+    }
+
+    fn target_from_task_id(task_id: &str) -> Value {
+        if let Ok(id) = task_id.parse::<u64>() {
+            Value::Number(id as f64)
+        } else {
+            Value::String(task_id.to_string())
+        }
+    }
+}
+
+impl AsyncRuntime for RegistryAsyncRuntime {
+    fn spawn(&self, cont: Box<dyn Continuation>) -> Result<TaskHandle, Error> {
+        let task_id = cont.task_id().clone();
+        let id = thread_api::spawn_statement_thread(
+            task_id.clone(),
+            vec![],
+            std::collections::HashMap::new(),
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+        Ok(TaskHandle {
+            task_id: id.to_string(),
+            epoch: cont.epoch(),
+        })
+    }
+
+    fn suspend_in_memory(&self, _cont: Box<dyn Continuation>) -> Result<(), Error> {
+        // Current integration keeps running tasks in thread registry.
+        Ok(())
+    }
+
+    fn suspend_to_disk(
+        &self,
+        cont: Box<dyn Continuation>,
+        meta: SnapshotMeta,
+    ) -> Result<PathBuf, Error> {
+        let cont_json = cont.serialize();
+        let payload = json!({
+            "meta": meta,
+            "continuation": cont_json,
+        });
+        let bytes = serde_json::to_vec_pretty(&payload)?;
+        let checksum = serialize::compute_checksum(&bytes);
+        let with_checksum = json!({
+            "checksum": checksum,
+            "payload": payload,
+        });
+        let final_bytes = serde_json::to_vec_pretty(&with_checksum)?;
+        let tmp = self.snapshot_root.join("tmp");
+        let out = self.snapshot_root.join("outbox");
+        let path = io::write_snapshot_atomic(
+            &tmp,
+            &out,
+            &final_bytes,
+            &meta.task_id,
+            meta.epoch,
+            meta.seq,
+        )?;
+        Ok(path)
+    }
+
+    fn resume_from_disk(&self, path: &Path) -> Result<TaskHandle, Error> {
+        let raw = std::fs::read(path)?;
+        let doc: JsonValue = serde_json::from_slice(&raw)?;
+        let payload = doc
+            .get("payload")
+            .ok_or_else(|| Error::Other("snapshot missing payload".to_string()))?;
+        let meta = payload
+            .get("meta")
+            .ok_or_else(|| Error::Other("snapshot missing meta".to_string()))?;
+        let task_id = meta
+            .get("task_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("resumed-task")
+            .to_string();
+        let epoch = meta
+            .get("epoch")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1);
+        let id = thread_api::spawn_statement_thread(
+            task_id.clone(),
+            vec![],
+            std::collections::HashMap::new(),
+        )
+        .map_err(|e| Error::Other(e.to_string()))?;
+        Ok(TaskHandle {
+            task_id: id.to_string(),
+            epoch,
+        })
+    }
+
+    fn cancel(&self, task_id: &TaskId) -> Result<(), Error> {
+        let target = Self::target_from_task_id(task_id);
+        let id = thread_api::resolve_thread_id(&target)
+            .map_err(|e| Error::Other(e.to_string()))?;
+        if thread_api::kill_thread_by_id(id) {
+            Ok(())
+        } else {
+            Err(Error::Other(format!("task '{}' not found", task_id)))
+        }
+    }
+
+    fn run(&self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+/// Persist lightweight thread snapshot metadata for an active thread target.
+pub fn persist_thread_snapshot(target: &Value) -> anyhow::Result<PathBuf> {
+    let id = thread_api::resolve_thread_id(target)?;
+    let row = list_threads()
+        .into_iter()
+        .find(|t| t.id == id)
+        .ok_or_else(|| anyhow!("thread target not found"))?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let meta = SnapshotMeta {
+        task_id: row.name.clone(),
+        process_id: row.id,
+        name: row.name.clone(),
+        time_ms: now,
+        offset_steps: 0,
+        metadata: vec!["source=thread-registry".to_string()],
+        epoch: 1,
+        seq: now,
+        state: row.status.to_string(),
+        checksum: String::new(),
+        schema_version: "phase-e-bridge-v1".to_string(),
+    };
+
+    struct EmptyContinuation {
+        id: TaskId,
+    }
+    impl Continuation for EmptyContinuation {
+        fn task_id(&self) -> &TaskId { &self.id }
+        fn epoch(&self) -> u64 { 1 }
+        fn serialize(&self) -> JsonValue {
+            json!({"task_id": self.id, "kind": "empty"})
+        }
+        fn deserialize(v: &JsonValue) -> Box<dyn Continuation> {
+            let id = v
+                .get("task_id")
+                .and_then(|x| x.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            Box::new(EmptyContinuation { id })
+        }
+    }
+
+    let rt = RegistryAsyncRuntime::default();
+    rt.suspend_to_disk(
+        Box::new(EmptyContinuation { id: row.name }),
+        meta,
+    )
+    .map_err(|e| anyhow!(e.to_string()))
+}
+PS C:\Users\Brittany Garrison\Downloads\pasta\pasta>
+
+PS C:\Users\Brittany Garrison\Downloads\pasta\pasta> Get-Content src/threading/thread_api.rs -TotalCount 240
+//! src/threading/thread_api.rs
+//!
+//! Public API surface used by executor.rs, repl.rs, and shell CLI.
+//! All thread spawning for script pipelines should go through here.
+
+use std::sync::mpsc;
+use std::fs;
+use std::collections::HashMap;
+use anyhow::{Result, anyhow};
+
+use crate::interpreter::Executor;
+use crate::interpreter::environment::Value;
+use crate::parser::{Program, Statement};
+use crate::threading::threads::{PastaThread, next_thread_id, register_thread, finish_thread, list_threads, kill_thread};
+
+
+/// Return the current thread's PASTA thread id if the thread name is "THID:<id>".
+pub fn current_pasta_thid() -> Option<u64> {
+    std::thread::current()
+        .name()
+        .and_then(|n| n.strip_prefix("THID:"))
+        .and_then(|s| s.parse::<u64>().ok())
+}
+
+/// Spawn a single script file as an independent PASTA thread.
+/// Returns the assigned PASTA thread ID.
+pub fn spawn_script_thread(path: &str, name: impl Into<String>) -> Result<u64> {
+    let name = name.into();
+    let abs_path = {
+        let p = std::path::Path::new(path);
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            std::env::current_dir().unwrap_or_default().join(p)
+        }
+    };
+
+    let src = fs::read_to_string(&abs_path)
+        .map_err(|e| anyhow!("failed to read '{}': {}", abs_path.display(), e))?;
+
+    let id = next_thread_id();
+    let (kill_tx, kill_rx) = mpsc::sync_channel::<()>(1);
+    let t = PastaThread::new(id, name.clone()).with_kill_tx(kill_tx);
+    register_thread(t);
+
+    let thread_name = format!("THID:{}", id);
+    std::thread::Builder::new()
+        .name(thread_name)
+        .spawn(move || {
+            // Wire the kill receiver into the thread-local so execute_statement
+            // can poll it on every statement boundary.
+            crate::interpreter::executor::set_kill_rx(kill_rx);
+            let result = Executor::run(&src);
+            match result {
+                Ok(_) => finish_thread(id),
+                Err(e) => {
+                    let msg = e.to_string();
+                    // "thread killed" is a clean kill signal, not a real error.
+                    if msg != "thread killed" {
+                        eprintln!("[THID:{}] error: {}", id, msg);
+                    }
+                    crate::threading::threads::global_registry()
+                        .lock().unwrap()
+                        .threads.get_mut(&id)
+                        .map(|t| {
+                            if t.status == crate::threading::threads::ThreadStatus::Running {
+                                if msg == "thread killed" {
+                                    t.mark_killed();
+                                } else {
+                                    t.mark_errored(msg);
+                                }
+                            }
+                        });
+                }
+            }
+        })
+        .map_err(|e| anyhow!("failed to spawn thread '{}': {}", name, e))?;
+
+    Ok(id)
+}
+
+/// Spawn an in-memory statement body as an independent PASTA thread.
+/// Returns the assigned PASTA thread ID.
+pub fn spawn_statement_thread(
+    name: impl Into<String>,
+    body: Vec<Statement>,
+    globals: HashMap<String, Value>,
+) -> Result<u64> {
+    let name = name.into();
+    if list_threads().iter().any(|t| {
+        t.name == name && matches!(t.status, crate::threading::threads::ThreadStatus::Running)
+    }) {
+        return Err(anyhow!("duplicate thread name '{}'", name));
+    }
+    let id = next_thread_id();
+    let (kill_tx, kill_rx) = mpsc::sync_channel::<()>(1);
+    let t = PastaThread::new(id, name.clone()).with_kill_tx(kill_tx);
+    register_thread(t);
+
+    let thread_name = format!("THID:{}", id);
+    std::thread::Builder::new()
+        .name(thread_name)
+        .spawn(move || {
+            crate::interpreter::executor::set_kill_rx(kill_rx);
+            let mut exec = crate::init_executor_with_auto_config();
+            for (k, v) in globals {
+                exec.env.set_global(k, v);
+            }
+            let program = Program { statements: body };
+            let result = exec.execute_program(&program);
+            match result {
+                Ok(_) => finish_thread(id),
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg != "thread killed" {
+                        eprintln!("[THID:{}] error: {}", id, msg);
+                    }
+                    crate::threading::threads::global_registry()
+                        .lock().unwrap()
+                        .threads.get_mut(&id)
+                        .map(|t| {
+                            if t.status == crate::threading::threads::ThreadStatus::Running {
+                                if msg == "thread killed" {
+                                    t.mark_killed();
+                                } else {
+                                    t.mark_errored(msg);
+                                }
+                            }
+                        });
+                }
+            }
+        })
+        .map_err(|e| anyhow!("failed to spawn thread '{}': {}", name, e))?;
+
+    Ok(id)
+}
+
+/// Return a thread status label by name or id.
+pub fn thread_status(target: &Value) -> Result<String> {
+    let rows = list_threads();
+    let status = match target {
+        Value::String(name) => rows
+            .iter()
+            .rev()
+            .find(|t| t.name == *name)
+            .map(|t| t.status.to_string()),
+        Value::Number(id) => rows
+            .iter()
+            .find(|t| t.id == *id as u64)
+            .map(|t| t.status.to_string()),
+        _ => None,
+    };
+    status.ok_or_else(|| anyhow!("thread target not found"))
+}
+
+/// Block until the thread is no longer running.
+pub fn wait_for_thread_target(target: &Value) -> Result<()> {
+    let poll = std::time::Duration::from_millis(5);
+    loop {
+        let status = thread_status(target)?;
+        if status != "running" {
+            return Ok(());
+        }
+        std::thread::sleep(poll);
+    }
+}
+
+/// Kill a thread by PASTA thread ID. Returns true if found and signal sent.
+pub fn kill_thread_by_id(id: u64) -> bool {
+    kill_thread(id)
+}
+
+/// Return a formatted snapshot of all threads for display in :threads.
+pub fn threads_snapshot() -> Vec<ThreadDisplayRow> {
+    list_threads().into_iter().map(|t| ThreadDisplayRow {
+        id:         t.id,
+        name:       t.name.clone(),
+        status:     t.status.to_string(),
+        elapsed_ms: t.elapsed_ms(),
+        pid:        t.child_pid,
+    }).collect()
+}
+
+/// A display-ready row for :threads output.
+pub struct ThreadDisplayRow {
+    /// Internal thread id.
+    pub id:         u64,
+    /// Human-readable thread name.
+    pub name:       String,
+    /// Current status label.
+    pub status:     String,
+    /// Elapsed runtime in milliseconds.
+    pub elapsed_ms: u64,
+    /// Child process id, if the thread owns one.
+    pub pid:        Option<u32>,
+}
+
+impl std::fmt::Display for ThreadDisplayRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f,
+            "  THID:{:<4}  {:<32}  {:<12}  {:<6}  {}ms",
+            self.id, self.name, self.status, match self.pid { Some(p) => format!("{}", p), None => "-".to_string() }, self.elapsed_ms
+        )
+    }
+}
+/// Set OS child PID for a PASTA thread (convenience wrapper).
+pub fn set_thread_child_pid(id: u64, pid: u32) -> bool {
+    crate::threading::threads::set_thread_child_pid(id, pid)
+}
+PS C:\Users\Brittany Garrison\Downloads\pasta\pasta>
+
+PS C:\Users\Brittany Garrison\Downloads\pasta\pasta> Get-Content src/threading/threads.rs -TotalCount 240
+//! src/threading/threads.rs
+//!
+//! Core thread primitives for PASTA:
+//!   - ThreadStatus  â€” lifecycle enum
+//!   - PastaThread   â€” one entry in the global registry
+//!   - THREAD_REGISTRY â€” process-wide Arc<Mutex<ThreadRegistry>>
+//!
+//! All spawned script threads register here so :threads in the REPL
+//! can always see them, regardless of which Executor spawned them.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[cfg(unix)]
+use libc;
+
+/// Lifecycle of a PASTA script thread.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ThreadStatus {
+    /// Thread has been registered and is actively running.
+    Running,
+    /// Thread completed normally.
+    Finished,
+    /// Thread was killed via :threads:kill.
+    Killed,
+    /// Thread exited with an error.
+    Errored(String),
+}
+
+impl std::fmt::Display for ThreadStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ThreadStatus::Running       => write!(f, "running"),
+            ThreadStatus::Finished      => write!(f, "finished"),
+            ThreadStatus::Killed        => write!(f, "killed"),
+            ThreadStatus::Errored(e)    => write!(f, "errored: {}", e),
+        }
+    }
+}
+
+/// A single thread entry in the global registry.
+#[derive(Debug, Clone)]
+pub struct PastaThread {
+    /// Monotonically increasing ID, starting at 1.
+    pub id: u64,
+    /// Human-readable name (e.g. "repl-pipeline-left").
+    pub name: String,
+    /// Current lifecycle status.
+    pub status: ThreadStatus,
+    /// Unix-ms timestamp when the thread was registered.
+    pub started_at_ms: u64,
+    /// Unix-ms timestamp when the thread finished/was killed (0 = still running).
+    pub ended_at_ms: u64,
+    /// Sender half of a kill channel. Send `()` to request graceful shutdown.
+    /// The running thread should poll this channel periodically.
+    /// None if kill is not yet wired (stub threads).
+    #[doc(hidden)]
+    pub kill_tx: Option<std::sync::mpsc::SyncSender<()>>,
+    /// Optional OS child PID if this thread spawned an external process.
+    pub child_pid: Option<u32>,
+    /// If this thread is part of a script pipeline, the pipeline's unique ID.
+    pub pipeline_id: Option<u64>,
+    /// 0-based index of this stage within its pipeline.
+    pub pipeline_stage: Option<usize>,
+    /// Total number of stages in the pipeline.
+    pub pipeline_total: Option<usize>,
+}
+
+impl PastaThread {
+    /// Create a new Running entry with no kill channel.
+    pub fn new(id: u64, name: impl Into<String>) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            status: ThreadStatus::Running,
+            started_at_ms: now_ms(),
+            ended_at_ms: 0,
+            kill_tx: None,
+            child_pid: None,
+            pipeline_id: None,
+            pipeline_stage: None,
+            pipeline_total: None,
+        }
+    }
+
+    /// Attach a kill-channel sender so this thread can be stopped.
+    pub fn with_kill_tx(mut self, tx: std::sync::mpsc::SyncSender<()>) -> Self {
+        self.kill_tx = Some(tx);
+        self
+    }
+
+
+    /// Attach an OS child PID to this thread record.
+    pub fn with_child_pid(mut self, pid: u32) -> Self {
+        self.child_pid = Some(pid);
+        self
+    }
+
+    /// Set child PID on an existing thread record (mutable).
+    pub fn set_child_pid(&mut self, pid: u32) {
+        self.child_pid = Some(pid);
+    }
+
+    /// Mark the thread as finished and record the end timestamp.
+    pub fn mark_finished(&mut self) {
+        self.status = ThreadStatus::Finished;
+        self.ended_at_ms = now_ms();
+    }
+
+    /// Mark the thread as killed and record the end timestamp.
+    pub fn mark_killed(&mut self) {
+        self.status = ThreadStatus::Killed;
+        self.ended_at_ms = now_ms();
+    }
+
+    /// Mark the thread as errored.
+    pub fn mark_errored(&mut self, msg: impl Into<String>) {
+        self.status = ThreadStatus::Errored(msg.into());
+        self.ended_at_ms = now_ms();
+    }
+
+    /// Send a kill signal. Returns true if the signal was sent, false if no kill_tx.
+    pub fn send_kill(&self) -> bool {
+        if let Some(ref tx) = self.kill_tx {
+            tx.try_send(()).is_ok()
+        } else {
+            false
+        }
+    }
+
+    /// Elapsed milliseconds since the thread started (0 if clock unavailable).
+    pub fn elapsed_ms(&self) -> u64 {
+        let end = if self.ended_at_ms > 0 { self.ended_at_ms } else { now_ms() };
+        end.saturating_sub(self.started_at_ms)
+    }
+}
+
+/// The flat map backing the global registry.
+pub struct ThreadRegistry {
+    pub threads: HashMap<u64, PastaThread>,
+    next_id: u64,
+}
+
+impl ThreadRegistry {
+    pub fn new() -> Self {
+        Self { threads: HashMap::new(), next_id: 1 }
+    }
+
+    /// Allocate the next thread ID (monotonically increasing).
+    pub fn alloc_id(&mut self) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        id
+    }
+
+    /// Register a thread. Returns its assigned ID.
+    pub fn register(&mut self, t: PastaThread) -> u64 {
+        let id = t.id;
+        self.threads.insert(id, t);
+        id
+    }
+
+    /// Mark a thread finished by ID.
+    pub fn finish(&mut self, id: u64) {
+        if let Some(t) = self.threads.get_mut(&id) {
+            t.mark_finished();
+        }
+    }
+
+    /// Send a kill signal and mark as killed.
+    pub fn kill(&mut self, id: u64) -> bool {
+        if let Some(t) = self.threads.get_mut(&id) {
+            // If this thread recorded an OS child PID, attempt to kill that process first (Unix only).
+            if let Some(pid) = t.child_pid {
+                #[cfg(unix)] {
+                    unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+                }
+                t.mark_killed();
+                return true;
+            }
+            // Fall back to sending the internal kill channel if present.
+            t.send_kill();
+                    t.mark_killed();
+            true
+        } else {
+            false
+        }
+    }
+    /// Sorted snapshot of all threads (for display).
+    pub fn snapshot(&self) -> Vec<PastaThread> {
+        let mut v: Vec<PastaThread> = self.threads.values().cloned().collect();
+        v.sort_by_key(|t| t.id);
+        v
+    }
+
+    /// Remove finished/killed threads older than `max_age_ms`. Returns count removed.
+    pub fn gc(&mut self, max_age_ms: u64) -> usize {
+        let now = now_ms();
+        let before = self.threads.len();
+        self.threads.retain(|_, t| {
+            match t.status {
+                ThreadStatus::Running => true,
+                _ => {
+                    if t.ended_at_ms == 0 { return false; }
+                    now.saturating_sub(t.ended_at_ms) < max_age_ms
+                }
+            }
+        });
+        before - self.threads.len()
+    }
+}
+
+impl Default for ThreadRegistry {
+    fn default() -> Self { Self::new() }
+}
+
+// â”€â”€ Global singleton â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+/// Process-wide thread registry. Shared by all executors and the REPL.
+pub static THREAD_REGISTRY: OnceLock<Arc<Mutex<ThreadRegistry>>> = OnceLock::new();
+
+/// Get (or initialize) the global registry.
+pub fn global_registry() -> Arc<Mutex<ThreadRegistry>> {
+    THREAD_REGISTRY.get_or_init(|| Arc::new(Mutex::new(ThreadRegistry::new()))).clone()
+}
+
+/// Allocate the next globally unique thread ID.
+pub fn next_thread_id() -> u64 {
+    global_registry().lock().unwrap().alloc_id()
+}
+
+/// Register a new thread in the global registry.
+pub fn register_thread(t: PastaThread) -> u64 {
+    global_registry().lock().unwrap().register(t)
+}
+
+/// Set the OS child PID for a registered thread.
+pub fn set_thread_child_pid(id: u64, pid: u32) -> bool {
+    let binding = global_registry();
+PS C:\Users\Brittany Garrison\Downloads\pasta\pasta>
+
+PS C:\Users\Brittany Garrison\Downloads\pasta\pasta> Get-Content src/interpreter/ex_eval.rs -TotalCount 240
+// src/interpreter/ex_eval.rs
+//
+//! Statement and expression evaluation for the PASTA executor.
+//!
+//! All logic that was previously in the giant `impl Executor` block of
+//! `executor.rs` lives here, broken into two public entry-points:
+//!
+//!  * `eval_stmt` â€” dispatch a single `Statement` to its handler.
+//!  * `eval_expr` â€” recursively evaluate an `Expr` and return a `Value`.
+//!
+//! Both functions take `&mut Executor` so they can reach every field
+//! (environment, functions table, GC, diagnostics, traceback, etc.) without
+//! duplicating state.  The split is purely organisational â€” the borrow graph
+//! is unchanged from the monolithic file.
+
+use anyhow::{anyhow, Result};
+
+use crate::interpreter::executor::Executor;
+use crate::interpreter::environment::{ScopeKind, Value};
+use crate::interpreter::ex_frame;
+use crate::interpreter::scope as scoped;
+use crate::parser::*;
+use crate::parser::ast::ScopeModifier;
+use crate::runtime::family::FamilyId;
+use crate::semantics::{Relation, ExprSimple, ConstraintExpr};
+
+use crate::error_logging::error_handler;
+use std::cell::Cell;
+use crate::interpreter::errors::{RuntimeError, RuntimeErrorKind};
+use crate::threading::thread_api;
+
+// RECURSION_GUARD_ADDED
+
+thread_local! {
+    /// Current recursion depth for eval functions on this thread.
+    static RECURSION_DEPTH: Cell<usize> = Cell::new(0);
+}
+
+/// Maximum allowed recursion depth before the guard triggers.
+#[allow(dead_code)]
+const RECURSION_LIMIT: usize = 1000;
+
+/// RAII guard that increments the thread-local recursion depth on creation
+/// and decrements it on drop.
+pub(crate) struct RecursionGuard;
+impl RecursionGuard {
+    /// Try to enter a recursion frame. Returns Some(guard) if depth < limit,
+    /// otherwise returns None to indicate the guard would trip.
+    #[allow(dead_code)]
+    fn enter() -> Option<Self> {
+        RECURSION_DEPTH.with(|d| {
+            let depth = d.get();
+            if depth >= RECURSION_LIMIT {
+                None
+            } else {
+                d.set(depth + 1);
+                Some(RecursionGuard)
+            }
+        })
+    }
+}
+impl Drop for RecursionGuard {
+    fn drop(&mut self) {
+        RECURSION_DEPTH.with(|d| {
+            let cur = d.get();
+            d.set(cur.saturating_sub(1));
+        });
+    }
+}
+/* STACK_OVERFLOW_SAFE_GUARD: non-duplicating recursion guard helper
+   Reuses existing RecursionGuard and RECURSION_DEPTH.
+*/
+pub(crate) struct RecursionGuardTrip {
+    pub depth: usize,
+    pub backtrace: String,
+    pub recent_events: Vec<String>,
+}
+
+pub(crate) fn enter_recursion_guard_with_threshold(
+    threshold: usize,
+) -> std::result::Result<RecursionGuard, RecursionGuardTrip> {
+    // increment depth and get new value
+    let depth = RECURSION_DEPTH.with(|d| {
+        let cur = d.get();
+        d.set(cur.saturating_add(1));
+        cur.saturating_add(1)
+    });
+
+    if depth > threshold {
+        // decrement immediately to avoid leaking the counter
+        RECURSION_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+
+        let bt = std::backtrace::Backtrace::force_capture();
+        let bt_str = format!("{:?}", bt);
+        let recent = take_recent_events();
+        Err(RecursionGuardTrip {
+            depth,
+            backtrace: bt_str,
+            recent_events: recent,
+        })
+    } else {
+        Ok(RecursionGuard)
+    }
+}
+
+// â”€â”€ Internal formatting helper (mirrors the one in executor.rs) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+#[inline]
+#[allow(dead_code)]
+#[allow(dead_code)]
+fn fmt_f64(n: f64) -> String {
+    if n.fract().abs() < f64::EPSILON {
+        format!("{}", n.round() as i64)
+    } else {
+        format!("{}", n)
+    }
+}
+
+fn bind_call_arg(exec: &mut Executor, name: &str, value: Value) {
+    let stored = storage_value(exec, value);
+    ex_frame::set_local(&mut exec.env, name.to_string(), stored);
+}
+
+fn storage_value(exec: &mut Executor, value: Value) -> Value {
+    match value {
+        Value::List(_) | Value::Dict(_) => {
+            let id = exec.gc.allocate(value);
+            Value::Heap(id)
+        }
+        other => other,
+    }
+}
+
+fn coerce_parent_id(value: Value, label: &str) -> Result<FamilyId> {
+    match value {
+        Value::FamilyNode { id, .. } => Ok(id),
+        Value::Number(n) if n >= 0.0 => Ok(n as FamilyId),
+        other => Err(anyhow!(
+            "OBJ constructor parent {} must be a family node or numeric family id, got {:?}",
+            label,
+            other
+        )),
+    }
+}
+
+fn index_key_string(exec: &Executor, value: Value) -> String {
+    let key = exec.deref(value);
+    crate::interpreter::executor::Executor::value_to_string(&key)
+}
+
+fn assign_index_target(exec: &mut Executor, target: &Expr, value: Value) -> Result<()> {
+    let Expr::Index { base, indices, .. } = target else {
+        return Err(anyhow!("indexed assignment target must be an index expression"));
+    };
+    if indices.is_empty() {
+        return Err(anyhow!("indexed assignment requires at least one index"));
+    }
+
+    let evaluated_base = eval_expr(exec, base)?;
+    let base_value = exec.deref(evaluated_base);
+    let index_value = eval_expr(exec, &indices[0])?;
+    match base_value {
+        Value::FamilyNode { id, .. } => {
+            let field_name = index_key_string(exec, index_value);
+            let family_name = exec
+                .objects
+                .get(&id)
+                .map(|object| object.family.clone())
+                .ok_or_else(|| anyhow!("family node {} has no backing object storage", id))?;
+            let family = exec
+                .find_object_family(&family_name)
+                .ok_or_else(|| anyhow!("object family '{}' is not registered", family_name))?;
+            if !family.fields.iter().any(|field| field.name.name == field_name) {
+                return Err(anyhow!(
+                    "field '{}' is not declared on object family '{}'",
+                    field_name,
+                    family_name
+                ));
+            }
+            let stored_value = storage_value(exec, value);
+            let object = exec
+                .objects
+                .get_mut(&id)
+                .ok_or_else(|| anyhow!("family node {} has no backing object storage", id))?;
+            object.fields.insert(field_name, stored_value);
+            Ok(())
+        }
+        other => Err(anyhow!("cannot assign through index into {:?}", other)),
+    }
+}
+
+fn call_object_constructor(
+    exec: &mut Executor,
+    id: &Identifier,
+    argvals: Vec<Value>,
+) -> Result<Value> {
+    let family = exec
+        .find_object_family(&id.name)
+        .ok_or_else(|| anyhow!("unknown object family '{}'", id.name))?;
+
+    if argvals.len() < 2 {
+        return Err(anyhow!(
+            "OBJ constructor '{}' requires two parent arguments before declared params",
+            family.name
+        ));
+    }
+
+    let post_parent_args = &argvals[2..];
+    if post_parent_args.len() > family.params.len() {
+        return Err(anyhow!(
+            "OBJ constructor '{}' expected at most {} declared args after parents, got {}",
+            family.name,
+            family.params.len(),
+            post_parent_args.len()
+        ));
+    }
+
+    let parent_a_id = coerce_parent_id(argvals[0].clone(), "A")?;
+    let parent_b_id = coerce_parent_id(argvals[1].clone(), "B")?;
+
+    ex_frame::push_frame(
+        &mut exec.traceback,
+        id.span.clone(),
+        format!("call {}", family.name),
+    );
+    ex_frame::push_scope(&mut exec.env, ScopeKind::Function);
+
+    let result = (|| -> Result<Value> {
+        for (index, param) in family.params.iter().enumerate() {
+            let value = post_parent_args.get(index).cloned().unwrap_or(Value::None);
+            bind_call_arg(exec, &param.name, value);
+        }
+
+        let handle = exec.create_object_family_node(
+            &family.name,
+            &family.family_group,
+            parent_a_id,
+            parent_b_id,
+            std::collections::HashMap::new(),
+        )?;
+PS C:\Users\Brittany Garrison\Downloads\pasta\pasta>

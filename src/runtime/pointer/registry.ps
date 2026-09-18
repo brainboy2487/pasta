@@ -1,0 +1,146 @@
+# Pasta translation of src/runtime/pointer/registry.rs
+# Simple PointerRegistry: map of id -> Pointer (dict)
+
+DEF PointerRegistry_new():
+    RETURN({"pointers": {}, "next_id": 1})
+END
+
+DEF PointerRegistry_new_shared():
+    # In Pasta we return the registry dict directly; thread-safety wrappers are not modeled here
+    RETURN(PointerRegistry_new())
+END
+
+DEF PointerRegistry_alloc_id(reg):
+    id = reg["next_id"]
+    reg["next_id"] = id + 1
+    RETURN(id)
+END
+
+DEF PointerRegistry_register_mem(reg, size):
+    id = PointerRegistry_alloc_id(reg)
+    ptr = {"id": id, "target": {"Mem": {"size": size, "data": []}}, "temporary": False, "alive": True}
+    reg["pointers"][str(id)] = ptr
+    RETURN(id)
+END
+
+DEF PointerRegistry_register_mem_with_data(reg, data):
+    id = PointerRegistry_alloc_id(reg)
+    ptr = {"id": id, "target": {"Mem": {"size": len(data), "data": data}}, "temporary": False, "alive": True}
+    reg["pointers"][str(id)] = ptr
+    RETURN(id)
+END
+
+DEF PointerRegistry_register_file(reg, path, mode):
+    id = PointerRegistry_alloc_id(reg)
+    ptr = {"id": id, "target": {"File": {"path": path, "mode": mode}}, "temporary": False, "alive": True}
+    reg["pointers"][str(id)] = ptr
+    RETURN(id)
+END
+
+DEF PointerRegistry_register_device(reg, device_id, device_type):
+    id = PointerRegistry_alloc_id(reg)
+    ptr = {"id": id, "target": {"Device": {"id": device_id, "type": device_type}}, "temporary": False, "alive": True}
+    reg["pointers"][str(id)] = ptr
+    RETURN(id)
+END
+
+DEF PointerRegistry_register_network(reg, host, port):
+    id = PointerRegistry_alloc_id(reg)
+    ptr = {"id": id, "target": {"Network": {"host": host, "port": port}}, "temporary": False, "alive": True}
+    reg["pointers"][str(id)] = ptr
+    RETURN(id)
+END
+
+DEF PointerRegistry_lookup(reg, id):
+    k = str(id)
+    IF has_key(reg["pointers"], k):
+        RETURN(reg["pointers"][k])
+    END
+    RETURN(None)
+END
+
+DEF PointerRegistry_lookup_mut(reg, id):
+    # Same as lookup in Pasta
+    RETURN(PointerRegistry_lookup(reg, id))
+END
+
+DEF PointerRegistry_kill(reg, id):
+    k = str(id)
+    IF has_key(reg["pointers"], k):
+        reg["pointers"][k]["alive"] = False
+        RETURN(True)
+    END
+    RETURN(False)
+END
+
+DEF PointerRegistry_remove(reg, id):
+    k = str(id)
+    IF has_key(reg["pointers"], k):
+        val = reg["pointers"][k]
+        reg["pointers"] = dict_remove(reg["pointers"], k)
+        RETURN(val)
+    END
+    RETURN(None)
+END
+
+DEF PointerRegistry_info(reg, id):
+    p = PointerRegistry_lookup(reg, id)
+    IF p == None: RETURN(None) END
+    # Return a simple info dict similar to Rust's Pointer::info()
+    info = {"id": p["id"], "alive": p["alive"], "temporary": p["temporary"], "target": p["target"]}
+    RETURN(info)
+END
+
+DEF PointerRegistry_set_temporary(reg, id, temp):
+    k = str(id)
+    IF has_key(reg["pointers"], k):
+        reg["pointers"][k]["temporary"] = temp
+    END
+    RETURN(None)
+END
+
+DEF PointerRegistry_get_temporary_pointers(reg):
+    out = []
+    FOR k, p IN dict_items(reg["pointers"]):
+        IF p["temporary"] AND p["alive"]:
+            out = out + [p["id"]]
+        END
+    END
+    RETURN(out)
+END
+
+DEF PointerRegistry_free_temporaries(reg):
+    temps = PointerRegistry_get_temporary_pointers(reg)
+    FOR id IN temps:
+        PointerRegistry_kill(reg, id)
+    END
+    RETURN(temps)
+END
+
+DEF PointerRegistry_live_count(reg):
+    c = 0
+    FOR _, p IN dict_items(reg["pointers"]):
+        IF p["alive"]: c = c + 1 END
+    END
+    RETURN(c)
+END
+
+DEF PointerRegistry_total_count(reg):
+    RETURN(dict_len(reg["pointers"]))
+END
+
+DEF PointerRegistry_sweep_dead(reg):
+    dead = []
+    FOR k, p IN dict_items(reg["pointers"]):
+        IF NOT p["alive"]: dead = dead + [k] END
+    END
+    count = len(dead)
+    FOR k IN dead:
+        reg["pointers"] = dict_remove(reg["pointers"], k)
+    END
+    RETURN(count)
+END
+
+DEF new_shared_registry():
+    RETURN(PointerRegistry_new_shared())
+END

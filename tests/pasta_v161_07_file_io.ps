@@ -1,0 +1,73 @@
+# Pasta v0.01a script tests — file I/O and cleanup (20 checks)
+
+DEF out_text(label, value):
+    PRINT label + ":" + value
+END
+
+DEF out_bool(label, value):
+    IF value:
+        PRINT label + ":true"
+    OTHERWISE:
+        PRINT label + ":false"
+    END
+END
+
+DEF out_num(label, value):
+    PRINT label + ":" + str(value)
+END
+
+path1 = "tests/__tmp_v161_file_io_1.txt"
+path2 = "tests/__tmp_v161_file_io_2.txt"
+path3 = "tests/__tmp_v161_file_io_3.txt"
+
+IF FILE_EXISTS(path1):
+    DELETE_FILE(path1)
+END
+IF FILE_EXISTS(path2):
+    DELETE_FILE(path2)
+END
+IF FILE_EXISTS(path3):
+    DELETE_FILE(path3)
+END
+
+out_bool("P07T01", FILE_EXISTS(path1))    # EXPECT: P07T01:false
+
+WRITE_FILE(path1, "alpha")
+out_bool("P07T02", FILE_EXISTS(path1))    # EXPECT: P07T02:true
+out_text("P07T03", READ_FILE(path1))      # EXPECT: P07T03:alpha
+
+APPEND_FILE(path1, "beta")
+out_text("P07T04", READ_FILE(path1))      # EXPECT: P07T04:alphabeta
+
+WRITE_LINES(path1, ["red", "blue"])
+lines1 = READ_LINES(path1)
+out_num("P07T05", list_len(lines1))       # EXPECT: P07T05:2
+out_text("P07T06", lines1[0])             # EXPECT: P07T06:red
+out_text("P07T07", lines1[1])             # EXPECT: P07T07:blue
+
+WRITE_FILE(path2, "one")
+out_bool("P07T08", FILE_EXISTS(path2))    # EXPECT: P07T08:true
+out_text("P07T09", READ_FILE(path2))      # EXPECT: P07T09:one
+DELETE_FILE(path2)
+out_bool("P07T10", FILE_EXISTS(path2))    # EXPECT: P07T10:false
+
+WRITE_FILE(path1, "reset")
+out_text("P07T11", READ_FILE(path1))      # EXPECT: P07T11:reset
+APPEND_FILE(path1, "!")
+out_text("P07T12", READ_FILE(path1))      # EXPECT: P07T12:reset!
+
+WRITE_LINES(path1, ["a", "b", "c"])
+lines2 = READ_LINES(path1)
+out_num("P07T13", list_len(lines2))       # EXPECT: P07T13:3
+out_text("P07T14", lines2[2])             # EXPECT: P07T14:c
+out_bool("P07T15", FILE_EXISTS(path1))    # EXPECT: P07T15:true
+DELETE_FILE(path1)
+out_bool("P07T16", FILE_EXISTS(path1))    # EXPECT: P07T16:false
+
+WRITE_FILE(path3, 123)
+out_bool("P07T17", FILE_EXISTS(path3))    # EXPECT: P07T17:true
+out_text("P07T18", READ_FILE(path3))      # EXPECT: P07T18:123
+APPEND_FILE(path3, "-x")
+out_text("P07T19", READ_FILE(path3))      # EXPECT: P07T19:123-x
+DELETE_FILE(path3)
+out_bool("P07T20", FILE_EXISTS(path3))    # EXPECT: P07T20:false

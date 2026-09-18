@@ -1,0 +1,8 @@
+{"id": "25322f7d4746e1b6", "key": "a", "type": "other", "responses": ["tiny"]}
+{"id": "774cc132437f23cc", "key": "world", "type": "other", "responses": ["this"]}
+{"id": "94dae8b7f243e3cf", "key": "is", "type": "other", "responses": ["a"]}
+{"id": "2ce85c5d94b7f5e9", "key": "corpus", "type": "other", "responses": ["hello"]}
+{"id": "9afc2b1afabca86d", "key": "training", "type": "other", "responses": ["corpus"]}
+{"id": "58e64639ab0cf990", "key": "this", "type": "other", "responses": ["is"]}
+{"id": "6c532bf998407c08", "key": "hello", "type": "other", "responses": ["world", "mage"]}
+{"id": "84b10c8d923c5e97", "key": "tiny", "type": "other", "responses": ["training"]}

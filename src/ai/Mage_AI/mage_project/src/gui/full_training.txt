@@ -1,0 +1,461 @@
+You’re basically asking for a **mini data-engineering stack** dedicated to feeding and evolving an AI’s vocabulary—perfect fit for your systems brain.
+
+I’ll lay this out as a **modular, sprintable architecture**:
+
+1. High‑level architecture
+2. Data scraper design
+3. Text normalization & cleaning
+4. Tokenizer layer
+5. Vocabulary generator & updater
+6. Storage, versioning, and rollback
+7. Orchestration, monitoring, and auto‑healing hooks
+8. Extension toward full training
+
+---
+
+## 1. High‑level architecture
+
+### 1.1 Core data flow
+
+**Pipeline:**
+
+1. **Scraper** → pulls raw HTML/text from configured sources.
+2. **Extractor/Normalizer** → strips boilerplate, cleans text, normalizes Unicode, etc.
+3. **Tokenizer** → converts text into token sequences using your chosen scheme.
+4. **Vocabulary Generator** → aggregates token stats, builds/updates vocab.
+5. **Artifact Store** → persists vocab versions, metadata, and change logs.
+6. **Training System** → consumes vocab + tokenizer config for model training.
+
+Think of each as a **separate service/daemon** with a clear contract (e.g., line‑delimited JSON, Parquet, or message queue events).
+
+---
+
+## 2. Data scraper design
+
+### 2.1 Scraper goals
+
+**Goals:**
+
+- **Deterministic inputs:** Same config → same crawl set.
+- **Reproducible runs:** Store crawl manifests and seeds.
+- **Ethical & robust:** Respect robots.txt, rate limits, and retries.
+
+### 2.2 Scraper components
+
+**Components:**
+
+- **Source registry:**
+  - **Fields:** `id`, `url_pattern`, `crawl_depth`, `frequency`, `priority`, `language`, `tags`.
+  - Stored in a small DB (SQLite/Postgres) or config repo (YAML/JSON).
+- **Crawler engine:**
+  - **Fetch module:** HTTP client with:
+    - Backoff, retry, timeout.
+    - User‑agent string and robots.txt handling.
+  - **Scheduler:**
+    - Pulls from source registry.
+    - Maintains a queue of URLs with priorities.
+    - Enforces per‑domain rate limits.
+- **Content extractor:**
+  - HTML → text:
+    - Strip `<script>`, `<style>`, nav, ads.
+    - Use heuristics or libraries (e.g., boilerplate removal, readability‑style extraction).
+- **Output writer:**
+  - Writes **raw documents** to storage:
+    - **Schema (JSONL):**
+      - `doc_id`: deterministic hash of URL + timestamp.
+      - `source_id`
+      - `url`
+      - `crawl_time`
+      - `language`
+      - `raw_html`
+      - `extracted_text`
+      - `metadata` (tags, content type, etc.)
+
+### 2.3 Scraper storage layout
+
+**Example layout (object store or filesystem):**
+
+- `scraped/`
+  - `YYYY/MM/DD/`
+    - `batch_<timestamp>.jsonl`
+
+Each line: one document. This gives you **append‑only, time‑partitioned** data.
+
+---
+
+## 3. Text normalization & cleaning
+
+You don’t want the tokenizer dealing with garbage. Insert a **pre‑tokenization cleaning stage**.
+
+### 3.1 Cleaning pipeline
+
+For each `extracted_text`:
+
+- **Unicode normalization:**
+  - Normalize to NFC or NFKC.
+- **Whitespace normalization:**
+  - Collapse multiple spaces, normalize line breaks.
+- **Control characters:**
+  - Remove non‑printing characters except those you explicitly want (e.g., `\n`).
+- **Language filtering:**
+  - Optional: run a language detector and drop non‑target languages.
+- **Length filtering:**
+  - Drop documents that are too short or too long (configurable thresholds).
+- **Basic de‑duplication:**
+  - Hash normalized text; maintain a **document hash index** to skip duplicates.
+
+### 3.2 Output schema
+
+Write cleaned documents to a new layer:
+
+- `cleaned/`
+  - `YYYY/MM/DD/`
+    - `batch_<timestamp>.jsonl`
+
+Each line:
+
+- `doc_id`
+- `source_id`
+- `url`
+- `clean_time`
+- `cleaned_text`
+- `language`
+- `hash`
+
+This gives you a **clean, stable input** for tokenization.
+
+---
+
+## 4. Tokenizer layer
+
+This is the bridge between raw text and vocab statistics.
+
+### 4.1 Tokenizer configuration
+
+Decide on tokenizer type:
+
+- **Word‑level:** Simple, but large vocab and OOV issues.
+- **Subword (BPE, WordPiece, Unigram):** Better for large corpora and rare words.
+
+Define a **tokenizer config artifact**:
+
+- `tokenizer_type`: `"bpe" | "wordpiece" | "unigram" | "word"`
+- `pre_tokenization_rules`: regexes, punctuation splitting, case handling.
+- `special_tokens`: `["<pad>", "<unk>", "<bos>", "<eos>", ...]`
+- `max_vocab_size`
+- `min_token_frequency`
+- `normalization`: lowercasing, accent stripping, etc.
+
+Store this config in version control and also as a JSON artifact with a **version ID**.
+
+### 4.2 Tokenization process
+
+For each cleaned document:
+
+1. **Pre‑tokenization:**
+   - Apply normalization rules from config.
+   - Split into preliminary tokens (e.g., whitespace + punctuation rules).
+2. **Token mapping:**
+   - If tokenizer is already trained:
+     - Map pre‑tokens to token IDs using current vocab.
+     - Unknown tokens → `<unk>` or subword decomposition.
+   - If tokenizer is being trained:
+     - Collect token statistics (see next section).
+3. **Output:**
+   - For training vocab, you may not need to store full token sequences yet—just counts.
+   - For full training pipeline, you’d store token IDs as sequences.
+
+### 4.3 Tokenization output schema (for vocab building)
+
+Instead of storing full sequences, you can store **per‑document token counts**:
+
+- `token_stats/`
+  - `YYYY/MM/DD/`
+    - `batch_<timestamp>.jsonl`
+
+Each line:
+
+- `doc_id`
+- `token_counts`: `{ "token_string_or_subword": count, ... }`
+- `language`
+- `source_id`
+
+This keeps the data compact and focused on vocab generation.
+
+---
+
+## 5. Vocabulary generator & updater
+
+This is the heart of what you asked for: **turn token streams into an evolving vocabulary**.
+
+### 5.1 Global token statistics aggregator
+
+You need a component that:
+
+- Reads `token_stats` batches.
+- Maintains **global counts** for each token.
+- Produces **vocabulary snapshots**.
+
+**Implementation options:**
+
+- **Batch mode:**
+  - Periodically run a job that:
+    - Scans new `token_stats` files.
+    - Aggregates counts into a global map (e.g., in a DB or on‑disk key‑value store).
+- **Streaming mode:**
+  - Use a message queue (Kafka/RabbitMQ) and a consumer that updates counts in near‑real time.
+
+**Data structure:**
+
+- `token` → `global_count`
+- Optionally: per‑source or per‑language counts for analysis.
+
+### 5.2 Vocabulary construction logic
+
+Define rules for building a vocab from global counts:
+
+- **Inputs:**
+  - `global_counts`
+  - `max_vocab_size`
+  - `min_frequency`
+  - `special_tokens`
+- **Steps:**
+  1. **Filter by frequency:**
+     - Drop tokens with `count < min_frequency`.
+  2. **Sort tokens:**
+     - By descending frequency (and lexicographically as tie‑breaker).
+  3. **Truncate:**
+     - Keep top `max_vocab_size - len(special_tokens)` tokens.
+  4. **Assign IDs:**
+     - Reserve IDs for special tokens first.
+     - Then assign incremental IDs to remaining tokens.
+
+**Output:**
+
+- `vocab_version`: monotonically increasing integer or hash.
+- `vocab`: list of `{ "token": str, "id": int, "count": int }`.
+- `config`: copy of tokenizer config used to generate this vocab.
+- `metadata`: timestamp, corpus size, number of documents, etc.
+
+### 5.3 Vocabulary versioning strategy
+
+You want **deterministic, reproducible vocab versions**:
+
+- **Version ID:**
+  - Option 1: Incremental integer (`v1`, `v2`, …).
+  - Option 2: Content hash of sorted `(token, count)` pairs + config.
+- **Metadata:**
+  - `created_at`
+  - `tokenizer_config_version`
+  - `num_tokens`
+  - `num_documents`
+  - `total_token_count`
+  - `source_filters` (which sources/time ranges were included)
+
+Store vocab artifacts under:
+
+- `vocab/`
+  - `vocab_v0001/`
+    - `vocab.json`
+    - `tokenizer_config.json`
+    - `metadata.json`
+
+### 5.4 Updating the AI vocabulary
+
+When a new vocab is generated:
+
+1. **Validation step:**
+   - Compare new vocab to previous:
+     - Overlap ratio.
+     - Number of added/removed tokens.
+   - Ensure changes are within expected bounds (e.g., not a catastrophic shift).
+2. **Publish step:**
+   - Mark new vocab as **candidate**.
+   - Run small evaluation jobs (e.g., tokenization coverage on a validation corpus).
+3. **Promotion step:**
+   - If metrics are acceptable:
+     - Mark vocab as **active**.
+     - Update a **“current_vocab” pointer** used by training and inference systems.
+4. **Rollback capability:**
+   - If something goes wrong, revert pointer to previous vocab version.
+
+---
+
+## 6. Storage, versioning, and rollback
+
+### 6.1 Artifact registry
+
+Create a simple **artifact registry** (could be a DB table or a Git‑tracked directory) that tracks:
+
+- **Artifact types:**
+  - `scrape_batch`
+  - `clean_batch`
+  - `token_stats_batch`
+  - `vocab`
+  - `tokenizer_config`
+- **Fields:**
+  - `artifact_id`
+  - `type`
+  - `path`
+  - `created_at`
+  - `parent_ids` (for lineage)
+  - `status` (`active`, `candidate`, `deprecated`)
+  - `hash` (for integrity)
+
+This gives you **lineage**: you can trace a vocab back to the exact token stats, cleaned text, and scraped sources.
+
+### 6.2 Deterministic rebuilds
+
+Because you store:
+
+- Scraped data
+- Cleaning rules
+- Tokenizer config
+- Token stats
+- Vocab generation rules
+
+You can **rebuild any vocab version** by re‑running the pipeline on the same inputs—critical for debugging and research.
+
+---
+
+## 7. Orchestration, monitoring, and auto‑healing hooks
+
+This is where you can plug in your auto‑healing instincts.
+
+### 7.1 Orchestration
+
+Use a workflow/orchestration tool or your own daemons:
+
+- **Jobs:**
+  - `scrape_sources`
+  - `clean_documents`
+  - `compute_token_stats`
+  - `aggregate_global_counts`
+  - `build_vocab`
+  - `validate_vocab`
+- **Scheduling:**
+  - Cron‑like schedules or event‑driven triggers (e.g., “when N new token_stats batches exist, run vocab build”).
+
+### 7.2 Health checks per stage
+
+For each stage, define **health metrics**:
+
+- **Scraper:**
+  - Docs/hour, error rate, average response time.
+- **Cleaner:**
+  - Percentage of docs dropped, average length.
+- **Tokenizer:**
+  - Tokens/doc, unknown token rate.
+- **Vocab generator:**
+  - Time to build, number of tokens, overlap with previous vocab.
+
+Set thresholds and alerts when metrics deviate from baselines.
+
+### 7.3 Auto‑healing actions
+
+Examples:
+
+- **Scraper anomalies:**
+  - High error rate → backoff, rotate proxies, or temporarily disable a source.
+- **Cleaner anomalies:**
+  - Too many docs dropped → flag cleaning rules for review; auto‑rollback to previous rules.
+- **Tokenizer anomalies:**
+  - `<unk>` rate spikes → trigger a vocab rebuild or config check.
+- **Vocab anomalies:**
+  - Overlap with previous vocab too low → reject new vocab, keep previous active.
+
+You can wire these into your existing **self‑healing framework**: monitors + reflex actions + diagnostic logs.
+
+---
+
+## 8. Extension toward full training
+
+Once vocab is in place, the same pipeline feeds training.
+
+### 8.1 Training data preparation
+
+Add a stage:
+
+- **Sequence builder:**
+  - Take cleaned text + active tokenizer + active vocab.
+  - Convert to token ID sequences.
+  - Apply:
+    - Truncation/padding.
+    - Masking (for MLM).
+    - Segmenting into fixed‑length sequences.
+
+Write out training shards:
+
+- `train_shards/`
+  - `shard_00001.bin` (or `.npz`, `.pt`, etc.)
+
+### 8.2 Training configuration linkage
+
+Each training run should record:
+
+- `vocab_version`
+- `tokenizer_config_version`
+- `training_data_manifest` (which shards)
+- `model_config_version`
+
+This ties model checkpoints to the exact vocab and tokenizer used.
+
+---
+
+## 9. Concrete sprint breakdown
+
+To make this implementable in your style, here’s a **sprintable breakdown**:
+
+**Sprint 1: Scraper + storage**
+
+- **Build:**
+  - Source registry (YAML/DB).
+  - Crawler with robots.txt + rate limiting.
+  - HTML → text extractor.
+  - JSONL writer to `scraped/`.
+- **Deliverable:** Deterministic, reproducible scraping runs with manifests.
+
+**Sprint 2: Cleaner + dedup**
+
+- **Build:**
+  - Unicode + whitespace normalization.
+  - Length and language filters.
+  - Hash‑based dedup.
+  - Writer to `cleaned/`.
+- **Deliverable:** Clean, deduplicated text corpus.
+
+**Sprint 3: Tokenizer config + pre‑tokenization**
+
+- **Build:**
+  - Tokenizer config schema + versioning.
+  - Pre‑tokenization rules.
+  - Token stats generator → `token_stats/`.
+- **Deliverable:** Per‑document token counts.
+
+**Sprint 4: Global counts + vocab generator**
+
+- **Build:**
+  - Aggregator for global token counts.
+  - Vocab builder with frequency thresholds and max size.
+  - Vocab artifact storage + metadata.
+- **Deliverable:** First vocab version (`v1`) with full lineage.
+
+**Sprint 5: Validation + promotion/rollback**
+
+- **Build:**
+  - Metrics for vocab comparison.
+  - Candidate → active promotion logic.
+  - Rollback mechanism.
+- **Deliverable:** Safe vocab evolution loop.
+
+**Sprint 6: Orchestration + monitoring + auto‑healing hooks**
+
+- **Build:**
+  - Job scheduler for all stages.
+  - Health metrics and alerts.
+  - Auto‑healing actions for common failure modes.
+- **Deliverable:** Self‑maintaining vocab pipeline.
+
+---
+
+If you tell me your preferred stack (Python only, plus what storage you like—SQLite, Postgres, S3‑style FS, etc.), I can turn this into **concrete module layouts and function signatures** next, wired exactly the way you like to build systems.

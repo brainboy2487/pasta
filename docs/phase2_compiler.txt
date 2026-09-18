@@ -1,0 +1,143 @@
+
+# **AI IMPLEMENTATION GUIDE: POST‑COMPILER ROADMAP FOR PASTA**
+
+## **Purpose**
+Guide the agent through the next logical phases after the initial Pasta compiler is partially complete.  
+The agent must help implement each phase incrementally, safely, and with deterministic, reviewable changes.
+
+---
+
+# **PHASE 1 — COMPLETE THE MINIMAL COMPILER PIPELINE**
+**Goal:** Achieve a working end‑to‑end compilation path from `.pasta` → native binary.
+
+### **Tasks**
+1. Finalize lexer, parser, and AST construction.  
+2. Implement IR generation (Pasta IR or direct LLVM IR).  
+3. Implement backend codegen to object files.  
+4. Implement linking to produce native executables.  
+5. Implement minimal runtime: memory model, allocation, builtin ops, error model.  
+6. Validate with simple programs (`print`, arithmetic, loops, functions).
+
+### **Agent Responsibilities**
+- Propose minimal, safe patches.  
+- Generate test cases.  
+- Ensure deterministic behavior.  
+- Maintain zero‑warning builds.
+
+---
+
+# **PHASE 2 — DEFINE AND STABILIZE THE ABI + RUNTIME CONTRACT**
+**Goal:** Lock down the low‑level rules the language depends on.
+
+### **Tasks**
+1. Define calling conventions for functions.  
+2. Define representation for strings, lists, maps, closures.  
+3. Define memory allocation strategy (arena, bump, refcount, GC, etc.).  
+4. Define error/exception propagation rules.  
+5. Define symbol visibility rules for modules.  
+6. Document the ABI in a stable spec file.
+
+### **Agent Responsibilities**
+- Generate ABI documentation.  
+- Ensure all compiler components conform to the ABI.  
+- Propose tests to validate ABI stability.
+
+---
+
+# **PHASE 3 — FINALIZE THE MODULE SYSTEM (MOD / FROM / USE / END)**
+**Goal:** Implement the full Pasta module system before self‑hosting.
+
+### **Tasks**
+1. Implement parsing for MOD blocks.  
+2. Implement structured import blocks (FROM/USE/END).  
+3. Implement export lists and public visibility.  
+4. Implement lazy module loading.  
+5. Implement module registry resolution.  
+6. Implement separate compilation + linking for modules.
+
+### **Agent Responsibilities**
+- Ensure module system is deterministic and indentation‑sensitive.  
+- Propose refactors to split compiler into modules.  
+- Generate tests for import/export resolution.
+
+---
+
+# **PHASE 4 — BUILD THE MINIMAL STANDARD LIBRARY**
+**Goal:** Provide the essential primitives needed to write the compiler in Pasta.
+
+### **Required Components**
+1. File IO  
+2. Strings and string utilities  
+3. Collections (list, map, maybe set)  
+4. Basic math  
+5. Error handling  
+6. OS interaction (paths, env vars, process spawning)
+
+### **Agent Responsibilities**
+- Implement stdlib modules using the new module system.  
+- Ensure ABI compatibility.  
+- Generate tests for each stdlib module.
+
+---
+
+# **PHASE 5 — REWRITE THE COMPILER IN PURE PASTA**
+**Goal:** Achieve self‑hosting.
+
+### **Tasks**
+1. Re‑implement lexer in Pasta.  
+2. Re‑implement parser + AST builder in Pasta.  
+3. Re‑implement IR builder in Pasta.  
+4. Re‑implement codegen in Pasta.  
+5. Bootstrap: compile the Pasta compiler using the Rust version.  
+6. Recompile the compiler using the Pasta‑compiled compiler.  
+7. Validate identical output (self‑hosting verification).
+
+### **Agent Responsibilities**
+- Break rewrite into small, reviewable modules.  
+- Maintain compatibility with the ABI and module system.  
+- Ensure the compiler can compile itself deterministically.
+
+---
+
+# **PHASE 6 — POST‑SELF‑HOSTING IMPROVEMENTS**
+**Goal:** Mature the ecosystem and performance.
+
+### **Tasks**
+1. Implement optimization passes (constant folding, DCE, inlining).  
+2. Implement WASM backend.  
+3. Implement package manager + registry.  
+4. Implement LSP server.  
+5. Implement documentation generator.  
+6. Implement test harness for compiler correctness.  
+7. Implement native FFI (Rust/C interop).  
+8. Begin rewriting runtime + stdlib in pure Pasta.
+
+### **Agent Responsibilities**
+- Prioritize stability and reproducibility.  
+- Propose incremental improvements.  
+- Maintain artifact hygiene and backups.
+
+---
+
+# **AGENT EXECUTION RULES**
+1. Always propose **minimal, reversible, deterministic** patches.  
+2. Always generate **tests** for new features.  
+3. Always maintain **zero warnings** in the build.  
+4. Always document changes in a structured, human‑readable format.  
+5. Never modify large subsystems without prior decomposition into small steps.  
+6. Always verify behavior with example programs.  
+7. Always maintain compatibility with the ABI and module system.  
+8. Always provide PASS/FAIL validation steps.
+
+---
+
+# **OUTPUT FORMAT FOR EACH STEP**
+For every requested task, the agent must output:
+
+1. **Summary of the change**  
+2. **Exact file paths to modify**  
+3. **Minimal patch script (Python preferred)**  
+4. **Expected output or behavior**  
+5. **PASS/FAIL validation steps**  
+6. **Rollback script** (if applicable)
+

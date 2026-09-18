@@ -1,0 +1,18 @@
+# Pasta translation of src/runtime/native_module.rs (minimal placeholder)
+# Loading native modules not supported in pure Pasta runtime; provide stubs
+
+DEF NativeModule_load(path, expected_name):
+    # In Pasta-only runtime, native shared libraries can't be loaded. Return an error-like dict.
+    RETURN({"err": "native modules not supported in Pasta-only runtime"})
+END
+
+DEF NativeModule_exports(mod):
+    IF is_dict(mod) AND has_key(mod, "exports"):
+        RETURN(mod["exports"])
+    END
+    RETURN([])
+END
+
+DEF NativeModule_export_builtins(mod, module_name):
+    RETURN({})
+END

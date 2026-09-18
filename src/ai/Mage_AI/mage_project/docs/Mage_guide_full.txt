@@ -1,0 +1,67 @@
+Architectural Blueprint and
+
+Implementation Plan for the Markov
+
+Answer Generation Engine (MAGE)
+
+I. The MAGE System Architecture: Foundations and
+
+Constraints
+
+I.A. Philosophical Foundations: The Compute-for-Memory Mandate
+
+The Markov Answer Generation Engine (MAGE) is fundamentally an exercise in computational
+
+optimization, designed as a CPU-first system that deliberately trades memory bandwidth for
+
+predictable, bounded computation. The core architectural philosophy is to replace the inherent
+
+latency and bandwidth constraints of memory-heavy dense tensor operations with lazy,
+
+procedural generation of tensor elements via low-rank, separable, or analytic representations.
+
+This design choice is a direct response to a critical performance bottleneck identified during the
+
+initial cost modeling of dense tensor contraction. For a moderately sized tensor, such as one
+
+with n=1024 states and a product of extra axis sizes K=64 (e.g., k=16, m=4), the full dense
+
+contraction involves touching approximately 67.1 million double-precision elements, translating
+
+to over 512 megabytes of data read. The resulting time required for memory operations
+
+(T_{\text{mem}} \approx 0.052 \text{ s} at 10 \text{ GB/s} bandwidth) severely dominates the
+
+theoretical computational time (T_{\text{compute}} \approx 0.0048 \text{ s} on a high-throughput
+
+CPU configuration). This strong memory-bound characteristic necessitates an architectural shift.
+
+By replacing K full n \times n slices with highly compressed, low-parameter factorizations,
+
+MAGE successfully shifts the computational burden from unpredictable memory latency to a
+
+manageable, tunable FLOP count. The hybrid memory model, for instance, achieves a
+
+computational balance where the time spent generating elements approximates the time spent
+
+reading the reduced parameter sets, resulting in an end-to-end latency significantly lower than
+
+the dense approach.
+
+Beyond performance, a second, non-negotiable architectural mandate is determinism. MAGE
+
+operates as an auditable system, requiring fully reproducible outcomes across identical inputs
+
+and environments. This is enforced through several engineering protocols: the use of a fixed
+
+Random Number Generator (RNG) seed (e.g., xorshift32), a fixed, deterministic ordering for
+
+block processing, and a rigorous pairwise or fixed-order reduction strategy for accumulating
+
+floating-point sums in parallel contexts. This strict determinism is essential for system validation
+
+and debugging, contrasting sharply with the inherent stochasticity and lack of auditable trace
+
+paths common in large-scale machine learning systems.
+
+... (document continues)

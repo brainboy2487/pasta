@@ -1,0 +1,51 @@
+# Pasta v0.01a script tests — headless graphics, grid draws, batch draws (20 checks)
+
+DEF out_num(label, value):
+    PRINT label + ":" + str(value)
+END
+
+BLACK = 4278190080
+WHITE = 4294967295
+RED = 4294901760
+GREEN = 4278255360
+BLUE = 4278190335
+
+c = CANVAS(10, 6)
+DRAW_GRID(c, 2, 2)
+out_num("P09T01", canvas_get_pixel(c, 0, 0)) # EXPECT: P09T01:4278190080
+
+DRAW_TO_GRID(c, 0, 0, WHITE)
+out_num("P09T02", canvas_get_pixel(c, 0, 0)) # EXPECT: P09T02:4294967295
+out_num("P09T03", canvas_get_pixel(c, 1, 1)) # EXPECT: P09T03:4294967295
+out_num("P09T04", canvas_get_pixel(c, 2, 0)) # EXPECT: P09T04:4278190080
+
+SET_COLOR(RED)
+cells = []
+list_append(cells, [1, 0])
+list_append(cells, {"x": 2, "y": 0, "color": GREEN})
+DRAW_GRID_BATCH(c, cells)
+out_num("P09T05", canvas_get_pixel(c, 2, 0)) # EXPECT: P09T05:4294901760
+out_num("P09T06", canvas_get_pixel(c, 3, 1)) # EXPECT: P09T06:4294901760
+out_num("P09T07", canvas_get_pixel(c, 4, 0)) # EXPECT: P09T07:4278255360
+out_num("P09T08", canvas_get_pixel(c, 5, 1)) # EXPECT: P09T08:4278255360
+out_num("P09T09", canvas_get_pixel(c, 8, 0)) # EXPECT: P09T09:4278190080
+
+DRAW_GRID_RUNS(c, [
+    [0, 1, 2, BLUE],
+    {"x": 2, "y": 2, "len": 3, "color": WHITE}
+])
+out_num("P09T10", canvas_get_pixel(c, 0, 2)) # EXPECT: P09T10:4278190335
+out_num("P09T11", canvas_get_pixel(c, 3, 3)) # EXPECT: P09T11:4278190335
+out_num("P09T12", canvas_get_pixel(c, 4, 2)) # EXPECT: P09T12:4278190080
+out_num("P09T13", canvas_get_pixel(c, 4, 4)) # EXPECT: P09T13:4294967295
+out_num("P09T14", canvas_get_pixel(c, 9, 5)) # EXPECT: P09T14:4294967295
+
+c2 = CANVAS(4, 4)
+DRAW_GRID(c2, 2, 2)
+DRAW_TO_GRID(c2, 1, 1, RED)
+out_num("P09T15", canvas_get_pixel(c2, 2, 2)) # EXPECT: P09T15:4294901760
+out_num("P09T16", canvas_get_pixel(c2, 3, 3)) # EXPECT: P09T16:4294901760
+out_num("P09T17", canvas_get_pixel(c2, 0, 0)) # EXPECT: P09T17:4278190080
+out_num("P09T18", canvas_get_pixel(c, 0, 0))  # EXPECT: P09T18:4294967295
+out_num("P09T19", canvas_get_pixel(c, 4, 0))  # EXPECT: P09T19:4278255360
+out_num("P09T20", canvas_get_pixel(c, 0, 4))  # EXPECT: P09T20:4278190080

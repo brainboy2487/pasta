@@ -1,0 +1,10 @@
+FROM term USE tty_available, screen_size, screen_cols, screen_rows END
+
+dims = screen_size()
+
+PRINT list_len(dims)
+PRINT screen_cols() > 0
+PRINT screen_rows() > 0
+PRINT screen_cols() == dims[0]
+PRINT screen_rows() == dims[1]
+PRINT tty_available() == True OR tty_available() == False

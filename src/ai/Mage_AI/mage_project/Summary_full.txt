@@ -1,0 +1,81 @@
+MAGE Project — Consolidated Documentation Summary and TODO
+Generated: 2026-01-25
+
+1) Executive summary
+- Project: MAGE (Markov Answer Generation Engine). CPU-first deterministic inference engine using a Tiered Stochastic Tensor Framework and a bounded‑operation Answer Parser (TAP) with a strict Rule‑42 parse budget.
+- Language & build: C11, POSIX, Makefile/CMake; Python used for tools and FFI.
+- Key subsystems: TAP parser, Tiered generators (Hot/Warm/Cold), lazy block contraction, MPHF lookup, mmapped vector index, deterministic RP vectorizer, supervised subprocesses for tooling, logging/plugin/self-heal services, CLI/GUI presentation layers.
+
+2) Documents scanned (file → short description)
+- README.md: Project overview, quickstart, build targets, roadmap phases, and local CI notes.
+- docs/api/c_api.md: C API reference (TAP, contract, mmapped index, Python conveniences) with examples and signatures.
+- docs/developer_setup.md: Build and dev prerequisites, Python deps, note that CLI expects repo root for relative paths.
+- docs/architecture/overview.md: Architecture rationale, TAP/Tier descriptions, determinism, file formats and performance/accuracy notes.
+- docs/architecture/layers.md: Layered architecture (Presentation → API → Core → IO → Ops), public header surfaces and responsibilities, acceptance criteria and combined TODO highlights.
+- docs/vocabulary/protocol.md: JSONL vocabulary contribution protocol, required fields, validation/review workflow and operational rules.
+- docs/vocabulary/style-guide.md: Tone, normalization, size limits, examples and QA checklist for vocab entries.
+- services/api/README.md: API scaffold overview pointing to OpenAPI / endpoints and next steps.
+- services/api/README_SERVER.md: Minimal server run instructions and config note.
+- CMakeLists.txt: CMake configuration mirroring Makefile targets and tests/bench targets.
+- log_full.txt: Large build/run log snapshot capturing build warnings/errors, test runs, MPHF runs and runtime messages (useful for debugging build regressions).
+- stack_layered.txt: Layered implementation checklist (10 high-level areas) and practical iteration tips — acts as an engineering playbook.
+- todo.txt: Project TODOs prioritized by phase with explicit tasks tied to modules and CI notes.
+- Mage_guide_full.txt: Long-form architectural blueprint and rationale (detailed design, proofs-of-concept, and TAP Rule‑42 exposition).
+- Mage_plan.txt: Roadmap and phased plan with metrics, deliverables and implementation tasks.
+- src/gui/full_training.txt: Training/vocab pipeline spec and implementation guidance (scraper, cleaning, tokenizer, vocab generator, storage/versioning, monitoring).
+- src/gui/self_healing_guide.txt: Self-heal/watchdog architecture and reflex/diagnostics guidance.
+- data/train_sample.txt: Tiny sample training corpus used for tests.
+- python/requirements.txt: Python tool dependencies (spaCy, language-tool-python, requests, bs4).
+
+3) Consolidated important facts
+- Preferred data/layout: canonical JSONL formats for corpus, manifest.jsonl, vectors.bin header format, and data/vocab/*.jsonl for vocab contributions.
+- Vocab protocol: each JSONL entry must include `id`, `key`, `responses`, `type`; validator lives in `tools/validate_vocab.py` and enforced by CI expectations.
+- Determinism: fixed RNG (xorshift32), fixed reduction ordering, and golden Python parity tests emphasized across docs.
+- Build/test status (from logs): unit tests pass (10/10) historically; MPHF generation and loader exist; some compilation warnings and small toolchain prototype issues were addressed during recent edits (POSIX macros, prototypes).
+
+4) Consolidated TODO (prioritized immediate → short → medium)
+
+High priority (do these first)
+- Complete MPHF generator integration and tests (src/utils/mphf.c & tools/gen_mphf). Ensure build/install path and rpath for CLI/GUI find the tool when invoked from bin/.
+- Finish TAP internals: MPHF lookup, heap-based shortlist (O(K log S)), budget counters & mandatory unit tests verifying Rule‑42 op counts.
+- Implement mmapped vector store & retrieval adapter (src/io/mmappedindex.c) and wire retrieval API `/retrieve` in services.
+- Harden JSONL parsing & validator coverage; ensure `data/vocab` path consistency (remove ambiguous fallbacks or document canonical path).
+
+Near-term (next 2–4 weeks)
+- Optimize Warm generator inner loop (U row-major, V packed/transposed) and add microbench harnesses; add SIMD-friendly code paths where safe.
+- Add deterministic RP (hash_sign64) and Python golden parity tests; wire CI to fail on parity regression.
+- Replace remaining ad-hoc stderr prints with `mage_log()` calls and ensure `mage_api_init()`/shutdown lifecycle is consistent across CLI/GUI/server.
+
+Medium-term
+- Add block LRU cache for lazy block contraction; finalize Cold separable generator numeric stability guards (64-bit accumulators where needed).
+- Expand CI: static analysis, clang-format, parity tests, microbench gating; containerization and release artifacts for libmage and tools.
+
+5) Actionable file-level tasks (surgical)
+- Normalize vocab path usage: choose either `data/vocab/generated_vocab.jsonl` or `data/vocab/generated_vocab.jsonl` and update `src/core/mage_parser.c`, `src/utils/token_api.c`, `src/utils/self_heal.c`, `src/mage_cli.c` accordingly.
+- Make `tools/gen_mphf` executable from `bin/` invocations (either use absolute lookup relative to repo-root after chdir, or resolve using `argv[0]` original CWD to honor user-supplied relative paths).
+- Run `tools/validate_vocab.py` on all `data/vocab_*.jsonl` and fix entries failing the checks reported in `log_full.txt`.
+- Address misleading indentation warnings in `src/core/mage_parser.c`, `cold_generator.c`, `warm_generator.c` (fix by adding braces to avoid compiler `-Wmisleading-indentation` warnings).
+
+6) Cleanup actions performed in this run
+- Created this consolidated summary at `Summary_full.txt` at repo root.
+- (No destructive edits were made to original docs.) Recommended conservative cleanup: whitespace normalization and final newline enforcement — can be applied in a separate PR if desired.
+
+7) Suggested immediate commands (run from project root)
+```
+# build and run unit tests
+make -j4
+./bin/test_runner
+
+# validate vocab files (example)
+python3 tools/validate_vocab.py data/vocab/generated_vocab.jsonl
+
+# run a quick integration: generate vocab from sample
+./bin/mage_cli generate-vocab data/corpus/example_cleaned.jsonl data/vocab/snapshot_test.jsonl
+```
+
+8) Proposed next steps I can take now (pick any)
+- A: Normalize all `.md` and `.txt` docs (trim trailing whitespace, unify headings, ensure final newline). I can apply these as minimal, non-semantic edits.
+- B: Implement the surgical file changes above (vocab path canonicalization + add small wrapper to resolve tools/gen_mphf when invoked from `bin/`).
+- C: Run `tools/validate_vocab.py` across `data/` and produce a fix report and patch candidates for failing lines.
+
+If you want me to proceed, tell me which next step (A/B/C) to run now — I'll execute it and update the todo tracker.

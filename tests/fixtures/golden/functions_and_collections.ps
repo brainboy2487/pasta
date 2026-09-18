@@ -1,0 +1,12 @@
+DEF classify(n):
+    IF n < 0:
+        RET.NOW(): "neg"
+    END
+    RET.NOW(): "pos"
+END
+
+items = []
+list_append(items, classify(-1))
+list_append(items, classify(3))
+d = {"left": items[0], "right": items[1]}
+PRINT dict_get(d, "left") + ":" + dict_get(d, "right")

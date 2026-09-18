@@ -1,0 +1,13 @@
+# examples/graphics_test.pasta
+# Minimal Pasta script demonstrating the graphics API.
+win = WINDOW("Test", 200, 150)
+canvas = CANVAS(200, 150)
+# draw a diagonal line
+for i in 0..150:
+    PIXEL(canvas, i, i, 255, 0, 0)
+end
+BLIT(win, canvas)
+while WINDOW_OPEN(win):
+    # keep window open until closed by user
+end
+CLOSE(win)

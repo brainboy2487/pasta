@@ -1,0 +1,28 @@
+DEF count_down(start):
+    start = start + 0
+    idx = start
+    acc = 0
+    WHILE idx > 0:
+        acc = acc + idx
+        idx = idx - 1
+    END
+    RET.NOW(): acc
+END
+
+PRINT count_down(5)    # => 15
+PRINT count_down(10)   # => 55
+
+DEF first_over(threshold):
+    threshold = threshold + 0
+    i = 0
+    WHILE i < 100:
+        i = i + 1
+        IF (i * i) > threshold:
+            RET.NOW(): i
+        END
+    END
+    RET.NOW(): -1
+END
+
+PRINT first_over(10)   # => 4
+PRINT first_over(100)  # => 11

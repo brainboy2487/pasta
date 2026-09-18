@@ -1,0 +1,17 @@
+DEF collatz_steps(n):
+    steps = 0
+    WHILE n != 1:
+        IF n % 2 == 0:
+            n = n / 2
+        OTHERWISE:
+            n = n * 3 + 1
+        END
+        steps = steps + 1
+        IF steps > 1000000:
+            RET.NOW(): -1    # safety: bail out if something goes wrong
+        END
+    END
+    RET.NOW(): steps
+END
+
+PRINT collatz_steps(13)   # => 9

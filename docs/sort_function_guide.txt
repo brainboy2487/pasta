@@ -1,0 +1,114 @@
+# PASTA Phase 5: Actionable Built-in Sort Plan
+
+## Goal
+Ship a first-class `sort` built-in in the existing runtime builtin dispatcher (no lexer/parser changes required).
+
+Current state:
+- `list_sort` already exists in `src/interpreter/executor.rs` (list-only, single-arg).
+- REPL help currently advertises `list_sort`.
+
+Phase 5 objective:
+- Keep `list_sort` for compatibility.
+- Add a user-facing `sort(...)` builtin with optional mode.
+- Add deterministic dictionary sorting behavior.
+
+---
+
+## Implementation Scope (Minimal, High-Impact)
+
+### 1. Add builtin aliases in `Executor::call_builtin`
+File: `src/interpreter/executor.rs` (list builtins section near `list_sort`)
+
+Add match arms:
+- `"sort"` (primary)
+- `"SORT"` (uppercase alias for consistency)
+- keep `"list_sort"` as existing compatibility path
+
+Accepted signatures:
+1. `sort(list)` -> sorted list (stable default)
+2. `sort(list, "fast" | "stable" | "slow")` -> sorted list
+3. `sort(dict)` -> dict sorted by key (stable key order)
+4. `sort(dict, mode)` -> same output semantics; mode accepted for API consistency
+
+---
+
+### 2. Define mode behavior
+
+For lists:
+- `fast`: `sort_unstable_by(...)`
+- `stable` (default): `sort_by(...)`
+- `slow`: simple bubble/insertion sort path (debug/teaching mode)
+
+Comparator policy (same as current `list_sort` baseline):
+1. Number vs Number: numeric compare with `partial_cmp(...).unwrap_or(Equal)`
+2. Otherwise: compare `Executor::value_to_string(...)`
+
+For dictionaries:
+- Convert to `(key, value)` vector
+- Sort by key ascending (`pairs.sort_by_key(|(k, _)| k.as_str())`)
+- Rebuild `Value::Dict` from ordered pairs
+
+---
+
+### 3. Error contract
+
+Use explicit, consistent runtime errors:
+- wrong arity: `sort expects 1 or 2 arguments`
+- bad mode: `sort: mode must be fast, stable, or slow`
+- unsupported type: `sort: expected list or dict`
+
+No silent fallbacks.
+
+---
+
+### 4. Keep backward compatibility
+
+- Do not remove `list_sort`.
+- Route `list_sort` internally to `sort(list, "stable")` semantics.
+- Preserve existing output shape (`Value::List` for lists).
+
+---
+
+## Test Plan
+
+Add/extend tests in `src/interpreter/executor.rs` test modules:
+
+1. `sort_list_numbers_default_stable`
+2. `sort_list_strings_fast`
+3. `sort_list_mixed_uses_string_fallback`
+4. `sort_dict_by_keys`
+5. `sort_rejects_invalid_mode`
+6. `sort_rejects_unsupported_type`
+7. `list_sort_still_works` (regression)
+
+Also update REPL builtin listing tests/messages to include `sort`.
+
+---
+
+## Suggested Rollout Steps
+
+1. Implement `sort` arm in builtin dispatcher.
+2. Reuse existing `list_sort` compare logic in a shared helper.
+3. Add dict sorting branch.
+4. Wire optional mode parser (2nd arg string).
+5. Add tests above.
+6. Update docs/help text (`repl.rs` builtin list and README section if present).
+
+---
+
+## Optional Phase 5.1 Enhancements (After MVP)
+
+- `sort_by(list, key_fn_name_or_lambda)` custom key extraction
+- `sort_desc(list)` / `sort(list, "desc")`
+- locale-aware string sorting
+- stable sort guarantee documentation
+
+---
+
+## Acceptance Criteria
+
+- `sort(...)` available from scripts and REPL.
+- `list_sort(...)` still passes existing tests.
+- Dict keys are returned in deterministic sorted order.
+- New tests pass on Windows and Linux.
+- No parser/lexer/AST changes required for MVP.

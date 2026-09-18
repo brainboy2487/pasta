@@ -1,0 +1,3 @@
+{"id": "hello", "key": "hello", "responses": ["hello"], "type": "other"}
+{"id": "world", "key": "world", "responses": ["world"], "type": "other"}
+{"id": "again", "key": "again", "responses": ["again"], "type": "other"}

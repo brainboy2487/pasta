@@ -1,0 +1,66 @@
+Hello, world!
+hello, world!
+
+Café
+café
+
+—em dash — and – en dash
+—em dash — and – en dash
+
+Smart quotes: “Hello” ’there’
+smart quotes: “hello” ’there’
+
+Fullwidth: ＡＢＣ１２３
+fullwidth: abc123
+
+Non breaking space
+non breaking space
+
+é (e + combining acute)
+é (e + combining acute)
+
+é (precomposed)
+é (precomposed)
+
+Å (A + ring) and Å
+å (a + ring) and å
+
+Office ﬁle (ligature)
+office file (ligature)
+
+Привет мир
+привет мир
+
+γειά σου κόσμε
+γειά σου κόσμε
+
+नमस्ते दुनिया
+नमस्ते दुनिया
+
+שלום עולם
+שלום עולם
+
+مرحبا بالعالم
+مرحبا بالعالم
+
+🙂👍🏽
+🙂👍🏽
+
+woman technologist: 👩‍💻
+woman technologist: 👩‍💻
+
+family: 👨‍👩‍👧‍👦
+family: 👨‍👩‍👧‍👦
+
+flag: 🇺🇳
+flag: 🇺🇳
+
+Hello​World (zwb)
+hello​world (zwb)
+
+कि (Devanagari combining)
+कि (devanagari combining)
+
+¹²³ superscripts and ¼ fraction
+123 superscripts and 1⁄4 fraction
+

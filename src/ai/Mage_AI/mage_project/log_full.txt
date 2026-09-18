@@ -1,0 +1,610 @@
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/mage_api.o src/mage_api.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/mage_cli.o src/mage_cli.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/core/contract.o src/core/contract.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/core/cooc.o src/core/cooc.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/core/forwardfeed.o src/core/forwardfeed.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/core/mage_parser.o src/core/mage_parser.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/core/rp.o src/core/rp.c
+src/core/mage_parser.c: In function ‘parse_json_array_of_strings’:
+src/core/mage_parser.c:87:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   87 |     if (*p != '[') return NULL; ++p; skip_ws_commas(&p);
+      |     ^~
+src/core/mage_parser.c:87:33: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   87 |     if (*p != '[') return NULL; ++p; skip_ws_commas(&p);
+      |                                 ^~
+src/core/mage_parser.c:93:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   93 |     if (*p == ']') ++p; *pp = p; return arr;
+      |     ^~
+src/core/mage_parser.c:93:25: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   93 |     if (*p == ']') ++p; *pp = p; return arr;
+      |                         ^
+src/core/mage_parser.c: In function ‘free_vocab_parse’:
+src/core/mage_parser.c:103:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  103 |     if (!v) return; free(v->id); free(v->key); free(v->type); free(v->language); free(v->source); free(v->license);
+      |     ^~
+src/core/mage_parser.c:103:21: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  103 |     if (!v) return; free(v->id); free(v->key); free(v->type); free(v->language); free(v->source); free(v->license);
+      |                     ^~~~
+src/core/mage_parser.c:104:5: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  104 |     for (size_t i=0;i<v->aliases_count;++i) free(v->aliases[i]); free(v->aliases);
+      |     ^~~
+src/core/mage_parser.c:104:66: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+  104 |     for (size_t i=0;i<v->aliases_count;++i) free(v->aliases[i]); free(v->aliases);
+      |                                                                  ^~~~
+src/core/mage_parser.c:105:5: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  105 |     for (size_t i=0;i<v->resp_count;++i) free(v->responses[i]); free(v->responses);
+      |     ^~~
+src/core/mage_parser.c:105:65: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+  105 |     for (size_t i=0;i<v->resp_count;++i) free(v->responses[i]); free(v->responses);
+      |                                                                 ^~~~
+src/core/mage_parser.c:106:5: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  106 |     for (size_t i=0;i<v->tags_count;++i) free(v->tags[i]); free(v->tags);
+      |     ^~~
+src/core/mage_parser.c:106:60: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+  106 |     for (size_t i=0;i<v->tags_count;++i) free(v->tags[i]); free(v->tags);
+      |                                                            ^~~~
+src/core/mage_parser.c: In function ‘parse_jsonl_vocab_line’:
+src/core/mage_parser.c:112:9: warning: this ‘while’ clause does not guard... [-Wmisleading-indentation]
+  112 |         while (*p && isspace((unsigned char)*p)) ++p; if (*p=='{') { ++p; continue; } if (*p=='}') break;
+      |         ^~~~~
+src/core/mage_parser.c:112:55: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘while’
+  112 |         while (*p && isspace((unsigned char)*p)) ++p; if (*p=='{') { ++p; continue; } if (*p=='}') break;
+      |                                                       ^~
+src/core/mage_parser.c: In function ‘validate_and_add_vocab’:
+src/core/mage_parser.c:132:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  132 |     if (!v->key || !v->responses || v->resp_count==0) return -1; if (!v->id) return -1;
+      |     ^~
+src/core/mage_parser.c:132:66: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  132 |     if (!v->key || !v->responses || v->resp_count==0) return -1; if (!v->id) return -1;
+      |                                                                  ^~
+src/core/mage_parser.c: In function ‘load_vocab_from_file’:
+src/core/mage_parser.c:144:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  144 |         if (L==0) continue; vocab_parse_t vp; if (parse_jsonl_vocab_line(buf,&vp)==0) {
+      |         ^~
+src/core/mage_parser.c:144:29: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  144 |         if (L==0) continue; vocab_parse_t vp; if (parse_jsonl_vocab_line(buf,&vp)==0) {
+      |                             ^~~~~~~~~~~~~
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/core/separable_generator.o src/core/separable_generator.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/core/tap.o src/core/tap.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/generators/cold_generator.o src/generators/cold_generator.c
+src/generators/cold_generator.c: In function ‘cold_generate_from_vocab’:
+src/generators/cold_generator.c:38:17: warning: this ‘while’ clause does not guard... [-Wmisleading-indentation]
+   38 |                 while (*q && (*q==' '||*q=='\t')) q++; if (*q=='\"') q++; char *e = strchr(q,'\"'); if (!e) continue; *e='\0';
+      |                 ^~~~~
+src/generators/cold_generator.c:38:56: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘while’
+   38 |                 while (*q && (*q==' '||*q=='\t')) q++; if (*q=='\"') q++; char *e = strchr(q,'\"'); if (!e) continue; *e='\0';
+      |                                                        ^~
+src/generators/cold_generator.c:55:9: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+   55 |         for (size_t i=0;i<tlen;i++) free(tokens[i]); free(tokens);
+      |         ^~~
+src/generators/cold_generator.c:55:54: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+   55 |         for (size_t i=0;i<tlen;i++) free(tokens[i]); free(tokens);
+      |                                                      ^~~~
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/generators/warm_generator.o src/generators/warm_generator.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/io/io.o src/io/io.c
+src/generators/warm_generator.c: In function ‘warm_generate_from_vocab’:
+src/generators/warm_generator.c:40:17: warning: this ‘while’ clause does not guard... [-Wmisleading-indentation]
+   40 |                 while (*q && (*q==' '||*q=='\t')) q++; if (*q=='\"') q++; char *e = strchr(q,'\"'); if (!e) continue; *e='\0';
+      |                 ^~~~~
+src/generators/warm_generator.c:40:56: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘while’
+   40 |                 while (*q && (*q==' '||*q=='\t')) q++; if (*q=='\"') q++; char *e = strchr(q,'\"'); if (!e) continue; *e='\0';
+      |                                                        ^~
+src/generators/warm_generator.c:57:9: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+   57 |         for (size_t i=0;i<tlen;i++) free(tokens[i]); free(tokens);
+      |         ^~~
+src/generators/warm_generator.c:57:54: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+   57 |         for (size_t i=0;i<tlen;i++) free(tokens[i]); free(tokens);
+      |                                                      ^~~~
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/io/manifest.o src/io/manifest.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/io/mmappedindex.o src/io/mmappedindex.c
+src/io/mmappedindex.c: In function ‘mmapped_index_open’:
+src/io/mmappedindex.c:34:81: warning: unused parameter ‘vector_size’ [-Wunused-parameter]
+   34 | mmapped_index_t *mmapped_index_open(const char *path, size_t vector_dim, size_t vector_size) {
+      |                                                                          ~~~~~~~^~~~~~~~~~~
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/api_monitor.o src/utils/api_monitor.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/context.o src/utils/context.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/hash.o src/utils/hash.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/mphf.o src/utils/mphf.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/mphf_stub.o src/utils/mphf_stub.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/subproc.o src/utils/subproc.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/token_api.o src/utils/token_api.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/tokenizer.o src/utils/tokenizer.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/xorshift.o src/utils/xorshift.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -shared -o lib/libmage.so build/mage_api.o build/mage_cli.o build/core/contract.o build/core/cooc.o build/core/forwardfeed.o build/core/mage_parser.o build/core/rp.o build/core/separable_generator.o build/core/tap.o build/generators/cold_generator.o build/generators/warm_generator.o build/io/io.o build/io/manifest.o build/io/mmappedindex.o build/utils/api_monitor.o build/utils/context.o build/utils/hash.o build/utils/mphf.o build/utils/mphf_stub.o build/utils/subproc.o build/utils/token_api.o build/utils/tokenizer.o build/utils/xorshift.o
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/mage_cli src/mage_cli.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/test_runner tests/test_runner.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread
+./bin/test_runner
+
+========================================
+MAGE Unit Test Suite
+========================================
+
+TAP Tests:
+Running test_tap_feature_encoding...
+  PASSED
+Running test_tap_shortlist_selection...
+  PASSED
+Running test_tap_budget_enforcement...
+  PASSED
+Running test_tap_early_commit...
+  PASSED
+
+Contraction Tests:
+Running test_contract_hot_tier...
+  PASSED
+Running test_contract_warm_tier...
+  PASSED
+Running test_contract_cold_tier...
+  PASSED
+Running test_contract_lazy_block...
+  PASSED
+
+Cooccurrence Tests:
+Running test_cooc_insertion...
+  PASSED
+Running test_cooc_lookup...
+  PASSED
+
+========================================
+Test Results:
+  Total: 10
+  Passed: 10
+  Failed: 0
+========================================
+
+Failed to load MPHF from data/mphf.bin
+[mage] skipped invalid vocab line in data/vocab/generated_vocab.jsonl
+[mage] skipped invalid vocab line in data/vocab/generated_vocab.jsonl
+[mage] skipped invalid vocab line in data/vocab/generated_vocab.jsonl
+Type 'help -all' to list commands.
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/token_api.o src/utils/token_api.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -shared -o lib/libmage.so build/mage_api.o build/mage_cli.o build/core/contract.o build/core/cooc.o build/core/forwardfeed.o build/core/mage_parser.o build/core/rp.o build/core/separable_generator.o build/core/tap.o build/generators/cold_generator.o build/generators/warm_generator.o build/io/io.o build/io/manifest.o build/io/mmappedindex.o build/utils/api_monitor.o build/utils/context.o build/utils/hash.o build/utils/mphf.o build/utils/mphf_stub.o build/utils/subproc.o build/utils/token_api.o build/utils/tokenizer.o build/utils/xorshift.o
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/mage_cli src/mage_cli.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread
+/usr/bin/ld: lib/libmage.so: undefined reference to `sqrt'
+collect2: error: ld returned 1 exit status
+Building MPHF for 3 keys...
+Serializing MPHF to data/mphf.bin...
+Done.
+Loaded MPHF from data/mphf.bin
+[mage] skipped invalid vocab line in data/vocab/generated_vocab.jsonl
+[mage] skipped invalid vocab line in data/vocab/generated_vocab.jsonl
+[mage] skipped invalid vocab line in data/vocab/generated_vocab.jsonl
+Type 'help -all' to list commands.
+Loaded MPHF from data/mphf.bin
+[mage_api] Built vocab (3 tokens) -> data/vocab/generated_vocab.jsonl
+Wrote generated vocab to data/vocab/generated_vocab.jsonl
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/mage_cli.o src/mage_cli.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/token_api.o src/utils/token_api.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -shared -o lib/libmage.so build/mage_api.o build/mage_cli.o build/core/contract.o build/core/cooc.o build/core/forwardfeed.o build/core/mage_parser.o build/core/rp.o build/core/separable_generator.o build/core/tap.o build/generators/cold_generator.o build/generators/warm_generator.o build/io/io.o build/io/manifest.o build/io/mmappedindex.o build/utils/api_monitor.o build/utils/context.o build/utils/hash.o build/utils/mphf.o build/utils/mphf_stub.o build/utils/subproc.o build/utils/token_api.o build/utils/tokenizer.o build/utils/xorshift.o
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/mage_cli src/mage_cli.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread
+Building MPHF for 3 keys...
+Serializing MPHF to data/mphf.bin...
+Done.
+Loaded MPHF from data/mphf.bin
+Type 'help -all' to list commands.
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/mage_api.o src/mage_api.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/mage_cli.o src/mage_cli.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/self_heal.o src/utils/self_heal.c
+src/utils/self_heal.c: In function ‘log_line’:
+src/utils/self_heal.c:29:17: error: implicit declaration of function ‘va_start’ [-Wimplicit-function-declaration]
+   29 |     va_list ap; va_start(ap, fmt); vfprintf(f, fmt, ap); va_end(ap);
+      |                 ^~~~~~~~
+src/utils/self_heal.c:29:58: error: implicit declaration of function ‘va_end’ [-Wimplicit-function-declaration]
+   29 |     va_list ap; va_start(ap, fmt); vfprintf(f, fmt, ap); va_end(ap);
+      |                                                          ^~~~~~
+make: *** [Makefile:92: build/utils/self_heal.o] Error 1
+make: *** Waiting for unfinished jobs....
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/self_heal.o src/utils/self_heal.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -shared -o lib/libmage.so build/mage_api.o build/mage_cli.o build/core/contract.o build/core/cooc.o build/core/forwardfeed.o build/core/mage_parser.o build/core/rp.o build/core/separable_generator.o build/core/tap.o build/generators/cold_generator.o build/generators/warm_generator.o build/io/io.o build/io/manifest.o build/io/mmappedindex.o build/utils/api_monitor.o build/utils/context.o build/utils/hash.o build/utils/mphf.o build/utils/mphf_stub.o build/utils/self_heal.o build/utils/subproc.o build/utils/token_api.o build/utils/tokenizer.o build/utils/xorshift.o
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/mage_cli src/mage_cli.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread
+Loaded MPHF from data/mphf.bin
+Type 'help -all' to list commands.
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/self_heal.o src/utils/self_heal.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -shared -o lib/libmage.so build/mage_api.o build/mage_cli.o build/core/contract.o build/core/cooc.o build/core/forwardfeed.o build/core/mage_parser.o build/core/rp.o build/core/separable_generator.o build/core/tap.o build/generators/cold_generator.o build/generators/warm_generator.o build/io/io.o build/io/manifest.o build/io/mmappedindex.o build/utils/api_monitor.o build/utils/context.o build/utils/hash.o build/utils/mphf.o build/utils/mphf_stub.o build/utils/self_heal.o build/utils/subproc.o build/utils/token_api.o build/utils/tokenizer.o build/utils/xorshift.o
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/mage_cli src/mage_cli.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread
+Loaded MPHF from data/mphf.bin
+Type 'help -all' to list commands.
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/mage_api.o src/mage_api.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/mage_cli.o src/mage_cli.c
+src/mage_cli.c: In function ‘main’:
+src/mage_cli.c:103:55: error: expected ‘)’ before ‘const’
+  103 |             extern int mage_log_init(mage_log_level_t, const char*);
+      |                                                       ^~~~~~
+      |                                                       )
+src/mage_cli.c:104:13: error: parameter names (without types) in function declaration [-Wdeclaration-missing-parameter-type]
+  104 |             extern void mage_log_set_level(mage_log_level_t);
+      |             ^~~~~~
+src/mage_cli.c:105:13: error: implicit declaration of function ‘mage_log_init’; did you mean ‘mage_api_init’? [-Wimplicit-function-declaration]
+  105 |             mage_log_init(MAGE_LOG_DEBUG, "data/full_verbose.log");
+      |             ^~~~~~~~~~~~~
+      |             mage_api_init
+src/mage_cli.c:105:27: error: ‘MAGE_LOG_DEBUG’ undeclared (first use in this function)
+  105 |             mage_log_init(MAGE_LOG_DEBUG, "data/full_verbose.log");
+      |                           ^~~~~~~~~~~~~~
+src/mage_cli.c:105:27: note: each undeclared identifier is reported only once for each function it appears in
+make: *** [Makefile:91: build/mage_cli.o] Error 1
+make: *** Waiting for unfinished jobs....
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/mage_cli.o src/mage_cli.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/log.o src/utils/log.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/plugin.o src/utils/plugin.c
+src/utils/plugin.c:2:18: warning: ‘/*’ within comment [-Wcomment]
+    2 |  * Scans `plugins/*.so` and calls `mage_plugin_init()` and `mage_plugin_shutdown()` if present.
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/self_heal.o src/utils/self_heal.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -shared -o lib/libmage.so build/mage_api.o build/mage_cli.o build/core/contract.o build/core/cooc.o build/core/forwardfeed.o build/core/mage_parser.o build/core/rp.o build/core/separable_generator.o build/core/tap.o build/generators/cold_generator.o build/generators/warm_generator.o build/io/io.o build/io/manifest.o build/io/mmappedindex.o build/utils/api_monitor.o build/utils/context.o build/utils/hash.o build/utils/log.o build/utils/mphf.o build/utils/mphf_stub.o build/utils/plugin.o build/utils/self_heal.o build/utils/subproc.o build/utils/token_api.o build/utils/tokenizer.o build/utils/xorshift.o -lm -lpthread -ldl
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/mage_cli src/mage_cli.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread -ldl
+Loaded MPHF from data/mphf.bin
+Mage base system v0.1
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/mage_cli.o src/mage_cli.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -shared -o lib/libmage.so build/mage_api.o build/mage_cli.o build/core/contract.o build/core/cooc.o build/core/forwardfeed.o build/core/mage_parser.o build/core/rp.o build/core/separable_generator.o build/core/tap.o build/generators/cold_generator.o build/generators/warm_generator.o build/io/io.o build/io/manifest.o build/io/mmappedindex.o build/utils/api_monitor.o build/utils/context.o build/utils/hash.o build/utils/log.o build/utils/mphf.o build/utils/mphf_stub.o build/utils/plugin.o build/utils/self_heal.o build/utils/subproc.o build/utils/token_api.o build/utils/tokenizer.o build/utils/xorshift.o -lm -lpthread -ldl
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/test_runner tests/test_runner.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread -ldl
+./bin/test_runner
+
+========================================
+MAGE Unit Test Suite
+========================================
+
+TAP Tests:
+Running test_tap_feature_encoding...
+  PASSED
+Running test_tap_shortlist_selection...
+  PASSED
+Running test_tap_budget_enforcement...
+  PASSED
+Running test_tap_early_commit...
+  PASSED
+
+Contraction Tests:
+Running test_contract_hot_tier...
+  PASSED
+Running test_contract_warm_tier...
+  PASSED
+Running test_contract_cold_tier...
+  PASSED
+Running test_contract_lazy_block...
+  PASSED
+
+Cooccurrence Tests:
+Running test_cooc_insertion...
+  PASSED
+Running test_cooc_lookup...
+  PASSED
+
+========================================
+Test Results:
+  Total: 10
+  Passed: 10
+  Failed: 0
+========================================
+
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/training.o src/utils/training.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -shared -o lib/libmage.so build/mage_api.o build/mage_cli.o build/core/contract.o build/core/cooc.o build/core/forwardfeed.o build/core/mage_parser.o build/core/rp.o build/core/separable_generator.o build/core/tap.o build/generators/cold_generator.o build/generators/warm_generator.o build/io/io.o build/io/manifest.o build/io/mmappedindex.o build/utils/api_monitor.o build/utils/context.o build/utils/hash.o build/utils/log.o build/utils/mphf.o build/utils/mphf_stub.o build/utils/plugin.o build/utils/self_heal.o build/utils/subproc.o build/utils/token_api.o build/utils/tokenizer.o build/utils/training.o build/utils/xorshift.o -lm -lpthread -ldl
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/mage_cli src/mage_cli.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread -ldl
+Loaded MPHF from data/mphf.bin
+[mage_api] Built vocab (3 tokens) -> data/vocab/generated_vocab.jsonl
+Wrote generated vocab to data/vocab/generated_vocab.jsonl
+Loaded MPHF from data/mphf.bin
+[mage_api] Built vocab (3 tokens) -> data/vocab/generated_vocab.jsonl
+Wrote generated vocab to data/vocab/generated_vocab.jsonl
+No keys found in data/vocab/generated_vocab.jsonl
+Building MPHF for 3 keys...
+Serializing MPHF to data/mphf.bin...
+Done.
+Building MPHF for 3 keys...
+Serializing MPHF to data/mphf.bin...
+Done.
+Building MPHF for 3 keys...
+Serializing MPHF to data/mphf.bin...
+Done.
+data/mphf.bin 432
+data/vocab/generated_vocab.jsonl 141
+data/vocab/generated_vocab.jsonl 219
+Loaded MPHF from data/mphf.bin
+[mage] skipped invalid vocab line in data/vocab/generated_vocab.jsonl
+[mage] skipped invalid vocab line in data/vocab/generated_vocab.jsonl
+[mage] skipped invalid vocab line in data/vocab/generated_vocab.jsonl
+Mage base system v0.1
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/core/mage_parser.o src/core/mage_parser.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/utils/training.o src/utils/training.c
+src/core/mage_parser.c: In function ‘parse_json_array_of_strings’:
+src/core/mage_parser.c:87:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   87 |     if (*p != '[') return NULL; ++p; skip_ws_commas(&p);
+      |     ^~
+src/core/mage_parser.c:87:33: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   87 |     if (*p != '[') return NULL; ++p; skip_ws_commas(&p);
+      |                                 ^~
+src/core/mage_parser.c:93:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   93 |     if (*p == ']') ++p; *pp = p; return arr;
+      |     ^~
+src/core/mage_parser.c:93:25: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   93 |     if (*p == ']') ++p; *pp = p; return arr;
+      |                         ^
+src/core/mage_parser.c: In function ‘free_vocab_parse’:
+src/core/mage_parser.c:103:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  103 |     if (!v) return; free(v->id); free(v->key); free(v->type); free(v->language); free(v->source); free(v->license);
+      |     ^~
+src/core/mage_parser.c:103:21: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  103 |     if (!v) return; free(v->id); free(v->key); free(v->type); free(v->language); free(v->source); free(v->license);
+      |                     ^~~~
+src/core/mage_parser.c:104:5: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  104 |     for (size_t i=0;i<v->aliases_count;++i) free(v->aliases[i]); free(v->aliases);
+      |     ^~~
+src/core/mage_parser.c:104:66: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+  104 |     for (size_t i=0;i<v->aliases_count;++i) free(v->aliases[i]); free(v->aliases);
+      |                                                                  ^~~~
+src/core/mage_parser.c:105:5: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  105 |     for (size_t i=0;i<v->resp_count;++i) free(v->responses[i]); free(v->responses);
+      |     ^~~
+src/core/mage_parser.c:105:65: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+  105 |     for (size_t i=0;i<v->resp_count;++i) free(v->responses[i]); free(v->responses);
+      |                                                                 ^~~~
+src/core/mage_parser.c:106:5: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  106 |     for (size_t i=0;i<v->tags_count;++i) free(v->tags[i]); free(v->tags);
+      |     ^~~
+src/core/mage_parser.c:106:60: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+  106 |     for (size_t i=0;i<v->tags_count;++i) free(v->tags[i]); free(v->tags);
+      |                                                            ^~~~
+src/core/mage_parser.c: In function ‘parse_jsonl_vocab_line’:
+src/core/mage_parser.c:112:9: warning: this ‘while’ clause does not guard... [-Wmisleading-indentation]
+  112 |         while (*p && isspace((unsigned char)*p)) ++p; if (*p=='{') { ++p; continue; } if (*p=='}') break;
+      |         ^~~~~
+src/core/mage_parser.c:112:55: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘while’
+  112 |         while (*p && isspace((unsigned char)*p)) ++p; if (*p=='{') { ++p; continue; } if (*p=='}') break;
+      |                                                       ^~
+src/core/mage_parser.c: In function ‘validate_and_add_vocab’:
+src/core/mage_parser.c:132:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  132 |     if (!v->key || !v->responses || v->resp_count==0) return -1; if (!v->id) return -1;
+      |     ^~
+src/core/mage_parser.c:132:66: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  132 |     if (!v->key || !v->responses || v->resp_count==0) return -1; if (!v->id) return -1;
+      |                                                                  ^~
+src/core/mage_parser.c: In function ‘load_vocab_from_file’:
+src/core/mage_parser.c:144:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  144 |         if (L==0) continue; vocab_parse_t vp; if (parse_jsonl_vocab_line(buf,&vp)==0) {
+      |         ^~
+src/core/mage_parser.c:144:29: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  144 |         if (L==0) continue; vocab_parse_t vp; if (parse_jsonl_vocab_line(buf,&vp)==0) {
+      |                             ^~~~~~~~~~~~~
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -shared -o lib/libmage.so build/mage_api.o build/mage_cli.o build/core/contract.o build/core/cooc.o build/core/forwardfeed.o build/core/mage_parser.o build/core/rp.o build/core/separable_generator.o build/core/tap.o build/generators/cold_generator.o build/generators/warm_generator.o build/io/io.o build/io/manifest.o build/io/mmappedindex.o build/utils/api_monitor.o build/utils/context.o build/utils/hash.o build/utils/log.o build/utils/mphf.o build/utils/mphf_stub.o build/utils/plugin.o build/utils/self_heal.o build/utils/subproc.o build/utils/token_api.o build/utils/tokenizer.o build/utils/training.o build/utils/xorshift.o -lm -lpthread -ldl
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/mage_cli src/mage_cli.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread -ldl
+Loaded MPHF from data/mphf.bin
+[mage] skipped invalid vocab line in data/vocab/generated_vocab.jsonl
+[mage] skipped invalid vocab line in data/vocab/generated_vocab.jsonl
+[mage] skipped invalid vocab line in data/vocab/generated_vocab.jsonl
+Mage base system v0.1
+
+========================================
+MAGE Unit Test Suite
+========================================
+
+TAP Tests:
+Running test_tap_feature_encoding...
+  PASSED
+Running test_tap_shortlist_selection...
+  PASSED
+Running test_tap_budget_enforcement...
+  PASSED
+Running test_tap_early_commit...
+  PASSED
+
+Contraction Tests:
+Running test_contract_hot_tier...
+  PASSED
+Running test_contract_warm_tier...
+  PASSED
+Running test_contract_cold_tier...
+  PASSED
+Running test_contract_lazy_block...
+  PASSED
+
+Cooccurrence Tests:
+Running test_cooc_insertion...
+  PASSED
+Running test_cooc_lookup...
+  PASSED
+
+========================================
+Test Results:
+  Total: 10
+  Passed: 10
+  Failed: 0
+========================================
+
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/core/mage_parser.o src/core/mage_parser.c
+src/core/mage_parser.c: In function ‘parse_json_array_of_strings’:
+src/core/mage_parser.c:87:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   87 |     if (*p != '[') return NULL; ++p; skip_ws_commas(&p);
+      |     ^~
+src/core/mage_parser.c:87:33: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   87 |     if (*p != '[') return NULL; ++p; skip_ws_commas(&p);
+      |                                 ^~
+src/core/mage_parser.c:93:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   93 |     if (*p == ']') ++p; *pp = p; return arr;
+      |     ^~
+src/core/mage_parser.c:93:25: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   93 |     if (*p == ']') ++p; *pp = p; return arr;
+      |                         ^
+src/core/mage_parser.c: In function ‘free_vocab_parse’:
+src/core/mage_parser.c:103:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  103 |     if (!v) return; free(v->id); free(v->key); free(v->type); free(v->language); free(v->source); free(v->license);
+      |     ^~
+src/core/mage_parser.c:103:21: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  103 |     if (!v) return; free(v->id); free(v->key); free(v->type); free(v->language); free(v->source); free(v->license);
+      |                     ^~~~
+src/core/mage_parser.c:104:5: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  104 |     for (size_t i=0;i<v->aliases_count;++i) free(v->aliases[i]); free(v->aliases);
+      |     ^~~
+src/core/mage_parser.c:104:66: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+  104 |     for (size_t i=0;i<v->aliases_count;++i) free(v->aliases[i]); free(v->aliases);
+      |                                                                  ^~~~
+src/core/mage_parser.c:105:5: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  105 |     for (size_t i=0;i<v->resp_count;++i) free(v->responses[i]); free(v->responses);
+      |     ^~~
+src/core/mage_parser.c:105:65: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+  105 |     for (size_t i=0;i<v->resp_count;++i) free(v->responses[i]); free(v->responses);
+      |                                                                 ^~~~
+src/core/mage_parser.c:106:5: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  106 |     for (size_t i=0;i<v->tags_count;++i) free(v->tags[i]); free(v->tags);
+      |     ^~~
+src/core/mage_parser.c:106:60: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+  106 |     for (size_t i=0;i<v->tags_count;++i) free(v->tags[i]); free(v->tags);
+      |                                                            ^~~~
+src/core/mage_parser.c: In function ‘parse_jsonl_vocab_line’:
+src/core/mage_parser.c:112:9: warning: this ‘while’ clause does not guard... [-Wmisleading-indentation]
+  112 |         while (*p && isspace((unsigned char)*p)) ++p; if (*p=='{') { ++p; continue; } if (*p=='}') break;
+      |         ^~~~~
+src/core/mage_parser.c:112:55: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘while’
+  112 |         while (*p && isspace((unsigned char)*p)) ++p; if (*p=='{') { ++p; continue; } if (*p=='}') break;
+      |                                                       ^~
+src/core/mage_parser.c: In function ‘validate_and_add_vocab’:
+src/core/mage_parser.c:132:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  132 |     if (!v->key || !v->responses || v->resp_count==0) return -1; if (!v->id) return -1;
+      |     ^~
+src/core/mage_parser.c:132:66: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  132 |     if (!v->key || !v->responses || v->resp_count==0) return -1; if (!v->id) return -1;
+      |                                                                  ^~
+src/core/mage_parser.c: In function ‘load_vocab_from_file’:
+src/core/mage_parser.c:144:9: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+  144 |         if (L==0) continue; vocab_parse_t vp; if (parse_jsonl_vocab_line(buf,&vp)==0) {
+      |         ^~
+src/core/mage_parser.c:144:29: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+  144 |         if (L==0) continue; vocab_parse_t vp; if (parse_jsonl_vocab_line(buf,&vp)==0) {
+      |                             ^~~~~~~~~~~~~
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -shared -o lib/libmage.so build/mage_api.o build/mage_cli.o build/core/contract.o build/core/cooc.o build/core/forwardfeed.o build/core/mage_parser.o build/core/rp.o build/core/separable_generator.o build/core/tap.o build/generators/cold_generator.o build/generators/warm_generator.o build/io/io.o build/io/manifest.o build/io/mmappedindex.o build/utils/api_monitor.o build/utils/context.o build/utils/hash.o build/utils/log.o build/utils/mphf.o build/utils/mphf_stub.o build/utils/plugin.o build/utils/self_heal.o build/utils/subproc.o build/utils/token_api.o build/utils/tokenizer.o build/utils/training.o build/utils/xorshift.o -lm -lpthread -ldl
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/mage_cli src/mage_cli.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread -ldl
+
+========================================
+MAGE Unit Test Suite
+========================================
+
+TAP Tests:
+Running test_tap_feature_encoding...
+  PASSED
+Running test_tap_shortlist_selection...
+  PASSED
+Running test_tap_budget_enforcement...
+  PASSED
+Running test_tap_early_commit...
+  PASSED
+
+Contraction Tests:
+Running test_contract_hot_tier...
+  PASSED
+Running test_contract_warm_tier...
+  PASSED
+Running test_contract_cold_tier...
+  PASSED
+Running test_contract_lazy_block...
+  PASSED
+
+Cooccurrence Tests:
+Running test_cooc_insertion...
+  PASSED
+Running test_cooc_lookup...
+  PASSED
+
+========================================
+Test Results:
+  Total: 10
+  Passed: 10
+  Failed: 0
+========================================
+
+Makefile:50: *** recipe commences before first target.  Stop.
+Makefile:48: *** recipe commences before first target.  Stop.
+make: Nothing to be done for 'all'.
+bash: ./bin/test_vocab_pipeline: No such file or directory
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/test_vocab_pipeline tests/test_vocab_pipeline.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread -ldl
+tests/test_vocab_pipeline.c: In function ‘main’:
+tests/test_vocab_pipeline.c:30:5: error: implicit declaration of function ‘unlink’ [-Wimplicit-function-declaration]
+   30 |     unlink(mphf_out);
+      |     ^~~~~~
+make: *** [Makefile:105: bin/test_vocab_pipeline] Error 1
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/test_vocab_pipeline tests/test_vocab_pipeline.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread -ldl
+Building MPHF for 3 keys...
+Serializing MPHF to data/mphf.test.bin...
+Done.
+OK
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/bench_tap_shortlist tests/bench_tap_shortlist.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread -ldl
+tests/bench_tap_shortlist.c: In function ‘main’:
+tests/bench_tap_shortlist.c:20:5: error: implicit declaration of function ‘clock_gettime’ [-Wimplicit-function-declaration]
+   20 |     clock_gettime(CLOCK_MONOTONIC, &t0);
+      |     ^~~~~~~~~~~~~
+tests/bench_tap_shortlist.c:20:19: error: ‘CLOCK_MONOTONIC’ undeclared (first use in this function)
+   20 |     clock_gettime(CLOCK_MONOTONIC, &t0);
+      |                   ^~~~~~~~~~~~~~~
+tests/bench_tap_shortlist.c:20:19: note: each undeclared identifier is reported only once for each function it appears in
+make: *** [Makefile:109: bin/bench_tap_shortlist] Error 1
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/bench_tap_shortlist tests/bench_tap_shortlist.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread -ldl
+tap_select_top: n=100000 S=64 out=64 time=0.000411 s
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/mage_api.o src/mage_api.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -c -o build/mage_cli.o src/mage_cli.c
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -shared -o lib/libmage.so build/mage_api.o build/mage_cli.o build/core/contract.o build/core/cooc.o build/core/forwardfeed.o build/core/mage_parser.o build/core/rp.o build/core/separable_generator.o build/core/tap.o build/generators/cold_generator.o build/generators/warm_generator.o build/io/io.o build/io/manifest.o build/io/mmappedindex.o build/utils/api_monitor.o build/utils/context.o build/utils/hash.o build/utils/log.o build/utils/mphf.o build/utils/mphf_stub.o build/utils/plugin.o build/utils/self_heal.o build/utils/subproc.o build/utils/token_api.o build/utils/tokenizer.o build/utils/training.o build/utils/xorshift.o -lm -lpthread -ldl
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude -o bin/mage_cli src/mage_cli.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread -ldl
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude  -DUSE_GLFW -o bin/mage_gui src/gui/mage_gui.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread -ldl -lglfw -lGL
+In file included from src/gui/mage_gui.c:22:
+src/gui/../gui/stb_easy_font.h: In function ‘stb_easy_font_print’:
+src/gui/../gui/stb_easy_font.h:205:29: warning: missing braces around initializer [-Wmissing-braces]
+  205 |     stb_easy_font_color c = { 255,255,255,255 }; // use structure copying to avoid needing depending on memcpy()
+      |                             ^
+      |                               {               }
+src/gui/mage_gui.c: In function ‘mage_gui_run’:
+src/gui/mage_gui.c:299:21: warning: this ‘else’ clause does not guard... [-Wmisleading-indentation]
+  299 |                     else append_message("mage","(no response)"); input_len=0; input_buf[0]='\0';
+      |                     ^~~~
+src/gui/mage_gui.c:299:66: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘else’
+  299 |                     else append_message("mage","(no response)"); input_len=0; input_buf[0]='\0';
+      |                                                                  ^~~~~~~~~
+src/gui/mage_gui.c: In function ‘main’:
+src/gui/mage_gui.c:376:13: error: implicit declaration of function ‘mage_log_init’; did you mean ‘mage_gui_init’? [-Wimplicit-function-declaration]
+  376 |             mage_log_init(MAGE_LOG_DEBUG, "data/full_verbose.log");
+      |             ^~~~~~~~~~~~~
+      |             mage_gui_init
+src/gui/mage_gui.c:376:27: error: ‘MAGE_LOG_DEBUG’ undeclared (first use in this function)
+  376 |             mage_log_init(MAGE_LOG_DEBUG, "data/full_verbose.log");
+      |                           ^~~~~~~~~~~~~~
+src/gui/mage_gui.c:376:27: note: each undeclared identifier is reported only once for each function it appears in
+src/gui/mage_gui.c:377:13: error: implicit declaration of function ‘mage_log_set_level’ [-Wimplicit-function-declaration]
+  377 |             mage_log_set_level(MAGE_LOG_DEBUG);
+      |             ^~~~~~~~~~~~~~~~~~
+src/gui/../gui/stb_easy_font.h: At top level:
+src/gui/../gui/stb_easy_font.h:248:12: warning: ‘stb_easy_font_height’ defined but not used [-Wunused-function]
+  248 | static int stb_easy_font_height(char *text)
+      |            ^~~~~~~~~~~~~~~~~~~~
+src/gui/../gui/stb_easy_font.h:230:12: warning: ‘stb_easy_font_width’ defined but not used [-Wunused-function]
+  230 | static int stb_easy_font_width(char *text)
+      |            ^~~~~~~~~~~~~~~~~~~
+src/gui/../gui/stb_easy_font.h:194:13: warning: ‘stb_easy_font_spacing’ defined but not used [-Wunused-function]
+  194 | static void stb_easy_font_spacing(float spacing)
+      |             ^~~~~~~~~~~~~~~~~~~~~
+make: *** [Makefile:88: bin/mage_gui] Error 1
+gcc -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude  -DUSE_GLFW -o bin/mage_gui src/gui/mage_gui.c -Llib -lmage -Wl,-rpath,'$ORIGIN/../lib' -lm -lpthread -ldl -lglfw -lGL
+In file included from src/gui/mage_gui.c:23:
+src/gui/../gui/stb_easy_font.h: In function ‘stb_easy_font_print’:
+src/gui/../gui/stb_easy_font.h:205:29: warning: missing braces around initializer [-Wmissing-braces]
+  205 |     stb_easy_font_color c = { 255,255,255,255 }; // use structure copying to avoid needing depending on memcpy()
+      |                             ^
+      |                               {               }
+src/gui/mage_gui.c: In function ‘mage_gui_run’:
+src/gui/mage_gui.c:300:21: warning: this ‘else’ clause does not guard... [-Wmisleading-indentation]
+  300 |                     else append_message("mage","(no response)"); input_len=0; input_buf[0]='\0';
+      |                     ^~~~
+src/gui/mage_gui.c:300:66: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘else’
+  300 |                     else append_message("mage","(no response)"); input_len=0; input_buf[0]='\0';
+      |                                                                  ^~~~~~~~~
+src/gui/../gui/stb_easy_font.h: At top level:
+src/gui/../gui/stb_easy_font.h:248:12: warning: ‘stb_easy_font_height’ defined but not used [-Wunused-function]
+  248 | static int stb_easy_font_height(char *text)
+      |            ^~~~~~~~~~~~~~~~~~~~
+src/gui/../gui/stb_easy_font.h:230:12: warning: ‘stb_easy_font_width’ defined but not used [-Wunused-function]
+  230 | static int stb_easy_font_width(char *text)
+      |            ^~~~~~~~~~~~~~~~~~~
+src/gui/../gui/stb_easy_font.h:194:13: warning: ‘stb_easy_font_spacing’ defined but not used [-Wunused-function]
+  194 | static void stb_easy_font_spacing(float spacing)
+      |             ^~~~~~~~~~~~~~~~~~~~~
+src/gui/mage_gui.c: In function ‘mage_gui_run’:
+src/gui/mage_gui.c:304:536: warning: ‘%s’ directive output may be truncated writing up to 1019 bytes into a region of size 120 [-Wformat-truncation=]
+  304 |                     input_buf[input_len]='\0'; if (strncmp(input_buf,"set ",4)==0) { char *kv=input_buf+4; char *eq=strchr(kv,'='); if (eq) { *eq='\0'; char *key=kv; char *val=eq+1; if (strcmp(key,"top_k")==0) TRAIN_SETTINGS.top_k=atoi(val); else if (strcmp(key,"max_nexts")==0) TRAIN_SETTINGS.max_nexts=atoi(val); else if (strcmp(key,"sample_limit")==0) TRAIN_SETTINGS.sample_limit=atoi(val); else if (strcmp(key,"verbose")==0) TRAIN_SETTINGS.verbose=atoi(val); save_train_settings(); char tmp[128]; snprintf(tmp,sizeof(tmp),"Setting %s=%s saved",key,val); append_message("system",tmp); } else append_message("system","Invalid set command. Use: set key=value"); }
+      |                                                                                            ~~                                                                                                                                                                                                                                                                                                                                                                                                                                                          ^~
+src/gui/mage_gui.c:304:502: note: ‘snprintf’ output 16 or more bytes (assuming 1035) into a destination of size 128
+  304 |                     input_buf[input_len]='\0'; if (strncmp(input_buf,"set ",4)==0) { char *kv=input_buf+4; char *eq=strchr(kv,'='); if (eq) { *eq='\0'; char *key=kv; char *val=eq+1; if (strcmp(key,"top_k")==0) TRAIN_SETTINGS.top_k=atoi(val); else if (strcmp(key,"max_nexts")==0) TRAIN_SETTINGS.max_nexts=atoi(val); else if (strcmp(key,"sample_limit")==0) TRAIN_SETTINGS.sample_limit=atoi(val); else if (strcmp(key,"verbose")==0) TRAIN_SETTINGS.verbose=atoi(val); save_train_settings(); char tmp[128]; snprintf(tmp,sizeof(tmp),"Setting %s=%s saved",key,val); append_message("system",tmp); } else append_message("system","Invalid set command. Use: set key=value"); }
+      |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

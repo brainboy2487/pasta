@@ -1,0 +1,207 @@
+# Pasta translation of src/runtime/strainer.rs
+# Minimal single-threaded Strainer (GC) scaffold.
+
+# GcRef: numeric id returned by allocate
+
+DEF Strainer_new():
+    RETURN({"heap": [], "roots": [], "next_id": 1})
+END
+
+# Helper: find index of object with given id in heap list
+DEF _find_index_by_id(heap, id):
+    i = 0
+    WHILE i < len(heap):
+        obj = heap[i]
+        IF has_key(obj, "id") AND obj["id"] == id:
+            RETURN(i)
+        END
+        i = i + 1
+    END
+    RETURN(None)
+END
+
+# allocate with automatic refs collection
+DEF Strainer_allocate(s, value):
+    refs = Strainer_collect_refs(value)
+    RETURN(Strainer_allocate_with_refs(s, value, refs))
+END
+
+DEF Strainer_allocate_with_refs(s, value, refs):
+    id = s["next_id"]
+    s["next_id"] = id + 1
+    obj = {"id": id, "value": value, "refs": refs, "marked": False}
+    s["heap"] = s["heap"] + [obj]
+    RETURN(id)
+END
+
+DEF Strainer_get(s, id):
+    idx = _find_index_by_id(s["heap"], id)
+    IF idx == None: RETURN(None) END
+    RETURN(s["heap"][idx]["value"])
+END
+
+DEF Strainer_set_or_allocate(s, id, value):
+    idx = _find_index_by_id(s["heap"], id)
+    IF idx != None:
+        # update existing
+        obj = s["heap"][idx]
+        obj["refs"] = Strainer_collect_refs(value)
+        obj["value"] = value
+        s["heap"][idx] = obj
+        RETURN(None)
+    END
+    # allocate new with explicit id appended
+    obj = {"id": id, "value": value, "refs": Strainer_collect_refs(value), "marked": False}
+    s["heap"] = s["heap"] + [obj]
+    # ensure next_id > id
+    IF id >= s["next_id"]:
+        s["next_id"] = id + 1
+    END
+    RETURN(None)
+END
+
+DEF Strainer_append_to_list(s, id, value):
+    idx = _find_index_by_id(s["heap"], id)
+    IF idx == None: RETURN({"err": "unknown list handle " + id}) END
+    obj = s["heap"][idx]
+    IF NOT has_key(obj, "value"):
+        RETURN({"err": "handle does not point to a list"})
+    END
+    lst = obj["value"]
+    # expect list-like
+    IF NOT is_list(lst): RETURN({"err": "handle does not point to a list"}) END
+    lst = lst + [value]
+    obj["value"] = lst
+    obj["refs"] = Strainer_collect_refs(obj["value"])
+    s["heap"][idx] = obj
+    RETURN({"ok": True})
+END
+
+DEF Strainer_get_refs(s, id):
+    idx = _find_index_by_id(s["heap"], id)
+    IF idx == None: RETURN(None) END
+    RETURN(s["heap"][idx]["refs"])
+END
+
+DEF Strainer_register_root(s, id):
+    # ensure unique
+    IF NOT list_contains(s["roots"], id):
+        s["roots"] = s["roots"] + [id]
+    END
+    RETURN(None)
+END
+
+DEF Strainer_unregister_root(s, id):
+    new_roots = []
+    FOR r IN s["roots"]:
+        IF r != id:
+            new_roots = new_roots + [r]
+        END
+    END
+    s["roots"] = new_roots
+    RETURN(None)
+END
+
+DEF Strainer_clear_roots(s):
+    s["roots"] = []
+    RETURN(None)
+END
+
+# mark-and-sweep collect; returns number reclaimed
+DEF Strainer_collect(s):
+    # reset marks
+    i = 0
+    WHILE i < len(s["heap"]):
+        obj = s["heap"][i]
+        obj["marked"] = False
+        s["heap"][i] = obj
+        i = i + 1
+    END
+
+    # mark phase: DFS from roots
+    stack = []
+    FOR r IN s["roots"]:
+        idx = _find_index_by_id(s["heap"], r)
+        IF idx != None:
+            obj = s["heap"][idx]
+            IF NOT obj["marked"]:
+                obj["marked"] = True
+                s["heap"][idx] = obj
+                stack = stack + [r]
+            END
+        END
+    END
+
+    WHILE len(stack) > 0:
+        id = stack[len(stack) - 1]
+        stack = stack[0:len(stack)-1]
+        children = Strainer_get_refs(s, id) IF Strainer_get_refs(s, id) != None ELSE []
+        FOR child IN children:
+            cidx = _find_index_by_id(s["heap"], child)
+            IF cidx != None:
+                cobj = s["heap"][cidx]
+                IF NOT cobj["marked"]:
+                    cobj["marked"] = True
+                    s["heap"][cidx] = cobj
+                    stack = stack + [child]
+                END
+            END
+        END
+    END
+
+    before = len(s["heap"])
+    # sweep
+    new_heap = []
+    FOR obj IN s["heap"]:
+        IF obj["marked"]:
+            new_heap = new_heap + [obj]
+        END
+    END
+    s["heap"] = new_heap
+    after = len(s["heap"])
+    RETURN(before - after)
+END
+
+DEF Strainer_allocated_count(s):
+    RETURN(len(s["heap"]))
+END
+
+DEF Strainer_collect_with_roots(s, values):
+    s["roots"] = []
+    FOR v IN values:
+        # detect Heap handle variants - accept numeric or dict {"Heap": id}
+        IF is_dict(v) AND has_key(v, "Heap"):
+            s["roots"] = s["roots"] + [v["Heap"]]
+        ELSEIF is_number(v):
+            # assume raw numeric heap id
+            s["roots"] = s["roots"] + [v]
+        END
+    END
+    RETURN(Strainer_collect(s))
+END
+
+# Walk value and collect contained GcRef handles
+DEF Strainer_collect_refs(v):
+    out = []
+    IF v == None: RETURN(out) END
+    IF is_dict(v):
+        # heap handle representation
+        IF has_key(v, "Heap"):
+            out = out + [v["Heap"]]
+            RETURN(out)
+        END
+        # dict map: examine values
+        FOR val IN dict_values(v):
+            out = out + Strainer_collect_refs(val)
+        END
+        RETURN(out)
+    END
+    IF is_list(v):
+        FOR item IN v:
+            out = out + Strainer_collect_refs(item)
+        END
+        RETURN(out)
+    END
+    # other variants do not contain heap refs
+    RETURN(out)
+END

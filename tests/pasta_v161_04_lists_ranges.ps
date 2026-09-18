@@ -1,0 +1,41 @@
+# Pasta v0.01a script tests — lists, slicing, ranges (20 checks)
+
+DEF out_num(label, value):
+    PRINT label + ":" + str(value)
+END
+
+base = [1, 2, 3]
+pair = []
+list_append(pair, 4)
+list_append(pair, 6)
+nested = [[1, 2], [3, 4]]
+r1 = range(5)
+r2 = range(3, 5)
+slice_part = list_slice([1, 2, 3, 4], 1, 3)
+nested_lists = [[1], [2], [3]]
+sum_total = 0
+
+FOR n IN range(4):
+    sum_total = sum_total + n
+END
+
+out_num("P04T01", list_len(base))         # EXPECT: P04T01:3
+out_num("P04T02", base[0])                # EXPECT: P04T02:1
+out_num("P04T03", base[2])                # EXPECT: P04T03:3
+out_num("P04T04", list_len(pair))         # EXPECT: P04T04:2
+out_num("P04T05", pair[1])                # EXPECT: P04T05:6
+out_num("P04T06", nested[1][0])           # EXPECT: P04T06:3
+out_num("P04T07", list_len(r1))           # EXPECT: P04T07:5
+out_num("P04T08", r1[0])                  # EXPECT: P04T08:1
+out_num("P04T09", r1[4])                  # EXPECT: P04T09:5
+out_num("P04T10", r2[0])                  # EXPECT: P04T10:3
+out_num("P04T11", r2[2])                  # EXPECT: P04T11:5
+out_num("P04T12", list_len(slice_part))   # EXPECT: P04T12:2
+out_num("P04T13", slice_part[0])          # EXPECT: P04T13:2
+out_num("P04T14", slice_part[1])          # EXPECT: P04T14:3
+out_num("P04T15", sum_total)              # EXPECT: P04T15:10
+out_num("P04T16", list_len(nested_lists)) # EXPECT: P04T16:3
+out_num("P04T17", list_len(nested_lists[1])) # EXPECT: P04T17:1
+out_num("P04T18", list_len([]))           # EXPECT: P04T18:0
+out_num("P04T19", pair[0])                # EXPECT: P04T19:4
+out_num("P04T20", list_len(range(3, 7)))  # EXPECT: P04T20:5

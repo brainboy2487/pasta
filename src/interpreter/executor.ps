@@ -1,0 +1,4585 @@
+# Executor - translated from src/interpreter/executor.rs (lines 1-400)
+# Preserve names and public API surface so behavior matches Rust executor.
+
+# Global debug flag (mirrors AtomicBool in Rust extern)
+VERBOSE_DEBUG = False
+
+DEF is_verbose_debug():
+    # Return the global debug flag (equivalent to AtomicBool::load)
+    RETURN(VERBOSE_DEBUG)
+END
+
+# --- imports and module notes (comments only) --------------------------------
+# use anyhow::{anyhow, Result};
+# use std::collections::HashMap; fs, io, Path, Arc, SystemTime
+# use crate::interpreter::environment::{Environment, RuntimeTensor, ScopeKind, Value};
+# use crate::interpreter::ex_eval;
+# use crate::interpreter::ex_frame;
+
+# --- Object system helpers --------------------------------------------------
+
+# ObjectFamily metadata constructor (mirrors Rust struct fields)
+DEF ObjectFamily_new(name, family_group, params, fields, mutation_table, constructor, methods):
+    RETURN({
+        "name": name,
+        "family_group": family_group,
+        "params": params or [],
+        "fields": fields or [],
+        "mutation_table": mutation_table or [],
+        "constructor": constructor,
+        "methods": methods or []
+    })
+END
+
+# ObjectInstance and constructor
+DEF ObjectInstance_new(id, family, fields):
+    IF fields == None: fields = {} END
+    RETURN({
+        "id": id,
+        "family": family,
+        "fields": fields,
+        "applied_mutations": set()
+    })
+END
+
+# For compatibility: create an instance from provided fields map
+DEF ObjectInstance_create(exe, id, family, fields):
+    inst = ObjectInstance_new(id, family, fields)
+    exe["objects"][str(id)] = inst
+    RETURN(inst)
+END
+
+# --- AI / errors / shell placeholders (comments) -----------------------------
+# use crate::interpreter::ai_network;
+# use crate::interpreter::errors::{RuntimeError, RuntimeErrorKind, Traceback};
+# use crate::interpreter::shell::Shell;
+
+# --- FPS system -------------------------------------------------------------
+DEF FpsState_new(target_fps):
+    # Default and caps mirror Rust FpsState::new
+    now = time_instant_now()
+    t = target_fps
+    IF t == None OR t <= 0.0: t = 60.0 END
+    RETURN({
+        "target_fps": t,
+        "fixed_delta": 1.0 / t,
+        "frame_count": 0,
+        "paused": False,
+        "init_time": now,
+        "frame_start": now,
+        "last_frame_time_ms": 0.0,
+        "frame_times": [],
+        "pause_start": None,
+        "paused_duration": 0.0
+    })
+END
+
+# GridConfig struct equivalent
+DEF GridConfig_new(cell_width, cell_height):
+    RETURN({"cell_width": cell_width, "cell_height": cell_height})
+END
+
+# Executor utilities --------------------------------------------------------
+PIPELINE_COUNTER = 1
+
+DEF next_pipeline_id():
+    global PIPELINE_COUNTER
+    id = PIPELINE_COUNTER
+    PIPELINE_COUNTER = PIPELINE_COUNTER + 1
+    RETURN(id)
+END
+
+# Thread-local kill receiver storage (approximation)
+# In Rust: thread_local! KILL_RX: RefCell<Option<Receiver<()>>>
+KILL_RX = {}
+
+DEF set_kill_rx(rx):
+    # store receiver under current thread id (simple approximation)
+    tid = thread_id_str()
+    KILL_RX[tid] = rx
+    RETURN(None)
+END
+
+# OpenFile enum equivalents
+DEF OpenFile_Reader(f): RETURN({"kind": "Reader", "file": f}) END
+DEF OpenFile_Writer(f): RETURN({"kind": "Writer", "file": f}) END
+DEF OpenFile_Appender(f): RETURN({"kind": "Appender", "file": f}) END
+
+# --- Executor structure (partial, matching Rust fields up to canvases) -----
+DEF Executor_new():
+    exe = {
+        # Object system
+        "object_families": {},
+        "objects": {},
+        "next_object_id": 1,
+
+        # runtime config
+        "verbose": False,
+        "env": {},
+        "priorities": {},
+        "constraints": {},
+        "diagnostics": [],
+
+        # graphics metadata
+        "gfx_handles": {},
+        "next_window_id": 1,
+        "next_canvas_id": 1,
+        "canvases": {},
+        "back_buffers": {},
+        "grid_configs": {},
+
+        # other runtime pieces
+        "current_color": 0xFF000000,
+        "draw_target": None,
+        "rng": {},
+        "while_limit": 1000000,
+
+        # registries and helpers
+        "functions": {},
+        "gc": Strainer_new(),
+        "traceback": {},
+        "shell": {},
+        "control_flow": None,
+        "module_registry": {},
+        "loaded_modules": {},
+        "pointer_registry": PointerRegistry_new_shared(),
+        "pointer_context": {"kind": "PointerContextPlaceholder"},
+        "pointer_gc_tracker": PointerGcTracker_new(),
+        "builtin_registry": {},
+        "loaded_extensions": [],
+        "stdlib_module_exports": {},
+        "fired_events": [],
+        "ret_late_pending": None,
+        "family_registry": {},
+        "family_permission": None,
+        "pipeline_tx": None,
+        "open_files": {},
+        "next_file_id": 1,
+        "fps_state": None,
+        "terminal_state": {}
+    }
+
+    # Populate stdlib module registry (gfx exports list mirrors Rust)
+    exe["stdlib_module_exports"]["graphics"] = [
+        "window",
+        "window_create",
+        "create_window",
+        "window_is_open",
+        "window_close",
+        "window_poll",
+        "window_key",
+        "window_open",
+        "canvas",
+        "canvas_create",
+        "create_canvas",
+        "canvas_set_pixel",
+        "canvas_get_pixel",
+        "canvas_present",
+        "canvas_clear",
+        "canvas_fill_rect",
+        "canvas_draw_rect",
+        "canvas_draw_line",
+        "canvas_draw_circle",
+        "canvas_fill_circle",
+        "canvas_draw_ellipse",
+        "canvas_fill_ellipse",
+        "canvas_draw_triangle",
+        "canvas_fill_triangle",
+        "canvas_draw_polygon",
+        "canvas_fill_polygon",
+        "canvas_draw_arc",
+        "canvas_blit",
+        "canvas_width",
+        "canvas_height",
+        "canvas_save_ppm",
+        "pixel",
+        "blit",
+        "close",
+        "window_set_pixel",
+        "window_fill",
+        "window_save",
+        "set_color",
+        "present",
+        "swap_buffer",
+        "clear_buffer",
+        "draw_to_buffer",
+        "set_draw_target",
+        "copy_to_buffer",
+        "pop_buffer",
+        "blend_to_buffer",
+        "scroll_buffer",
+        "tint_buffer",
+        "resize_buffer",
+        "draw_grid",
+        "draw_to_grid",
+        "draw_grid_batch",
+        "draw_grid_runs",
+        "color_rgb",
+        "color_rgba",
+    ]
+
+    exe["stdlib_module_exports"]["fps"] = ["fps_init", "fps_begin", "fps_end", "fps_delta"]
+
+    RETURN(exe)
+END
+
+# Format an f64 for display: integers print without a decimal point.
+DEF fmt_f64(n):
+    IF n == None: RETURN("None") END
+    # Consider numeric tolerance similar to f64::EPSILON
+    eps = 1e-12
+    IF type(n) == int:
+        RETURN(str(n))
+    ELSE:
+        # treat float values close to integers as integers
+        IF abs(n - round(n)) < eps:
+            RETURN(str(int(round(n))))
+        END
+        RETURN(str(n))
+    END
+END
+
+# Diagnostics collector and printer (pure-Pasta)
+DIAGNOSTICS = []
+
+DEF ps_print(*args):
+    # Collect formatted string into DIAGNOSTICS. Avoid Python print.
+    s = ""
+    FOR a IN args:
+        TRY:
+            s = s + Executor_value_to_string(None, a) + " "
+        EXCEPT:
+            s = s + str(a) + " "
+        END
+    END
+    DIAGNOSTICS.append(s)
+    RETURN(None)
+END
+
+# Simple math stubs to be implemented in Pasta (placeholders)
+# TODO: Replace with accurate Pasta implementations for full parity
+DEF math_sin(x):
+    # placeholder: returns 0.0
+    RETURN(float(0.0))
+END
+DEF math_cos(x):
+    RETURN(float(0.0))
+END
+DEF math_tan(x):
+    RETURN(float(0.0))
+END
+DEF math_asin(x):
+    RETURN(float(0.0))
+END
+DEF math_acos(x):
+    RETURN(float(0.0))
+END
+DEF math_atan(x):
+    RETURN(float(0.0))
+END
+DEF math_atan2(y, x):
+    RETURN(float(0.0))
+END
+DEF math_exp(x):
+    RETURN(float(0.0))
+END
+DEF math_log(x):
+    # natural log placeholder
+    RETURN(float(0.0))
+END
+DEF math_log2(x):
+    RETURN(float(0.0))
+END
+DEF math_log10(x):
+    RETURN(float(0.0))
+END
+DEF math_hypot(a,b):
+    RETURN(float(0.0))
+END
+DEF math_degrees(x):
+    RETURN(float(x) * 180.0 / 3.141592653589793)
+END
+DEF math_radians(x):
+    RETURN(float(x) * 3.141592653589793 / 180.0)
+END
+DEF math_ceil(x):
+    IF type(x) in (int,float):
+        xi = int(round(x))
+        IF xi < x: RETURN(float(xi + 1)) END
+        RETURN(float(xi)
+    END
+    RETURN(float(0))
+END
+
+# vdbg macro equivalent as helper function (uses ps_print)
+DEF vdbg(self, *args):
+    IF ("verbose" in self and self["verbose"]) and is_verbose_debug():
+        # join args into a formatted string
+        s = ""
+        FOR a IN args:
+            s = s + Executor_value_to_string(self, a) + " "
+        END
+        ps_print(s)
+    END
+END
+
+# Object-family helpers (preserve names)
+DEF find_object_family(exe, name):
+    IF name == None: RETURN(None) END
+    IF has_key(exe["object_families"], name): RETURN(exe["object_families"][name]) END
+    RETURN(None)
+END
+
+DEF has_function_name(exe, name):
+    IF name == None: RETURN(False) END
+    RETURN(has_key(exe["functions"], name))
+END
+
+DEF object_group_from_decl(group):
+    IF group == None: RETURN("Nrml") END
+    g = group
+    # Support CSM composite group with default primary/empty extensions
+    IF type(g) == str:
+        gu = g.upper()
+        IF gu == "LST" OR gu == "LIST" OR gu == "ARY" OR gu == "ARRAY": RETURN("Lst") END
+        IF gu == "DICT": RETURN("Dict") END
+        IF gu == "TNSR" OR gu == "TENSOR": RETURN("Tnsr") END
+        IF gu == "CSM": RETURN({"primary": "Nrml", "extensions": []}) END
+    END
+    RETURN("Nrml")
+END
+
+# create object instance helper
+DEF create_object_family_node(exe, family_name, family_group, parent_a_id, parent_b_id, fields):
+    id = exe["next_object_id"]
+    exe["next_object_id"] = id + 1
+    obj = {"id": id, "family": family_name, "fields": fields or {}, "applied_mutations": []}
+    exe["objects"][str(id)] = obj
+    RETURN({"FamilyNode": {"id": id, "mutable": True}})
+END
+
+# Module resolution: robust path search mirroring Rust resolve_module_path
+DEF resolve_module_path(exe, name):
+    IF name == None: RAISE("ModuleNotFound: no name provided") END
+    cwd = fs_cwd()
+    candidates = [
+        path_join(cwd, name + ".pm"),
+        path_join(cwd, "modules", name + ".pm")
+    ]
+    env_paths = getenv("PASTA_MODULE_PATH")
+    IF env_paths != None:
+        FOR dir IN split(env_paths, ":"):
+            IF dir != "":
+                candidates.append(path_join(dir, name + ".pm"))
+            END
+        END
+    END
+    candidates.append(path_join(cwd, "src", "stdlib", name + ".pm"))
+    candidates.append(path_join(cwd, "stdlib", name + ".pm"))
+
+    FOR p IN candidates:
+        IF file_exists(p): RETURN(p) END
+    END
+    RAISE("ModuleNotFound: '{}' (searched: {})".format(name, ", ".join(candidates)))
+END
+
+# Resolve shared module path (lib*.so) - simplified
+DEF resolve_shared_module_path(exe, name):
+    cwd = fs_cwd()
+    candidates = [
+        path_join(cwd, "lib" + name + ".so"),
+        path_join(cwd, "modules", "lib" + name + ".so"),
+        path_join(cwd, name + ".so"),
+        path_join(cwd, "modules", name + ".so")
+    ]
+    env_paths = getenv("PASTA_MODULE_PATH")
+    IF env_paths != None:
+        FOR dir IN split(env_paths, ":"):
+            IF dir != "":
+                candidates.append(path_join(dir, "lib" + name + ".so"))
+                candidates.append(path_join(dir, name + ".so"))
+            END
+        END
+    END
+    FOR p IN candidates:
+        IF file_exists(p): RETURN(p) END
+    END
+    RAISE("CompiledModuleNotFound: '{}' (searched: {})".format(name, ", ".join(candidates)))
+END
+
+# Module loader - simplified translator of load_module
+DEF load_module(exe, name):
+    # If already loaded, nothing to do.
+    IF has_key(exe["loaded_modules"], name): RETURN(None) END
+
+    # Check registry for loading state (circular import)
+    meta = get_module_registry_entry(exe, name)
+    IF meta != None and meta["state"] == "Loading":
+        RAISE("CircularImportError: circular import detected while loading '{}'".format(name))
+    END
+
+    # Mark registry as loading and attempt to find path
+    set_module_registry_state(exe, name, "Loading")
+    # Try module path
+    TRY:
+        path = resolve_module_path(exe, name)
+        # register and mark
+        module_registry_register(exe, name, path)
+        set_module_registry_state(exe, name, "Loading")
+        # load script module
+        exports = load_pasta_module_from_path(exe, path, name)
+        exe["loaded_modules"][name] = exports
+        set_module_registry_state(exe, name, "Loaded")
+        RETURN(None)
+    EXCEPT:
+        # Not found as script; try shared module
+        TRY:
+            libpath = resolve_shared_module_path(exe, name)
+            module_registry_register(exe, name, libpath)
+            set_module_registry_state(exe, name, "Loading")
+            # load native library
+            native_exports = load_native_module(exe, name, libpath)
+            exe["loaded_modules"][name] = native_exports
+            set_module_registry_state(exe, name, "Loaded")
+            RETURN(None)
+        EXCEPT AS e:
+            module_registry_mark_failed(exe, name, str(e))
+            set_module_registry_state(exe, name, "NotFound")
+            RAISE("ModuleNotFound: '{}'".format(name))
+        END
+    END
+END
+
+# Module registry helpers
+DEF get_module_registry_entry(exe, name):
+    IF has_key(exe["module_registry"], name):
+        RETURN(exe["module_registry"][name])
+    END
+    RETURN(None)
+END
+
+DEF module_registry_register(exe, name, path):
+    exe["module_registry"][name] = {"path": path, "state": "Registered", "exports": []}
+    RETURN(None)
+END
+
+DEF module_registry_mark_failed(exe, name, reason):
+    exe["module_registry"][name] = {"path": exe["module_registry"].get(name, {}).get("path", None), "state": "Failed", "reason": reason}
+    RETURN(None)
+END
+
+DEF set_module_registry_state(exe, name, state):
+    entry = exe["module_registry"].get(name, None)
+    IF entry == None:
+        exe["module_registry"][name] = {"path": None, "state": state, "exports": []}
+    ELSE:
+        entry["state"] = state
+        exe["module_registry"][name] = entry
+    END
+    RETURN(None)
+END
+
+DEF module_registry_set_exports(exe, name, exports):
+    entry = exe["module_registry"].get(name, None)
+    IF entry == None:
+        exe["module_registry"][name] = {"path": None, "state": "Loaded", "exports": exports}
+    ELSE:
+        entry["exports"] = exports
+        exe["module_registry"][name] = entry
+    END
+    RETURN(None)
+END
+
+# Load a Pasta source module from a filesystem path and execute top-level statements
+DEF load_pasta_module_from_path(exe, path):
+    # Read and parse the file
+    src = fs_read_to_string(path)
+    tokens = Lexer_new(src).lex()
+    parser = Parser_new(tokens)
+    program = parser.parse()
+
+    # Collect exports from any ModuleDecl in the program.
+    exports_list = []
+    FOR s IN program["statements"]:
+        IF s["type"] == "ModuleDecl":
+            FOR e IN s.get("exports", []):
+                exports_list.append(e["name"])
+            END
+        END
+    END
+
+    # Execute all top-level statements in a fresh isolated scope.
+    ex_frame_push_scope(exe["env"], "Function")
+
+    # Pre-register all function definitions so forward-calls work.
+    register_functions_recursive(exe, program["statements"])
+
+    FOR stmt IN program["statements"]:
+        IF stmt["type"] == "ModuleDecl":
+            # execute DEFs inside ModuleDecl body
+            FOR inner IN stmt.get("body", []):
+                TRY:
+                    execute_statement(exe, inner)
+                EXCEPT AS e:
+                    module_registry_mark_failed(exe, path, str(e))
+                    ex_frame_pop_scope(exe["env"], "module load", exe["diagnostics"])
+                    RAISE("ModuleLoadError: failed to execute module '{}' : {}".format(path, str(e)))
+                END
+            END
+            CONTINUE
+        END
+        TRY:
+            execute_statement(exe, stmt)
+        EXCEPT AS e:
+            module_registry_mark_failed(exe, path, str(e))
+            ex_frame_pop_scope(exe["env"], "module load", exe["diagnostics"])
+            RAISE("ModuleLoadError: failed to execute module '{}' : {}".format(path, str(e)))
+        END
+    END
+
+    # Collect exports map
+    exports_map = {}
+    FOR export_name IN exports_list:
+        v = env_get(exe, export_name)
+        IF v == None:
+            module_registry_mark_failed(exe, path, "module '{}' does not export '{}'".format(path, export_name))
+            ex_frame_pop_scope(exe["env"], "module export check", exe["diagnostics"])
+            RAISE("ExportNotFoundError: module '{}' does not export '{}'".format(path, export_name))
+        END
+        exports_map[export_name] = v
+    END
+
+    ex_frame_pop_scope(exe["env"], "module load complete", exe["diagnostics"])
+    module_registry_set_exports(exe, path, exports_list)
+    RETURN(exports_map)
+END
+
+# Load native compiled module and register builtins
+DEF load_native_module(exe, name, path):
+    native_module = NativeModule_load(path, name)
+    builtins = native_module.export_builtins(name)
+    exports = native_module.exports()
+    exports_map = {}
+    FOR export IN exports:
+        builtin_name = "__native::" + name + "::" + export
+        IF has_key(builtins, builtin_name):
+            exe["builtin_registry"][builtin_name] = builtins[builtin_name]
+            exports_map[export] = {"Builtin": builtin_name}
+        ELSE:
+            RAISE("compiled module '{}' missing wrapper closure for export '{}'".format(name, export))
+        END
+    END
+    exe["loaded_modules"][name] = exports_map
+    module_registry_set_exports(exe, name, exports)
+    set_module_registry_state(exe, name, "Loaded")
+    RETURN(exports_map)
+END
+
+# Get an exported value from a loaded module, loading it if necessary.
+DEF get_module_export(exe, module, symbol):
+    # Check if this is a stdlib (Rust-level) module.
+    IF has_key(exe["stdlib_module_exports"], module):
+        exports = exe["stdlib_module_exports"][module]
+        IF any(lambda e: e == symbol, exports):
+            # Load the matching extension if not already loaded.
+            load_extension(exe, module)
+            RETURN({"Builtin": symbol})
+        END
+        RAISE("ExportNotFoundError: module '{}' does not export '{}'".format(module, symbol))
+    END
+    IF NOT has_key(exe["loaded_modules"], module):
+        load_module(exe, module)
+    END
+    IF has_key(exe["loaded_modules"], module):
+        exports = exe["loaded_modules"][module]
+        IF has_key(exports, symbol):
+            RETURN(exports[symbol])
+        END
+    END
+    RAISE("ExportNotFoundError: module '{}' does not export '{}'".format(module, symbol))
+END
+
+# Instantiate an object of a family with optional overrides
+DEF instantiate_object(exe, family_name, overrides=None):
+    IF NOT has_key(exe["object_families"], family_name):
+        RAISE("unknown object family '{}'".format(family_name))
+    END
+    fam = exe["object_families"][family_name]
+    fields_map = {}
+    FOR f IN fam.get("fields", []):
+        TRY:
+            v = eval_expr(exe, f["value"])
+            fields_map[f["name"]["name"]] = v
+        EXCEPT:
+            fields_map[f["name"]["name"]] = None
+        END
+    END
+    IF overrides != None:
+        FOR k,v IN overrides.items():
+            fields_map[k] = v
+        END
+    END
+    id = exe["next_object_id"]
+    exe["next_object_id"] = max_int_add(id, 1)  # saturating add approximation
+    inst = {"id": id, "family": family_name, "fields": fields_map, "applied_mutations": []}
+    exe["objects"][str(id)] = inst
+    RETURN(id)
+END
+
+# Apply a mutation to an object instance
+DEF apply_mutation(exe, object_id, mutation_name):
+    IF NOT has_key(exe["objects"], str(object_id)):
+        RAISE("object id {} not found".format(object_id))
+    END
+    inst = exe["objects"][str(object_id)]
+    inst_family = inst["family"]
+    IF NOT has_key(exe["object_families"], inst_family):
+        RAISE("family '{}' not registered".format(inst_family))
+    END
+    fam = exe["object_families"][inst_family]
+    mut_entry = None
+    FOR m IN fam.get("mutation_table", []):
+        IF m["name"]["name"] == mutation_name:
+            mut_entry = m
+            BREAK
+        END
+    END
+    IF mut_entry == None:
+        RAISE("mutation '{}' not found on family '{}'".format(mutation_name, fam["name"]))
+    END
+    body = mut_entry.get("body")
+    IF body["type"] == "Expr":
+        eval_expr(exe, body["expr"])
+    ELSE:
+        FOR s IN body.get("stmts", []):
+            execute_statement(exe, s)
+            IF exe["control_flow"] != None: BREAK END
+        END
+    END
+    # mark mutation applied
+    inst["applied_mutations"].append(mutation_name)
+    exe["objects"][str(object_id)] = inst
+    RETURN(None)
+END
+
+# Traceback helpers
+DEF push_frame(exe, span, ctx):
+    ex_frame_push_frame(exe["traceback"], span, ctx)
+    RETURN(None)
+END
+
+DEF pop_frame(exe):
+    ex_frame_pop_frame(exe["traceback"])
+    RETURN(None)
+END
+
+# Configuration
+DEF set_while_limit(exe, limit):
+    exe["while_limit"] = limit
+    RETURN(None)
+END
+
+# Extension registration
+DEF register_builtin(exe, name, func):
+    exe["builtin_registry"][name] = func
+    RETURN(None)
+END
+
+# Load extension
+DEF load_extension(exe, extension_name):
+    IF has_key(exe["loaded_extensions"], extension_name): RETURN(None) END
+    IF extension_name == "graphics":
+        register_graphics_api(exe)
+        register_color_palette(exe["env"])  # populates named colors
+        exe["loaded_extensions"].append(extension_name)
+        RETURN(None)
+    ELIF extension_name == "fps":
+        register_fps_api(exe)
+        exe["loaded_extensions"].append(extension_name)
+        RETURN(None)
+    ELSE:
+        RAISE("Unknown extension: {}".format(extension_name))
+    END
+END
+
+# GC
+DEF collect_garbage(exe):
+    roots = env_all_values(exe)
+    RETURN(strainer_collect_with_roots(exe["gc"], roots))
+END
+
+# Deref helpers
+DEF deref(exe, v):
+    WHILE type(v) == dict and has_key(v, "Heap"):
+        id = v["Heap"]
+        inner = strainer_get(exe["gc"], id)
+        IF inner == None: RETURN(None) END
+        v = inner
+    END
+    RETURN(v)
+END
+
+DEF deref_return(exe, v):
+    IF type(v) == dict and has_key(v, "Heap"):
+        id = v["Heap"]
+        inner = strainer_get(exe["gc"], id)
+        IF inner != None and (inner["type"] == "Dict" OR inner["type"] == "List"):
+            RETURN(v)
+        END
+    END
+    RETURN(deref(exe, v))
+END
+
+# Load header if exists
+DEF load_header_if_exists(exe, path):
+    IF NOT file_exists(path): RETURN(None) END
+    src = fs_read_to_string(path)
+    IF src == None:
+        exe["diagnostics"].append("I/O error reading {}".format(path))
+        RETURN(None)
+    END
+    lex_res = Lexer_new(src).lex_result()
+    IF lex_res["ok"] == False:
+        exe["diagnostics"].append("Lex error loading {}:{}:{}".format(path, lex_res["line"], lex_res["col"]))
+        RETURN(None)
+    END
+    parser = Parser_new(lex_res["tokens"])
+    program, parse_diags = parser.parse_with_diagnostics()
+    FOR d IN parse_diags:
+        print("Parse error at {}:{}: {}".format(d["span"]["start_line"], d["span"]["start_col"], d["message"]))
+    END
+    TRY:
+        execute_repl(exe, program)
+        IF exe["verbose"]:
+            exe["diagnostics"].append("Loaded header {}".format(path))
+        END
+    EXCEPT AS e:
+        msg = "Failed to execute header {}: {}".format(path, str(e))
+        IF "Undefined variable" not in msg:
+            exe["diagnostics"].append(msg)
+        END
+    END
+    RETURN(None)
+END
+
+# Register functions recursively
+DEF register_functions_recursive(exe, stmts):
+    FOR stmt IN stmts:
+        t = stmt["type"]
+        IF t == "FunctionDef":
+            name = stmt["name"]["name"]
+            params = stmt["params"]
+            body = stmt["body"]
+            exe["functions"][name] = {"params": params, "body": body}
+            # alias short name if dotted
+            IF name.find('.') != -1:
+                pos = name.rfind('.')
+                short = name[pos+1:]
+                IF NOT has_key(exe["functions"], short):
+                    exe["functions"][short] = {"params": params, "body": body}
+                END
+                IF len(params) == 0:
+                    env_set_global(exe, short, {"Lambda": {"params": params, "body": body}})
+                END
+            END
+            IF len(params) == 0:
+                env_set_global(exe, name, {"Lambda": {"params": params, "body": body}})
+            END
+            register_functions_recursive(exe, body)
+        ELIF t == "DoBlock":
+            register_functions_recursive(exe, stmt["body"])
+        ELIF t == "WhileBlock":
+            register_functions_recursive(exe, stmt["body"])
+        ELIF t == "ForIn":
+            register_functions_recursive(exe, stmt["body"])
+        ELIF t == "If":
+            register_functions_recursive(exe, stmt["then_body"])
+            IF has_key(stmt, "else_body") and stmt["else_body"] != None:
+                register_functions_recursive(exe, stmt["else_body"])
+            END
+        ELIF t == "DefDoUntil":
+            register_functions_recursive(exe, stmt["d"]["body"])
+        END
+    END
+END
+
+# Execute program (two-pass)
+DEF execute_program(exe, program):
+    register_functions_recursive(exe, program["statements"])
+    FOR stmt IN program["statements"]:
+        IF stmt["type"] == "FunctionDef":
+            name = stmt["name"]["name"]
+            params = stmt["params"]
+            body = stmt["body"]
+            exe["functions"][name] = {"params": params, "body": body}
+            env_set_global(exe, name, {"Lambda": {"params": params, "body": body}})
+        END
+    END
+
+    stmts = program["statements"]
+    i = 0
+    WHILE i < len(stmts):
+        stmt = stmts[i]
+        IF stmt["type"] == "DefDoUntil":
+            i = i + 1
+            CONTINUE
+        END
+        TRY:
+            execute_statement(exe, stmt)
+        EXCEPT AS e:
+            IF exe["verbose"] and is_verbose_debug():
+                FOR msg IN exe["diagnostics"]:
+                    print("note: {}".format(msg))
+                END
+            END
+            RAISE(e)
+        END
+        collect_garbage(exe)
+        # Handle top-level control flow signals
+        cf = exe["control_flow"]
+        exe["control_flow"] = None
+        IF cf != None:
+            IF cf["type"] == "GotoLabel":
+                label_clone = cf["label"]
+                target = find_position(stmts[i+1:], lambda s: s["type"] == "LoopBlock" and s["name"] == label_clone)
+                IF target != None:
+                    i = i + 1 + target
+                    exe["control_flow"] = {"type": "GotoLabel", "label": label_clone}
+                    CONTINUE
+                END
+            END
+            # Other signals cleared
+        END
+        i = i + 1
+    END
+
+    # validate constraints
+    IF NOT constraints_validate_all(exe["constraints"]):
+        msg = "Constraint validation failed"
+        IF exe["verbose"] and is_verbose_debug():
+            exe["diagnostics"].append(msg)
+            FOR m IN exe["diagnostics"]:
+                print("note: {}".format(m))
+            END
+        END
+        RAISE(msg)
+    END
+    RETURN(None)
+END
+
+# Execute in REPL mode
+DEF execute_repl(exe, program):
+    # Pipeline short-circuit: single expression that is a pipe
+    IF len(program["statements"]) == 1:
+        stmt = program["statements"][0]
+        IF stmt["type"] == "ExprStmt":
+            expr = stmt["expr"]
+            IF expr["type"] == "Binary" and expr["op"] == "Pipe":
+                left_clone = expr["left"]
+                right_clone = expr["right"]
+                TRY:
+                    spawn_pipeline_detached(exe, left_clone, right_clone, "pipeline")
+                EXCEPT AS e:
+                    print("Failed to spawn pipeline: {}".format(str(e)))
+                END
+                RETURN(None)
+            END
+        END
+    END
+
+    FOR stmt IN program["statements"]:
+        execute_statement(exe, stmt)
+        IF exe["control_flow"] != None: BREAK END
+    END
+    RETURN(None)
+END
+
+# Dispatch a single AST statement
+DEF execute_statement(exe, stmt):
+    # Poll kill channel
+    killed = False
+    tid = thread_id_str()
+    IF has_key(KILL_RX, tid) and KILL_RX[tid] != None:
+        rx = KILL_RX[tid]
+        killed = rx_try_recv(rx)
+    END
+    IF killed:
+        exe["control_flow"] = {"type": "Killed"}
+        RAISE("thread killed")
+    END
+
+    # Compute span from statement variant
+    stype = stmt["type"]
+    span = stmt.get("span", None)
+    # Push frame, delegate to ex_eval, pop frame
+    ex_frame_push_frame(exe["traceback"], span, "statement")
+    res = ex_eval_eval_stmt(exe, stmt)
+    ex_frame_pop_frame(exe["traceback"])
+    RETURN(res)
+END
+
+# Run one statement
+DEF run_stmt(exe, stmt):
+    execute_statement(exe, stmt)
+    RETURN(None)
+END
+
+# Evaluate expression via ex_eval
+DEF eval_expr(exe, expr):
+    RETURN(ex_eval_eval_expr(exe, expr))
+END
+
+# Call a Value as callable
+DEF call_value(exe, val, args):
+    v = deref(exe, val)
+    IF type(v) == dict and has_key(v, "Lambda"):
+        params = v["Lambda"]["params"]
+        stmts = v["Lambda"]["body"]
+        # push scope
+        env_push_scope(exe, "Function")
+        IF len(params) != 0:
+            FOR i, param IN enumerate(params):
+                val_arg = args[i] if i < len(args) else None
+                env_set_local(exe, param["name"], val_arg)
+            END
+        ELSE:
+            FOR i IN range(len(args)):
+                env_set_local(exe, "__arg_{}__".format(i), args[i])
+            END
+        END
+        last = None
+        FOR s IN stmts:
+            res = execute_statement(exe, s)
+            IF res != None:
+                last = res
+            END
+            IF exe["control_flow"] != None and exe["control_flow"]["type"] == "Return":
+                ret_val = exe["control_flow"]["value"]
+                ret_concrete = deref(exe, ret_val)
+                TRY:
+                    env_pop_scope(exe)
+                EXCEPT AS e:
+                    exe["diagnostics"].append("Warning: pop_scope in call_value: {}".format(str(e)))
+                END
+                RETURN(ret_concrete)
+            END
+        END
+        TRY:
+            env_pop_scope(exe)
+        EXCEPT AS e:
+            exe["diagnostics"].append("Warning: pop_scope after call_value: {}".format(str(e)))
+        END
+        IF has_key(exe, "ret_late_pending") and exe["ret_late_pending"] != None:
+            last = exe["ret_late_pending"]
+            exe["ret_late_pending"] = None
+        END
+        RETURN(last)
+    ELIF type(v) == dict and has_key(v, "Builtin"):
+        name = v["Builtin"]
+        RETURN(call_builtin(exe, name, args))
+    ELSE:
+        RAISE("call_value: not callable")
+    END
+END
+
+# Execute a value as callable (lists/lambdas)
+DEF execute_value_as_callable(exe, value, alias, name_hint):
+    IF type(value) == dict and has_key(value, "Lambda"):
+        push_frame(exe, {"dummy": True}, "call {}".format(name_hint))
+        stmts = value["Lambda"]["body"]
+        env_push_scope(exe, "Function")
+        IF alias != None:
+            env_set_local(exe, alias["name"], {"String": name_hint})
+        END
+        FOR s IN stmts:
+            execute_statement(exe, s)
+            IF exe["control_flow"] != None: BREAK END
+            collect_garbage(exe)
+        END
+        TRY:
+            env_pop_scope(exe)
+        EXCEPT AS e:
+            exe["diagnostics"].append("Warning: pop_scope after list-item lambda call: {}".format(str(e)))
+        END
+        pop_frame(exe)
+    ELIF type(value) == list:
+        items = value[:]
+        FOR item IN items:
+            execute_value_as_callable(exe, item, alias, name_hint)
+            collect_garbage(exe)
+        END
+    END
+    RETURN(None)
+END
+
+# Graphics API registration and helpers
+DEF get_canvas_for_draw(exe, handle):
+    IF handle == None: RETURN(None) END
+    IF has_key(exe["canvases"], handle):
+        RETURN(exe["canvases"][handle])
+    END
+    RETURN(None)
+END
+
+DEF get_back_buffer(exe, win_h):
+    IF win_h == None: RETURN(None) END
+    IF has_key(exe["back_buffers"], win_h):
+        RETURN(exe["back_buffers"][win_h])
+    END
+    RETURN(None)
+END
+
+DEF canvas_set_pixel(canvas, x, y, color):
+    IF canvas == None: RETURN(False) END
+    w = canvas["width"]
+    h = canvas["height"]
+    IF x < 0 or y < 0 or x >= w or y >= h:
+        RETURN(False)
+    END
+    idx = int(y) * int(w) + int(x)
+    canvas["pixels"][idx] = color
+    RETURN(True)
+END
+
+DEF draw_line_on_canvas(canvas, x0, y0, x1, y1, color):
+    x0 = int(x0); y0 = int(y0); x1 = int(x1); y1 = int(y1)
+    dx = abs(x1 - x0)
+    sx = 1 if x0 < x1 else -1
+    dy = -abs(y1 - y0)
+    sy = 1 if y0 < y1 else -1
+    err = dx + dy
+    cx = x0
+    cy = y0
+    WHILE True:
+        canvas_set_pixel(canvas, cx, cy, color)
+        IF cx == x1 and cy == y1:
+            BREAK
+        END
+        e2 = 2 * err
+        IF e2 >= dy:
+            err = err + dy
+            cx = cx + sx
+        END
+        IF e2 <= dx:
+            err = err + dx
+            cy = cy + sy
+        END
+    END
+    RETURN(None)
+END
+
+DEF draw_circle_on_canvas(canvas, cx, cy, r, color):
+    x = int(r)
+    y = 0
+    err = 0
+    WHILE x >= y:
+        canvas_set_pixel(canvas, cx + x, cy + y, color)
+        canvas_set_pixel(canvas, cx + y, cy + x, color)
+        canvas_set_pixel(canvas, cx - y, cy + x, color)
+        canvas_set_pixel(canvas, cx - x, cy + y, color)
+        canvas_set_pixel(canvas, cx - x, cy - y, color)
+        canvas_set_pixel(canvas, cx - y, cy - x, color)
+        canvas_set_pixel(canvas, cx + y, cy - x, color)
+        canvas_set_pixel(canvas, cx + x, cy - y, color)
+        y = y + 1
+        IF err <= 0:
+            err = err + 2*y + 1
+        ELSE:
+            x = x - 1
+            err = err - 2*x + 1
+        END
+    END
+    RETURN(None)
+END
+
+DEF fill_circle_on_canvas(canvas, cx, cy, r, color):
+    r = int(r)
+    FOR dy IN range(-r, r+1):
+        dx = int((r*r - dy*dy) ** 0.5)
+        FOR x IN range(cx - dx, cx + dx + 1):
+            canvas_set_pixel(canvas, x, cy + dy, color)
+        END
+    END
+    RETURN(None)
+END
+
+DEF draw_triangle_on_canvas(canvas, x0,y0,x1,y1,x2,y2,color):
+    draw_line_on_canvas(canvas, x0,y0,x1,y1,color)
+    draw_line_on_canvas(canvas, x1,y1,x2,y2,color)
+    draw_line_on_canvas(canvas, x2,y2,x0,y0,color)
+    RETURN(None)
+END
+
+DEF point_in_triangle(px,py, x0,y0,x1,y1,x2,y2):
+    denom = (y1 - y2)*(x0 - x2) + (x2 - x1)*(y0 - y2)
+    IF denom == 0: RETURN(False) END
+    a = ((y1 - y2)*(px - x2) + (x2 - x1)*(py - y2)) / denom
+    b = ((y2 - y0)*(px - x2) + (x0 - x2)*(py - y2)) / denom
+    c = 1 - a - b
+    RETURN(a >= 0 and b >= 0 and c >= 0)
+END
+
+DEF fill_triangle_on_canvas(canvas, x0,y0,x1,y1,x2,y2,color):
+    minx = min(x0,x1,x2)
+    maxx = max(x0,x1,x2)
+    miny = min(y0,y1,y2)
+    maxy = max(y0,y1,y2)
+    FOR yy IN range(int(miny), int(maxy)+1):
+        FOR xx IN range(int(minx), int(maxx)+1):
+            IF point_in_triangle(xx,yy,x0,y0,x1,y1,x2,y2):
+                canvas_set_pixel(canvas, xx, yy, color)
+            END
+        END
+    END
+    RETURN(None)
+END
+
+# Builtin wrappers that match call_builtin signature
+DEF builtin_blend_to_buffer(exe, args):
+    IF len(args) != 3: RAISE("BLEND_TO_BUFFER: expected 3 args") END
+    win_h = args[0]["String"] if type(args[0]) == dict and has_key(args[0], "String") else None
+    canvas_h = args[1]["String"] if type(args[1]) == dict and has_key(args[1], "String") else None
+    alpha = args[2] if type(args[2]) in (int, float) else None
+    IF win_h == None or canvas_h == None or alpha == None: RAISE("BLEND_TO_BUFFER: bad args") END
+    back = get_back_buffer(exe, win_h)
+    canvas = get_canvas_for_draw(exe, canvas_h)
+    IF back == None: RAISE("BLEND_TO_BUFFER: unknown window handle '{}'".format(win_h)) END
+    IF canvas == None: RAISE("BLEND_TO_BUFFER: unknown canvas handle '{}'".format(canvas_h)) END
+    a = max(0.0, min(1.0, float(alpha)))
+    bw = int(back["width"]); bh = int(back["height"])
+    cw = int(canvas["width"]); ch = int(canvas["height"])
+    w = min(bw, cw); h = min(bh, ch)
+    FOR y IN range(0, h):
+        FOR x IN range(0, w):
+            bpx = back["pixels"][y*bw + x]
+            cpx = canvas["pixels"][y*cw + x]
+            br = (bpx >> 16) & 0xFF
+            bg = (bpx >> 8) & 0xFF
+            bb = bpx & 0xFF
+            cr = (cpx >> 16) & 0xFF
+            cg = (cpx >> 8) & 0xFF
+            cb = cpx & 0xFF
+            nr = int(round(cr * a + br * (1.0 - a)))
+            ng = int(round(cg * a + bg * (1.0 - a)))
+            nb = int(round(cb * a + bb * (1.0 - a)))
+            back["pixels"][y*bw + x] = 0xFF000000 | (nr << 16) | (ng << 8) | nb
+        END
+    END
+    RETURN(None)
+END
+
+DEF builtin_scroll_buffer(exe, args):
+    IF len(args) != 3: RAISE("SCROLL_BUFFER expects 3 args") END
+    win_h = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    dx = int(args[1]) if type(args[1]) in (int, float) else 0
+    dy = int(args[2]) if type(args[2]) in (int, float) else 0
+    back = get_back_buffer(exe, win_h)
+    IF back == None: RAISE("SCROLL_BUFFER: unknown window handle '{}'".format(win_h)) END
+    w = int(back["width"]); h = int(back["height"])
+    old = back["pixels"][:]
+    fill_val = exe.get("current_color", 0xFF000000)
+    back["pixels"] = [fill_val for _ in range(w*h)]
+    FOR y IN range(h):
+        FOR x IN range(w):
+            sx = x - dx
+            sy = y - dy
+            IF sx >= 0 and sy >= 0 and sx < w and sy < h:
+                back["pixels"][y*w + x] = old[sy*w + sx]
+            END
+        END
+    END
+    RETURN(None)
+END
+
+DEF builtin_tint_buffer(exe, args):
+    IF len(args) != 5: RAISE("TINT_BUFFER expects 5 args") END
+    win_h = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    tr = float(args[1]) if type(args[1]) in (int, float) else 1.0
+    tg = float(args[2]) if type(args[2]) in (int, float) else 1.0
+    tb = float(args[3]) if type(args[3]) in (int, float) else 1.0
+    alpha = max(0.0, min(1.0, float(args[4])))
+    back = get_back_buffer(exe, win_h)
+    IF back == None: RAISE("TINT_BUFFER: unknown window handle '{}'".format(win_h)) END
+    FOR i IN range(len(back["pixels"])):
+        px = back["pixels"][i]
+        br = (px >> 16) & 0xFF
+        bg = (px >> 8) & 0xFF
+        bb = px & 0xFF
+        nr = int(round((br * (tr/255.0)) * alpha + br * (1.0 - alpha)))
+        ng = int(round((bg * (tg/255.0)) * alpha + bg * (1.0 - alpha)))
+        nb = int(round((bb * (tb/255.0)) * alpha + bb * (1.0 - alpha)))
+        back["pixels"][i] = 0xFF000000 | (nr << 16) | (ng << 8) | nb
+    END
+    RETURN(None)
+END
+
+DEF builtin_canvas_draw_line(exe, args):
+    IF len(args) < 5: RAISE("canvas_draw_line expects at least 5 args") END
+    handle = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    x0 = int(args[1]); y0 = int(args[2]); x1 = int(args[3]); y1 = int(args[4])
+    color = int(args[5]) if len(args) >= 6 and (type(args[5]) in (int, float)) else exe.get("current_color", 0xFF000000)
+    canvas = get_canvas_for_draw(exe, handle)
+    IF canvas == None: RAISE("canvas_draw_line: unknown handle '{}'".format(handle)) END
+    draw_line_on_canvas(canvas, x0, y0, x1, y1, color)
+    RETURN(None)
+END
+
+DEF builtin_canvas_draw_circle(exe, args):
+    IF len(args) < 4: RAISE("canvas_draw_circle expects at least 4 args") END
+    handle = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    cx = int(args[1]); cy = int(args[2]); r = int(args[3])
+    color = int(args[4]) if len(args) >= 5 and (type(args[4]) in (int, float)) else exe.get("current_color", 0xFF000000)
+    canvas = get_canvas_for_draw(exe, handle)
+    IF canvas == None: RAISE("canvas_draw_circle: unknown handle '{}'".format(handle)) END
+    draw_circle_on_canvas(canvas, cx, cy, r, color)
+    RETURN(None)
+END
+
+DEF builtin_canvas_fill_circle(exe, args):
+    IF len(args) < 4: RAISE("canvas_fill_circle expects at least 4 args") END
+    handle = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    cx = int(args[1]); cy = int(args[2]); r = int(args[3])
+    color = int(args[4]) if len(args) >= 5 and (type(args[4]) in (int, float)) else exe.get("current_color", 0xFF000000)
+    canvas = get_canvas_for_draw(exe, handle)
+    IF canvas == None: RAISE("canvas_fill_circle: unknown handle '{}'".format(handle)) END
+    fill_circle_on_canvas(canvas, cx, cy, r, color)
+    RETURN(None)
+END
+
+DEF builtin_canvas_draw_triangle(exe,args):
+    IF len(args) < 7: RAISE("canvas_draw_triangle expects at least 7 args") END
+    handle = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    x0=int(args[1]);y0=int(args[2]);x1=int(args[3]);y1=int(args[4]);x2=int(args[5]);y2=int(args[6])
+    color = int(args[7]) if len(args) >= 8 and (type(args[7]) in (int, float)) else exe.get("current_color", 0xFF000000)
+    canvas = get_canvas_for_draw(exe, handle)
+    IF canvas == None: RAISE("canvas_draw_triangle: unknown handle '{}'".format(handle)) END
+    draw_triangle_on_canvas(canvas, x0,y0,x1,y1,x2,y2,color)
+    RETURN(None)
+END
+
+DEF builtin_canvas_fill_triangle(exe,args):
+    IF len(args) < 7: RAISE("canvas_fill_triangle expects at least 7 args") END
+    handle = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    x0=int(args[1]);y0=int(args[2]);x1=int(args[3]);y1=int(args[4]);x2=int(args[5]);y2=int(args[6])
+    color = int(args[7]) if len(args) >= 8 and (type(args[7]) in (int, float)) else exe.get("current_color", 0xFF000000)
+    canvas = get_canvas_for_draw(exe, handle)
+    IF canvas == None: RAISE("canvas_fill_triangle: unknown handle '{}'".format(handle)) END
+    fill_triangle_on_canvas(canvas, x0,y0,x1,y1,x2,y2,color)
+    RETURN(None)
+END
+
+DEF register_graphics_api(exe):
+    register_builtin(exe, "blend_to_buffer", builtin_blend_to_buffer)
+    register_builtin(exe, "scroll_buffer", builtin_scroll_buffer)
+    register_builtin(exe, "tint_buffer", builtin_tint_buffer)
+    register_builtin(exe, "canvas_draw_line", builtin_canvas_draw_line)
+    register_builtin(exe, "canvas_draw_circle", builtin_canvas_draw_circle)
+    register_builtin(exe, "canvas_fill_circle", builtin_canvas_fill_circle)
+    register_builtin(exe, "canvas_draw_triangle", builtin_canvas_draw_triangle)
+    register_builtin(exe, "canvas_fill_triangle", builtin_canvas_fill_triangle)
+    register_builtin(exe, "canvas_draw_arc", builtin_canvas_draw_arc)
+    register_builtin(exe, "gfx_memory_usage", builtin_gfx_memory_usage)
+    register_builtin(exe, "graphics_cleanup", builtin_graphics_cleanup)
+    register_builtin(exe, "window_poll", builtin_window_poll)
+    register_builtin(exe, "window_is_open", builtin_window_is_open)
+    register_builtin(exe, "window_close", builtin_window_close)
+    register_builtin(exe, "window_key", builtin_window_key)
+    register_builtin(exe, "window_open", builtin_window_open)
+    register_builtin(exe, "close", builtin_close)
+    RETURN(None)
+END
+
+# Additional graphics builtins
+DEF builtin_canvas_draw_arc(exe, args):
+    IF len(args) < 6: RAISE("canvas_draw_arc expects at least 6 args") END
+    handle = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    cx = int(args[1]); cy = int(args[2]); r = int(args[3])
+    s_deg = float(args[4]); e_deg = float(args[5])
+    color = int(args[6]) if len(args) >= 7 and (type(args[6]) in (int, float)) else exe.get("current_color", 0xFF000000)
+    canvas = get_canvas_for_draw(exe, handle)
+    IF canvas == None: RAISE("canvas_draw_arc: unknown handle '{}'".format(handle)) END
+    import_math = True
+    # step 1 degree increments
+    step = 1.0
+    if e_deg < s_deg:
+        e_deg = e_deg + 360.0
+    END
+    prev_x = None
+    prev_y = None
+    deg = s_deg
+    WHILE deg <= e_deg:
+        rad = deg * 3.141592653589793 / 180.0
+        m = __import__("math")
+        x = int(round(cx + r * m.cos(rad)))
+        y = int(round(cy + r * m.sin(rad)))
+        IF prev_x != None:
+            draw_line_on_canvas(canvas, prev_x, prev_y, x, y, color)
+        END
+        prev_x = x; prev_y = y
+        deg = deg + step
+    END
+    RETURN(None)
+END
+
+DEF builtin_gfx_memory_usage(exe, args):
+    IF len(args) != 1: RAISE("gfx_memory_usage expects 1 arg") END
+    h = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    c = get_canvas_for_draw(exe, h)
+    IF c == None: RAISE("gfx_memory_usage: unknown handle '{}'".format(h)) END
+    RETURN(float(int(c["width"]) * int(c["height"]) * 4))
+END
+
+DEF builtin_graphics_cleanup(exe, args):
+    exe["gfx_handles"] = {}
+    exe["canvases"] = {}
+    exe["back_buffers"] = {}
+    exe["grid_configs"] = {}
+    exe["draw_target"] = None
+    RETURN(None)
+END
+
+DEF builtin_window_poll(exe, args):
+    IF len(args) != 1: RAISE("window_poll expects 1 arg") END
+    h = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    entry = exe["gfx_handles"].get(h, None)
+    IF entry != None:
+        is_open = entry[2] if type(entry) in (list, tuple) and len(entry) > 2 else False
+        RETURN(bool(is_open))
+    END
+    RETURN(False)
+END
+
+DEF builtin_window_is_open(exe, args):
+    RETURN(builtin_window_poll(exe, args))
+END
+
+DEF builtin_window_close(exe, args):
+    IF len(args) != 1: RAISE("window_close expects 1 arg") END
+    h = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    IF h == None: RAISE("window_close: expected string handle") END
+    IF has_key(exe["gfx_handles"], h):
+        entry = exe["gfx_handles"][h]
+        IF type(entry) in (list, tuple) and len(entry) > 2:
+            entry[2] = False
+        END
+    END
+    exe["canvases"].pop(h, None)
+    exe["back_buffers"].pop(h, None)
+    exe["grid_configs"].pop(h, None)
+    IF exe.get("draw_target", None) == h:
+        exe["draw_target"] = None
+    END
+    RETURN(None)
+END
+
+DEF builtin_window_key(exe, args):
+    IF len(args) != 1: RAISE("window_key expects 1 arg") END
+    # No X11 backend here; return empty string
+    RETURN("")
+END
+
+DEF builtin_window_open(exe, args):
+    IF len(args) != 1: RAISE("window_open expects 1 arg") END
+    h = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    IF h == None: RAISE("WINDOW_OPEN: expected string handle") END
+    entry = exe["gfx_handles"].get(h, None)
+    IF entry != None:
+        is_open = entry[2] if type(entry) in (list, tuple) and len(entry) > 2 else False
+        RETURN(bool(is_open))
+    END
+    RETURN(False)
+END
+
+DEF builtin_close(exe, args):
+    IF len(args) != 1: RAISE("CLOSE expects 1 arg (handle)") END
+    h = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    IF h == None: RAISE("CLOSE: expected string handle") END
+    IF has_key(exe["open_files"], h):
+        of = exe["open_files"].pop(h, None)
+        # If writer or appender, try flush (best-effort)
+        # We can't flush arbitrary handles here; ignore
+        RETURN(None)
+    END
+    # Otherwise behave like window_close
+    RETURN(builtin_window_close(exe, args))
+END
+
+# FPS registration and builtins
+DEF register_fps_api(exe):
+    register_builtin(exe, "fps_init", builtin_fps_init)
+    register_builtin(exe, "fps_begin", builtin_fps_begin)
+    register_builtin(exe, "fps_end", builtin_fps_end)
+    register_builtin(exe, "fps_tick", builtin_fps_tick)
+    register_builtin(exe, "fps_sleep", builtin_fps_sleep)
+    register_builtin(exe, "fps_delta", builtin_fps_delta)
+    register_builtin(exe, "fps_get", builtin_fps_get)
+    register_builtin(exe, "fps_target", builtin_fps_target)
+    register_builtin(exe, "fps_set_target", builtin_fps_set_target)
+    register_builtin(exe, "fps_frame_count", builtin_fps_frame_count)
+    RETURN(None)
+END
+
+DEF builtin_fps_init(exe, args):
+    t = float(args[0]) if len(args) >= 1 and (type(args[0]) in (int, float)) else 60.0
+    exe["fps_state"] = FpsState_new(t)
+    RETURN(None)
+END
+
+DEF builtin_fps_begin(exe, args):
+    t = float(args[0]) if len(args) >= 1 and (type(args[0]) in (int, float)) else 60.0
+    IF exe.get("fps_state", None) == None:
+        exe["fps_state"] = FpsState_new(t)
+    ELSE:
+        s = exe["fps_state"]
+        s["target_fps"] = t
+        s["fixed_delta"] = 1.0 / t
+    END
+    s = exe.get("fps_state")
+    IF s != None:
+        s["frame_start"] = time_instant_now()
+    END
+    RETURN(None)
+END
+
+DEF builtin_fps_end(exe, args):
+    s = exe.get("fps_state")
+    IF s != None:
+        IF NOT s.get("paused", False):
+            work_elapsed = time_instant_now() - s.get("frame_start", time_instant_now())
+            s["last_frame_time_ms"] = work_elapsed * 1000.0
+            target_dur = s.get("fixed_delta", 1.0/60.0)
+            IF work_elapsed < target_dur:
+                time_sleep(target_dur - work_elapsed)
+            END
+            total = time_instant_now() - s.get("frame_start", time_instant_now())
+            secs = total
+            ft = s.get("frame_times", [])
+            ft.append(secs)
+            IF len(ft) > 256:
+                ft.pop(0)
+            END
+            s["frame_times"] = ft
+        END
+    END
+    RETURN(None)
+END
+
+DEF builtin_fps_tick(exe, args):
+    s = exe.get("fps_state")
+    IF s != None:
+        IF NOT s.get("paused", False):
+            s["frame_count"] = s.get("frame_count",0) + 1
+        END
+        RETURN(float(s.get("fixed_delta", 1.0/60.0)))
+    END
+    RETURN(float(1.0/60.0))
+END
+
+DEF builtin_fps_sleep(exe, args):
+    s = exe.get("fps_state")
+    IF s != None and NOT s.get("paused", False):
+        elapsed = time_instant_now() - s.get("frame_start", time_instant_now())
+        target = s.get("fixed_delta", 1.0/60.0)
+        IF elapsed < target:
+            time_sleep(target - elapsed)
+        END
+    END
+    RETURN(None)
+END
+
+DEF builtin_fps_delta(exe, args):
+    d = exe.get("fps_state", {}).get("fixed_delta", 1.0/60.0)
+    RETURN(float(d))
+END
+
+DEF builtin_fps_get(exe, args):
+    s = exe.get("fps_state")
+    IF s != None:
+        if s.get("last_frame_time_ms",0.0) > 0.0:
+            RETURN(1000.0 / s.get("last_frame_time_ms"))
+        END
+        RETURN(float(s.get("target_fps", 60.0)))
+    END
+    RETURN(float(0.0))
+END
+
+DEF builtin_fps_target(exe, args):
+    RETURN(float(exe.get("fps_state", {}).get("target_fps", 60.0)))
+END
+
+DEF builtin_fps_set_target(exe, args):
+    IF len(args) < 1: RAISE("fps_set_target expects a positive number") END
+    target = float(args[0])
+    IF target <= 0.0: RAISE("fps_set_target expects a positive number") END
+    s = exe.get("fps_state")
+    IF s != None:
+        s["target_fps"] = target
+        s["fixed_delta"] = 1.0 / target
+    ELSE:
+        exe["fps_state"] = FpsState_new(target)
+    END
+    RETURN(None)
+END
+
+DEF builtin_fps_frame_count(exe, args):
+    RETURN(float(exe.get("fps_state", {}).get("frame_count", 0)))
+END
+
+# Additional FPS helpers
+DEF builtin_fps_avg(exe, args):
+    n = int(args[0]) if len(args) >= 1 and (type(args[0]) in (int, float)) else 10
+    s = exe.get("fps_state", None)
+    IF s == None: RETURN(float(0.0)) END
+    ft = s.get("frame_times", [])
+    IF len(ft) == 0:
+        RETURN(float(s.get("target_fps", 60.0)))
+    END
+    take = min(n, len(ft))
+    sum_secs = 0.0
+    FOR i IN range(1, take+1):
+        sum_secs = sum_secs + ft[-i]
+    END
+    avg_secs = sum_secs / float(take)
+    IF avg_secs > 0.0:
+        RETURN(1.0 / avg_secs)
+    ELSE:
+        RETURN(float(s.get("target_fps", 60.0)))
+    END
+END
+
+DEF builtin_fps_paused(exe, args):
+    RETURN(bool(exe.get("fps_state", {}).get("paused", False)))
+END
+
+DEF builtin_fps_pause(exe, args):
+    s = exe.get("fps_state", None)
+    IF s != None and not s.get("paused", False):
+        s["paused"] = True
+        s["pause_start"] = time_instant_now()
+    END
+    RETURN(None)
+END
+
+DEF builtin_fps_resume(exe, args):
+    s = exe.get("fps_state", None)
+    IF s != None and s.get("paused", False):
+        ps = s.pop("pause_start", None)
+        IF ps != None:
+            s["paused_duration"] = s.get("paused_duration", 0.0) + (time_instant_now() - ps)
+        END
+        s["paused"] = False
+    END
+    RETURN(None)
+END
+
+DEF builtin_fps_elapsed(exe, args):
+    s = exe.get("fps_state", None)
+    IF s == None: RETURN(float(0.0)) END
+    total = time_instant_now() - s.get("init_time", time_instant_now())
+    paused = s.get("paused_duration", 0.0)
+    IF s.get("paused", False):
+        ps = s.get("pause_start", None)
+        IF ps != None:
+            paused = paused + (time_instant_now() - ps)
+        END
+    END
+    active = max(0.0, total - paused)
+    RETURN(float(active))
+END
+
+DEF builtin_fps_frame_time(exe, args):
+    RETURN(float(exe.get("fps_state", {}).get("last_frame_time_ms", 0.0)))
+END
+
+DEF builtin_fps_behind(exe, args):
+    s = exe.get("fps_state", None)
+    IF s == None: RETURN(False) END
+    budget_ms = 1000.0 / s.get("target_fps", 60.0)
+    RETURN(bool(s.get("last_frame_time_ms", 0.0) > budget_ms))
+END
+
+# stdin readline
+DEF builtin_stdin_readline(exe, args):
+    # stdin reading requires a host binding to be useful in pure-Pasta.
+    # TODO: implement a pure-Pasta stdin reader or provide a host-provided binding.
+    RETURN(None)
+END
+
+# sys.* helpers
+DEF builtin_sys_env(exe, args):
+    IF len(args) != 1: RAISE("sys.env expects 1 arg (name)") END
+    key = args[0]
+    IF type(key) == dict and has_key(key, "String"):
+        RETURN(getenv(key["String"]) or "")
+    END
+    RAISE("sys.env: argument must be a string")
+END
+
+DEF builtin_sys_exit(exe, args):
+    code = int(args[0]) if len(args) >= 1 and (type(args[0]) in (int, float)) else 0
+    exit_process(code)
+    RETURN(None)
+END
+
+DEF builtin_sys_args(exe, args):
+    # argv_get() is a placeholder that should return the program argv list
+    lst = argv_get() if callable(argv_get) else []
+    out = []
+    FOR a IN lst:
+        out.append({"String": a})
+    END
+    RETURN(out)
+END
+
+DEF builtin_sys_platform(exe, args):
+    p = getenv("OS_NAME")
+    IF p != None: RETURN(p) END
+    RETURN("linux")
+END
+
+DEF builtin_sys_sleep(exe, args):
+    IF len(args) != 1: RAISE("sys.sleep expects 1 arg (ms)") END
+    ms = int(args[0]) if type(args[0]) in (int, float) else 0
+    time_sleep(ms / 1000.0)
+    RETURN(None)
+END
+
+DEF builtin_sys_getcwd(exe, args):
+    RETURN(fs_cwd())
+END
+
+# time.* helpers
+DEF builtin_time_now(exe, args):
+    RETURN(float(time_now_ms()))
+END
+
+DEF builtin_time_now_ns(exe, args):
+    RETURN(float(time_now_ns()))
+END
+
+DEF builtin_time_sleep(exe, args):
+    IF len(args) != 1: RAISE("time.sleep expects 1 arg (ms)") END
+    ms = int(args[0]) if type(args[0]) in (int, float) else 0
+    time_sleep(ms / 1000.0)
+    RETURN(None)
+END
+
+DEF builtin_time_format(exe, args):
+    IF len(args) != 1: RAISE("time.format expects 1 arg (epoch_ms)") END
+    ms = args[0] if type(args[0]) in (int, float) else 0
+    RETURN("epoch+{}s".format(int(ms / 1000)))
+END
+
+# rand.* helpers
+DEF builtin_rand_int(exe, args):
+    RETURN(float(int(time_now_ns()) % 0x7fff))
+END
+
+DEF builtin_rand_float(exe, args):
+    RETURN(float((time_now_ns() % 1000000) / 1000000.0))
+END
+
+# Register system/time/rand builtins (call when initializing executor if desired)
+DEF register_system_api(exe):
+    register_builtin(exe, "fps_avg", builtin_fps_avg)
+    register_builtin(exe, "fps_paused", builtin_fps_paused)
+    register_builtin(exe, "fps_pause", builtin_fps_pause)
+    register_builtin(exe, "fps_resume", builtin_fps_resume)
+    register_builtin(exe, "fps_elapsed", builtin_fps_elapsed)
+    register_builtin(exe, "fps_frame_time", builtin_fps_frame_time)
+    register_builtin(exe, "fps_behind", builtin_fps_behind)
+    register_builtin(exe, "stdin_readline", builtin_stdin_readline)
+    register_builtin(exe, "sys.env", builtin_sys_env)
+    register_builtin(exe, "sys.exit", builtin_sys_exit)
+    register_builtin(exe, "sys.args", builtin_sys_args)
+    register_builtin(exe, "sys.platform", builtin_sys_platform)
+    register_builtin(exe, "sys.sleep", builtin_sys_sleep)
+    register_builtin(exe, "sys.getcwd", builtin_sys_getcwd)
+    register_builtin(exe, "time.now", builtin_time_now)
+    register_builtin(exe, "time.now_ns", builtin_time_now_ns)
+    register_builtin(exe, "time.sleep", builtin_time_sleep)
+    register_builtin(exe, "time.format", builtin_time_format)
+    register_builtin(exe, "rand.int", builtin_rand_int)
+    register_builtin(exe, "rand.float", builtin_rand_float)
+    register_builtin(exe, "rand.choice", builtin_rand_choice)
+    register_builtin(exe, "rand.seed", builtin_rand_seed)
+    register_builtin(exe, "rand.ls", builtin_rand_ls)
+    # additional rand/system aliases from Rust executor
+    register_builtin(exe, "rand", builtin_rand)
+    register_builtin(exe, "rand_int", builtin_rand_int)
+    register_builtin(exe, "rand_range", builtin_rand_range)
+    register_builtin(exe, "exit", builtin_exit)
+    register_builtin(exe, "sleep", builtin_sleep)
+    register_builtin(exe, "time", builtin_time)
+    register_builtin(exe, "time_ms", builtin_time_ms)
+    register_builtin(exe, "env", builtin_env)
+    register_builtin(exe, "num", builtin_num)
+    register_builtin(exe, "float", builtin_num)
+    register_builtin(exe, "int", builtin_int)
+    register_builtin(exe, "range", builtin_range)
+    register_builtin(exe, "color", builtin_color)
+    # numeric helpers
+    register_builtin(exe, "ceil", builtin_ceil)
+    register_builtin(exe, "round", builtin_round)
+    register_builtin(exe, "min", builtin_min)
+    register_builtin(exe, "max", builtin_max)
+    register_builtin(exe, "clamp", builtin_clamp)
+    register_builtin(exe, "sign", builtin_sign)
+    # math namespace
+    register_builtin(exe, "sin", builtin_sin)
+    register_builtin(exe, "cos", builtin_cos)
+    register_builtin(exe, "tan", builtin_tan)
+    register_builtin(exe, "asin", builtin_asin)
+    register_builtin(exe, "acos", builtin_acos)
+    register_builtin(exe, "atan", builtin_atan)
+    register_builtin(exe, "atan2", builtin_atan2)
+    register_builtin(exe, "exp", builtin_exp)
+    register_builtin(exe, "ln", builtin_ln)
+    register_builtin(exe, "log2", builtin_log2)
+    register_builtin(exe, "log10", builtin_log10)
+    register_builtin(exe, "hypot", builtin_hypot)
+    register_builtin(exe, "degrees", builtin_degrees)
+    register_builtin(exe, "radians", builtin_radians)
+    register_builtin(exe, "math.sqrt", builtin_sqrt)
+    register_builtin(exe, "math.abs", builtin_abs)
+    register_builtin(exe, "gc.collect", builtin_gc_collect)
+    register_builtin(exe, "gc.count", builtin_gc_count)
+    register_builtin(exe, "gc.stats", builtin_gc_stats)
+    register_builtin(exe, "gc.pause", builtin_gc_pause)
+    register_builtin(exe, "gc.resume", builtin_gc_resume)
+    register_builtin(exe, "debug.print", builtin_debug_print)
+    register_builtin(exe, "debug.type", builtin_debug_type)
+    register_builtin(exe, "debug.len", builtin_debug_len)
+    register_builtin(exe, "debug.dump", builtin_debug_dump)
+    register_builtin(exe, "debug.trace", builtin_debug_trace)
+    register_builtin(exe, "debug.assert", builtin_debug_assert)
+    register_builtin(exe, "debug.backtrace", builtin_debug_backtrace)
+    register_builtin(exe, "fs.read", builtin_fs_read)
+    register_builtin(exe, "fs.write", builtin_fs_write)
+    register_builtin(exe, "fs.append", builtin_fs_append)
+    register_builtin(exe, "fs.exists", builtin_fs_exists)
+    register_builtin(exe, "fs.delete", builtin_fs_delete)
+    register_builtin(exe, "fs.list", builtin_fs_list)
+    register_builtin(exe, "fs.mkdir", builtin_fs_mkdir)
+    register_builtin(exe, "fs.rmdir", builtin_fs_rmdir)
+    register_builtin(exe, "fs.size", builtin_fs_size)
+    register_builtin(exe, "fs.is_dir", builtin_fs_is_dir)
+    register_builtin(exe, "fs.is_file", builtin_fs_is_file)
+    register_builtin(exe, "fs.copy", builtin_fs_copy)
+    register_builtin(exe, "fs.move", builtin_fs_move)
+    register_builtin(exe, "fs.realpath", builtin_fs_realpath)
+    register_builtin(exe, "fs.touch", builtin_fs_touch)
+    register_builtin(exe, "fs.basename", builtin_fs_basename)
+    register_builtin(exe, "fs.dirname", builtin_fs_dirname)
+    register_builtin(exe, "fs.ext", builtin_fs_ext)
+    # tensor-related builtins
+    register_builtin(exe, "tensor.rand", builtin_tensor_rand)
+    register_builtin(exe, "tensor.eye", builtin_tensor_eye)
+    register_builtin(exe, "tensor.from_list", builtin_tensor_from_list)
+    register_builtin(exe, "tensor.shape", builtin_tensor_shape)
+    register_builtin(exe, "tensor.dtype", builtin_tensor_dtype)
+    register_builtin(exe, "tensor.sum", builtin_tensor_sum)
+    register_builtin(exe, "tensor.mean", builtin_tensor_mean)
+    register_builtin(exe, "tensor.zeros", builtin_tensor_zeros)
+    register_builtin(exe, "tensor.ones", builtin_tensor_ones)
+    register_builtin(exe, "tensor.reshape", builtin_tensor_reshape)
+    register_builtin(exe, "tensor.transpose", builtin_tensor_transpose)
+    register_builtin(exe, "tensor.flatten", builtin_tensor_flatten)
+    register_builtin(exe, "tensor.add", builtin_tensor_add)
+    register_builtin(exe, "tensor.sub", builtin_tensor_sub)
+    register_builtin(exe, "tensor.mul", builtin_tensor_mul)
+    register_builtin(exe, "tensor.div", builtin_tensor_div)
+    register_builtin(exe, "tensor.matmul", builtin_tensor_matmul)
+    # AI builtins
+    register_builtin(exe, "ai.relu", builtin_ai_relu)
+    register_builtin(exe, "ai.softmax", builtin_ai_softmax)
+    register_builtin(exe, "ai.loss.mse", builtin_ai_loss_mse)
+    register_builtin(exe, "ai.loss.crossentropy", builtin_ai_loss_crossentropy)
+    register_builtin(exe, "ai.tensor_to_list", builtin_ai_tensor_to_list)
+    register_builtin(exe, "ai.list_to_tensor", builtin_ai_list_to_tensor)
+    # shell helpers
+    register_builtin(exe, "shell.pwd", builtin_shell_pwd)
+    register_builtin(exe, "shell.cd", builtin_shell_cd)
+    register_builtin(exe, "shell.ls", builtin_shell_ls)
+    register_builtin(exe, "shell.ls_long", builtin_shell_ls_long)
+    register_builtin(exe, "shell.mkdir", builtin_shell_mkdir)
+    register_builtin(exe, "shell.rm", builtin_shell_rm)
+
+    # string helpers
+    register_builtin(exe, "string_length", builtin_string_length)
+    register_builtin(exe, "string_len", builtin_string_length)
+    register_builtin(exe, "concat", builtin_string_concat)
+    register_builtin(exe, "string_concat", builtin_string_concat)
+    register_builtin(exe, "string_concat_with_sep", builtin_string_concat_with_sep)
+    register_builtin(exe, "string_repeat", builtin_string_repeat)
+    register_builtin(exe, "string_pad_left", builtin_string_pad_left)
+    register_builtin(exe, "string_pad_right", builtin_string_pad_right)
+    register_builtin(exe, "string_upper", builtin_string_upper)
+    register_builtin(exe, "upper", builtin_string_upper)
+    register_builtin(exe, "string_lower", builtin_string_lower)
+    register_builtin(exe, "lower", builtin_string_lower)
+    register_builtin(exe, "string_reverse", builtin_string_reverse)
+    register_builtin(exe, "string_trim", builtin_string_trim)
+    register_builtin(exe, "trim", builtin_string_trim)
+    register_builtin(exe, "string_starts_with", builtin_string_starts_with)
+    register_builtin(exe, "starts_with", builtin_string_starts_with)
+    register_builtin(exe, "string_ends_with", builtin_string_ends_with)
+    register_builtin(exe, "ends_with", builtin_string_ends_with)
+    register_builtin(exe, "string_contains", builtin_string_contains)
+    register_builtin(exe, "contains", builtin_string_contains)
+    register_builtin(exe, "string_replace", builtin_string_replace)
+    register_builtin(exe, "replace", builtin_string_replace)
+    register_builtin(exe, "string_split", builtin_string_split)
+    register_builtin(exe, "split", builtin_string_split)
+    register_builtin(exe, "string_join", builtin_string_join)
+    register_builtin(exe, "join", builtin_string_join)
+    register_builtin(exe, "string_to_chars", builtin_string_to_chars)
+    register_builtin(exe, "chars_to_string", builtin_chars_to_string)
+    register_builtin(exe, "trim_left", builtin_trim_left)
+    register_builtin(exe, "trim_right", builtin_trim_right)
+    register_builtin(exe, "replace.all", builtin_replace_all)
+    register_builtin(exe, "replace.first", builtin_replace_first)
+    register_builtin(exe, "replace.last", builtin_replace_last)
+    register_builtin(exe, "index_of", builtin_index_of)
+    register_builtin(exe, "str_index_of", builtin_index_of)
+    register_builtin(exe, "count_occurrences", builtin_count_occurrences)
+    register_builtin(exe, "str_count", builtin_count_occurrences)
+    register_builtin(exe, "pad_left", builtin_pad_left)
+    register_builtin(exe, "str_pad_left", builtin_pad_left)
+    register_builtin(exe, "pad_right", builtin_pad_right)
+    register_builtin(exe, "str_pad_right", builtin_pad_right)
+    # substr and regex
+    register_builtin(exe, "substr", builtin_substr)
+    register_builtin(exe, "substring", builtin_substr)
+    register_builtin(exe, "regex_match", builtin_regex_match)
+    register_builtin(exe, "REGEX_MATCH", builtin_regex_match)
+    register_builtin(exe, "regex_find", builtin_regex_find)
+    register_builtin(exe, "REGEX_FIND", builtin_regex_find)
+    register_builtin(exe, "regex_replace", builtin_regex_replace)
+    register_builtin(exe, "REGEX_REPLACE", builtin_regex_replace)
+    register_builtin(exe, "regex_captures", builtin_regex_captures)
+    register_builtin(exe, "REGEX_CAPTURES", builtin_regex_captures)
+    # list helpers
+    register_builtin(exe, "len", builtin_len)
+    register_builtin(exe, "length", builtin_len)
+    register_builtin(exe, "list_len", builtin_list_len)
+    register_builtin(exe, "list_push", builtin_list_push)
+    register_builtin(exe, "list_pop", builtin_list_pop)
+    register_builtin(exe, "list_first", builtin_list_first)
+    register_builtin(exe, "first", builtin_list_first)
+    register_builtin(exe, "list_last", builtin_list_last)
+    register_builtin(exe, "last", builtin_list_last)
+    register_builtin(exe, "list_rest", builtin_list_rest)
+    register_builtin(exe, "rest", builtin_list_rest)
+    register_builtin(exe, "list_rev", builtin_list_rev)
+    register_builtin(exe, "list_reverse", builtin_list_rev)
+    register_builtin(exe, "list_sort", builtin_list_sort)
+    register_builtin(exe, "list_min", builtin_list_min)
+    register_builtin(exe, "list_max", builtin_list_max)
+    register_builtin(exe, "list_avg", builtin_list_avg)
+    register_builtin(exe, "list_average", builtin_list_avg)
+    register_builtin(exe, "list_contains", builtin_list_contains)
+    register_builtin(exe, "LIST_CONTAINS", builtin_list_contains)
+    register_builtin(exe, "list_take", builtin_list_take)
+    register_builtin(exe, "list_drop", builtin_list_drop)
+    register_builtin(exe, "list_slice", builtin_list_slice)
+    register_builtin(exe, "list_concat", builtin_list_concat)
+    register_builtin(exe, "list_flatten", builtin_list_flatten)
+    register_builtin(exe, "list_sum", builtin_list_sum)
+    register_builtin(exe, "list_average", builtin_list_avg)
+
+    # validation / misc
+    register_builtin(exe, "not_null", builtin_not_null)
+    register_builtin(exe, "identity", builtin_identity)
+    register_builtin(exe, "bool", builtin_bool)
+    register_builtin(exe, "validate_not_empty", builtin_validate_not_empty)
+    register_builtin(exe, "validate_is_number", builtin_validate_is_number)
+    register_builtin(exe, "validate_is_string", builtin_validate_is_string)
+    register_builtin(exe, "validate_range", builtin_validate_range)
+    register_builtin(exe, "validate_length", builtin_validate_length)
+
+    # collection helpers
+    register_builtin(exe, "collection_empty", builtin_collection_empty)
+    register_builtin(exe, "collection_single", builtin_collection_single)
+    register_builtin(exe, "collection_pair", builtin_collection_pair)
+    register_builtin(exe, "collection_triple", builtin_collection_triple)
+    register_builtin(exe, "collection_fill", builtin_collection_fill)
+    register_builtin(exe, "collection_merge", builtin_collection_merge)
+    register_builtin(exe, "collection_merge_unique", builtin_collection_merge_unique)
+
+    # Additional helpers from executor.rs slice: dicts, read_all, term, env, formatting, json
+    register_builtin(exe, "READ_ALL", builtin_read_all)
+    register_builtin(exe, "read_all", builtin_read_all)
+    register_builtin(exe, "dict", builtin_dict)
+    register_builtin(exe, "DICT", builtin_dict)
+    register_builtin(exe, "dict_get", builtin_dict_get)
+    register_builtin(exe, "DICT_GET", builtin_dict_get)
+    register_builtin(exe, "dict_has", builtin_dict_has)
+    register_builtin(exe, "DICT_HAS", builtin_dict_has)
+    register_builtin(exe, "dict_keys", builtin_dict_keys)
+    register_builtin(exe, "DICT_KEYS", builtin_dict_keys)
+    register_builtin(exe, "dict_values", builtin_dict_values)
+    register_builtin(exe, "DICT_VALUES", builtin_dict_values)
+    register_builtin(exe, "dict_items", builtin_dict_items)
+    register_builtin(exe, "DICT_ITEMS", builtin_dict_items)
+    register_builtin(exe, "dict_len", builtin_dict_len)
+    register_builtin(exe, "DICT_LEN", builtin_dict_len)
+
+    # terminal / user input
+    register_builtin(exe, "term.is_tty", builtin_term_is_tty)
+    register_builtin(exe, "term.size", builtin_term_size)
+    register_builtin(exe, "term.raw_enable", builtin_term_raw_enable)
+    register_builtin(exe, "term.raw_disable", builtin_term_raw_disable)
+    register_builtin(exe, "term.read_key", builtin_term_read_key)
+    register_builtin(exe, "term.edit_line", builtin_term_edit_line)
+    register_builtin(exe, "term.edit_buffer", builtin_term_edit_buffer)
+    register_builtin(exe, "term.write", builtin_term_write)
+    register_builtin(exe, "term.flush", builtin_term_flush)
+    register_builtin(exe, "term.draw_frame", builtin_term_draw_frame)
+    register_builtin(exe, "term.draw_buffer_view", builtin_term_draw_buffer_view)
+    register_builtin(exe, "term.clear_screen", builtin_term_clear_screen)
+    register_builtin(exe, "term.move_cursor", builtin_term_move_cursor)
+    register_builtin(exe, "term.clear_line", builtin_term_clear_line)
+
+    # env / argv / input
+    register_builtin(exe, "INPUT", builtin_input)
+    register_builtin(exe, "input", builtin_input)
+    register_builtin(exe, "getenv", builtin_getenv)
+    register_builtin(exe, "GETENV", builtin_getenv)
+    register_builtin(exe, "setenv", builtin_setenv)
+    register_builtin(exe, "SETENV", builtin_setenv)
+    register_builtin(exe, "argv", builtin_argv)
+    register_builtin(exe, "ARGV", builtin_argv)
+
+    # formatting helpers
+    register_builtin(exe, "format_number", builtin_format_number)
+    register_builtin(exe, "format_currency", builtin_format_currency)
+    register_builtin(exe, "format_percentage", builtin_format_percentage)
+    register_builtin(exe, "format_bytes", builtin_format_bytes)
+
+    # json
+    register_builtin(exe, "json_parse", builtin_json_parse)
+    register_builtin(exe, "json_serialize", builtin_json_serialize)
+    register_builtin(exe, "json_stringify", builtin_json_stringify)
+    register_builtin(exe, "JSON_STRINGIFY", builtin_json_stringify)
+
+    # tensor aliases from executor.rs slice
+    register_builtin(exe, "tensor_create_zeros", builtin_tensor_create_zeros)
+    register_builtin(exe, "tensor_create_ones", builtin_tensor_create_ones)
+    register_builtin(exe, "tensor_create_identity", builtin_tensor_create_identity)
+    register_builtin(exe, "tensor_get_shape", builtin_tensor_get_shape)
+    register_builtin(exe, "tensor_get_dtype", builtin_tensor_get_dtype)
+    register_builtin(exe, "tensor_sum_all", builtin_tensor_sum_all)
+    register_builtin(exe, "tensor_mean_all", builtin_tensor_mean_all)
+
+    # logging / error helpers
+    register_builtin(exe, "log_info", builtin_log_info)
+    register_builtin(exe, "log_warning", builtin_log_warning)
+    register_builtin(exe, "log_warn", builtin_log_warning)
+    register_builtin(exe, "error", builtin_error)
+    register_builtin(exe, "raise", builtin_error)
+    register_builtin(exe, "log_error", builtin_log_error)
+    register_builtin(exe, "log_debug", builtin_log_debug)
+    register_builtin(exe, "debug_print_type", builtin_debug_print_type)
+    register_builtin(exe, "debug_print_length", builtin_debug_print_length)
+
+    RETURN(None)
+END
+
+# --- String builtin implementations translated from executor.rs ---
+# --- Additional translated builtins from executor.rs slice ---
+
+# JSON stringify (supports pretty flag)
+DEF builtin_json_stringify(exe, args):
+    IF len(args) < 1 or len(args) > 2: RAISE("JSON_STRINGIFY expects 1 or 2 arguments: value [, pretty]") END
+    pretty = False
+    IF len(args) >= 2:
+        pretty = bool(args[1])
+    END
+    TRY:
+        json = __import__("json")
+        IF pretty:
+            s = json.dumps(args[0], indent=2)
+        ELSE:
+            s = json.dumps(args[0])
+        END
+        RETURN({"String": s})
+    EXCEPT AS e:
+        RAISE("JSON_STRINGIFY: {}".format(str(e)))
+    END
+END
+
+# Tensor helpers (simple Pasta representation)
+DEF builtin_tensor_create_zeros(exe, args):
+    IF len(args) != 2: RAISE("tensor_create_zeros expects 2 arguments (rows, cols)") END
+    r = args[0]; c = args[1]
+    IF NOT (type(r) in (int, float) and type(c) in (int, float)): RAISE("tensor_create_zeros: expected two numbers") END
+    rows = int(round(r)); cols = int(round(c))
+    data = []
+    FOR i IN range(rows*cols): data.append(0.0) END
+    RETURN({"Tensor": {"shape": [rows, cols], "dtype": "float32", "data": data}})
+END
+
+DEF builtin_tensor_create_ones(exe, args):
+    IF len(args) != 2: RAISE("tensor_create_ones expects 2 arguments (rows, cols)") END
+    r = args[0]; c = args[1]
+    IF NOT (type(r) in (int, float) and type(c) in (int, float)): RAISE("tensor_create_ones: expected two numbers") END
+    rows = int(round(r)); cols = int(round(c))
+    data = []
+    FOR i IN range(rows*cols): data.append(1.0) END
+    RETURN({"Tensor": {"shape": [rows, cols], "dtype": "float32", "data": data}})
+END
+
+DEF builtin_tensor_create_identity(exe, args):
+    IF len(args) != 1: RAISE("tensor_create_identity expects 1 argument (n)") END
+    n_v = args[0]
+    IF NOT (type(n_v) in (int, float)): RAISE("tensor_create_identity: expected number") END
+    n = int(round(n_v))
+    data = []
+    FOR i IN range(n*n): data.append(0.0) END
+    FOR i IN range(n): data[i*n + i] = 1.0 END
+    RETURN({"Tensor": {"shape": [n, n], "dtype": "float32", "data": data}})
+END
+
+DEF builtin_tensor_get_shape(exe, args):
+    IF len(args) != 1: RAISE("tensor_get_shape expects 1 argument") END
+    t = args[0]
+    IF type(t) == dict and has_key(t, "Tensor"):
+        shape = t["Tensor"].get("shape", [])
+        out = []
+        FOR s IN shape: out.append(float(s)) END
+        RETURN(out)
+    END
+    RAISE("tensor_get_shape: expected a tensor")
+END
+
+DEF builtin_tensor_get_dtype(exe, args):
+    IF len(args) != 1: RAISE("tensor_get_dtype expects 1 argument") END
+    t = args[0]
+    IF type(t) == dict and has_key(t, "Tensor"):
+        RETURN(t["Tensor"].get("dtype", "float32"))
+    END
+    RAISE("tensor_get_dtype: expected a tensor")
+END
+
+DEF builtin_tensor_sum_all(exe, args):
+    IF len(args) != 1: RAISE("tensor_sum_all expects 1 argument") END
+    t = args[0]
+    IF type(t) == dict and has_key(t, "Tensor"):
+        data = t["Tensor"].get("data", [])
+        s = 0.0
+        FOR v IN data: s = s + float(v) END
+        RETURN(float(s))
+    END
+    RAISE("tensor_sum_all: expected a tensor")
+END
+
+DEF builtin_tensor_mean_all(exe, args):
+    IF len(args) != 1: RAISE("tensor_mean_all expects 1 argument") END
+    t = args[0]
+    IF type(t) == dict and has_key(t, "Tensor"):
+        data = t["Tensor"].get("data", [])
+        n = len(data)
+        IF n == 0: RETURN(float(0.0)) END
+        s = 0.0
+        FOR v IN data: s = s + float(v) END
+        RETURN(float(s / float(n)))
+    END
+    RAISE("tensor_mean_all: expected a tensor")
+END
+
+# Logging and error helpers
+DEF builtin_log_info(exe, args):
+    IF len(args) != 1: RAISE("log_info expects 1 argument") END
+    print("[INFO] {}".format(Executor_value_to_string(exe, args[0])))
+    RETURN(None)
+END
+
+DEF builtin_log_warning(exe, args):
+    IF len(args) != 1: RAISE("log_warning expects 1 argument") END
+    print("[WARN] {}".format(Executor_value_to_string(exe, args[0])))
+    RETURN(None)
+END
+
+DEF builtin_error(exe, args):
+    msg = "error"
+    IF len(args) >= 1:
+        msg = Executor_value_to_string(exe, args[0])
+    END
+    RAISE(msg)
+END
+
+DEF builtin_log_error(exe, args):
+    IF len(args) != 1: RAISE("log_error expects 1 argument") END
+    print("[ERROR] {}".format(Executor_value_to_string(exe, args[0])))
+    RETURN(None)
+END
+
+DEF builtin_log_debug(exe, args):
+    IF len(args) != 1: RAISE("log_debug expects 1 argument") END
+    print("[DEBUG] {}".format(Executor_value_to_string(exe, args[0])))
+    RETURN(None)
+END
+
+DEF builtin_debug_print_type(exe, args):
+    IF len(args) != 1: RAISE("debug_print_type expects 1 argument") END
+    a = args[0]
+    t = "unknown"
+    IF type(a) in (int, float): t = "number"
+    ELIF type(a) == dict and has_key(a, "String"): t = "string"
+    ELIF type(a) == dict and has_key(a, "Tensor"): t = "tensor"
+    ELIF type(a) == dict and has_key(a, "Builtin"): t = "builtin"
+    ELIF type(a) == list: t = "list"
+    ELIF a == None: t = "none"
+    END
+    print("[DEBUG] type({}) = {}".format(Executor_value_to_string(exe, a), t))
+    RETURN(None)
+END
+
+DEF builtin_debug_print_length(exe, args):
+    IF len(args) != 1: RAISE("debug_print_length expects 1 argument") END
+    a = args[0]
+    l = 0
+    IF type(a) == dict and has_key(a, "String"):
+        l = len(list(a["String"]))
+    ELIF type(a) == list:
+        l = len(a)
+    ELIF type(a) == dict and has_key(a, "Dict"):
+        l = len(list(a["Dict"].keys()))
+    END
+    print("[DEBUG] len({}) = {}".format(Executor_value_to_string(exe, a), l))
+    RETURN(float(l))
+END
+
+DEF builtin_read_all(exe, args):
+    IF len(args) != 1: RAISE("READ_ALL expects 1 argument: file handle") END
+    h = args[0]
+    IF NOT (type(h) == dict and has_key(h, "String")): RAISE("READ_ALL: handle must be a string") END
+    hid = h["String"]
+    ent = exe["open_files"].get(hid, None)
+    IF ent == None: RAISE("READ_ALL: unknown handle \"{}\"".format(hid)) END
+    s = fs_read_to_string(ent["path"]) or ""
+    RETURN({"String": s})
+END
+
+DEF builtin_dict(exe, args):
+    IF len(args) % 2 != 0: RAISE("DICT expects an even number of arguments (key, value pairs)") END
+    m = {}
+    i = 0
+    WHILE i < len(args):
+        k = Executor_value_to_string(exe, args[i])
+        v = args[i+1]
+        m[k] = v
+        i = i + 2
+    END
+    RETURN({"Dict": m})
+END
+
+DEF _unwrap_dict_map(exe, d):
+    # helper: accept {'Dict': map} or raw dict-like map
+    IF type(d) == dict and has_key(d, "Dict"):
+        RETURN(d["Dict"])
+    ELIF type(d) == dict and NOT has_key(d, "String") and NOT has_key(d, "Heap"):
+        # assume it's a plain map
+        RETURN(d)
+    END
+    RAISE("expected a dict-like value")
+END
+
+DEF builtin_dict_get(exe, args):
+    IF len(args) != 2: RAISE("dict_get expects 2 arguments: dict, key") END
+    key = Executor_value_to_string(exe, args[1])
+    d = args[0]
+    m = _unwrap_dict_map(exe, d)
+    IF has_key(m, key): RETURN(m[key]) END
+    RAISE("dict_get: key \"{}\" not found".format(key))
+END
+
+DEF builtin_dict_has(exe, args):
+    IF len(args) != 2: RAISE("dict_has expects 2 arguments: dict, key") END
+    key = Executor_value_to_string(exe, args[1])
+    d = args[0]
+    m = _unwrap_dict_map(exe, d)
+    RETURN(bool(has_key(m, key)))
+END
+
+DEF builtin_dict_keys(exe, args):
+    IF len(args) != 1: RAISE("dict_keys expects 1 argument: dict") END
+    d = args[0]
+    m = _unwrap_dict_map(exe, d)
+    keys = list(m.keys())
+    keys.sort()
+    out = []
+    FOR k IN keys: out.append({"String": k}) END
+    RETURN(out)
+END
+
+DEF builtin_dict_values(exe, args):
+    IF len(args) != 1: RAISE("dict_values expects 1 argument: dict") END
+    d = args[0]
+    m = _unwrap_dict_map(exe, d)
+    vals = []
+    FOR k IN sorted(list(m.keys())):
+        vals.append(m[k])
+    END
+    RETURN(vals)
+END
+
+DEF builtin_dict_items(exe, args):
+    IF len(args) != 1: RAISE("dict_items expects 1 argument: dict") END
+    d = args[0]
+    m = _unwrap_dict_map(exe, d)
+    items = []
+    FOR k IN sorted(list(m.keys())):
+        items.append([{"String": k}, m[k]])
+    END
+    RETURN(items)
+END
+
+DEF builtin_dict_len(exe, args):
+    IF len(args) != 1: RAISE("dict_len expects 1 argument: dict") END
+    d = args[0]
+    m = _unwrap_dict_map(exe, d)
+    RETURN(float(len(list(m.keys()))))
+END
+
+# Terminal / input stubs
+DEF builtin_term_is_tty(exe, args):
+    IF len(args) != 0: RAISE("term.is_tty expects 0 arguments") END
+    TRY:
+        sys = __import__("sys")
+        val = sys.stdin.isatty()
+    EXCEPT:
+        val = False
+    END
+    RETURN(bool(val))
+END
+
+DEF builtin_term_size(exe, args):
+    IF len(args) != 0: RAISE("term.size expects 0 arguments") END
+    # Pure-Pasta: terminal size needs host binding; return sensible default.
+    # TODO: implement terminal-size detection in Pasta or via host-provided binding.
+    RETURN([float(80), float(24)])
+END
+
+DEF builtin_term_raw_enable(exe, args):
+    RETURN(None)
+END
+DEF builtin_term_raw_disable(exe, args):
+    RETURN(None)
+END
+DEF builtin_term_read_key(exe, args):
+    # Not implementing low-level key read here; fallback to stdin readline
+    IF len(args) > 1: RAISE("term.read_key expects 0 or 1 argument (timeout_ms)") END
+    TRY:
+        line = input()
+    EXCEPT:
+        RETURN("")
+    END
+    RETURN({"String": line})
+END
+
+DEF builtin_term_edit_line(exe, args):
+    IF len(args) < 1 or len(args) > 2: RAISE("term.edit_line expects 1 or 2 arguments") END
+    prompt = Executor_value_to_string(exe, args[0])
+    initial = Executor_value_to_string(exe, args[1]) if len(args) >= 2 else ""
+    print(prompt, end="")
+    TRY:
+        s = input()
+    EXCEPT:
+        s = initial
+    END
+    RETURN([{"String": s}, {"String": "submit"}])
+END
+
+DEF builtin_term_edit_buffer(exe, args):
+    RETURN([[], {"String": "ok"}, 0.0, 0.0])
+END
+
+DEF builtin_term_write(exe, args):
+    IF len(args) != 1: RAISE("term.write expects 1 argument") END
+    print(Executor_value_to_string(exe, args[0]), end="")
+    RETURN(None)
+END
+
+DEF builtin_term_flush(exe, args):
+    TRY:
+        sys = __import__("sys")
+        sys.stdout.flush()
+    EXCEPT:
+        pass
+    END
+    RETURN(None)
+END
+
+DEF builtin_term_draw_frame(exe, args):
+    RETURN(None)
+END
+DEF builtin_term_draw_buffer_view(exe, args):
+    RETURN(None)
+END
+DEF builtin_term_clear_screen(exe, args):
+    # Try to clear using ANSI; best-effort
+    TRY:
+        print("\033[2J\033[H", end="")
+    EXCEPT:
+        pass
+    END
+    RETURN(None)
+END
+DEF builtin_term_move_cursor(exe, args):
+    IF len(args) != 2: RAISE("term.move_cursor expects 2 arguments (row, col)") END
+    RETURN(None)
+END
+DEF builtin_term_clear_line(exe, args):
+    RETURN(None)
+END
+
+# INPUT and env
+DEF builtin_input(exe, args):
+    # Pure-Pasta note: interactive stdin prompts need host support.
+    # TODO: implement editable prompt and line-editing in Pasta.
+    IF len(args) > 1: RAISE("INPUT expects 0 or 1 argument (optional prompt)") END
+    RETURN(None)
+END
+
+DEF builtin_getenv(exe, args):
+    IF len(args) != 1: RAISE("GETENV expects 1 argument: variable name") END
+    name = Executor_value_to_string(exe, args[0])
+    v = getenv(name)
+    IF v == None: RETURN(None) END
+    RETURN({"String": v})
+END
+
+DEF builtin_setenv(exe, args):
+    IF len(args) != 2: RAISE("SETENV expects 2 arguments: name, value") END
+    name = Executor_value_to_string(exe, args[0])
+    value = Executor_value_to_string(exe, args[1])
+    TRY:
+        os = __import__("os")
+        os.environ[name] = value
+    EXCEPT:
+        pass
+    END
+    RETURN(None)
+END
+
+DEF builtin_argv(exe, args):
+    lst = argv_get() if callable(argv_get) else []
+    out = []
+    FOR a IN lst: out.append({"String": a}) END
+    RETURN(out)
+END
+
+# Formatting helpers
+DEF builtin_format_number(exe, args):
+    IF len(args) != 2: RAISE("format_number expects 2 arguments (number, decimals)") END
+    n = args[0] if type(args[0]) in (int, float) else 0
+    d = int(args[1]) if type(args[1]) in (int, float) else 0
+    fmt = "{:.%df}" % d if d >= 0 else "{}"
+    TRY:
+        s = (fmt).format(n)
+    EXCEPT:
+        s = str(n)
+    END
+    RETURN({"String": s})
+END
+
+DEF builtin_format_currency(exe, args):
+    IF len(args) != 2: RAISE("format_currency expects 2 arguments (amount, symbol)") END
+    amt = args[0] if type(args[0]) in (int, float) else 0
+    sym = Executor_value_to_string(exe, args[1])
+    RETURN({"String": "{}{:.2f}".format(sym, float(amt))})
+END
+
+DEF builtin_format_percentage(exe, args):
+    IF len(args) != 1: RAISE("format_percentage expects 1 argument") END
+    n = args[0] if type(args[0]) in (int, float) else 0
+    RETURN({"String": "{:.1}%".format(float(n))})
+END
+
+DEF builtin_format_bytes(exe, args):
+    IF len(args) != 1: RAISE("format_bytes expects 1 argument") END
+    n = int(args[0]) if type(args[0]) in (int, float) else 0
+    b = n
+    IF b < 1024: RETURN({"String": "{} B".format(b)}) END
+    IF b < 1024*1024: RETURN({"String": "{:.1f} KB".format(b / 1024.0)}) END
+    IF b < 1024*1024*1024: RETURN({"String": "{:.1f} MB".format(b / 1024.0 / 1024.0)}) END
+    RETURN({"String": "{:.1f} GB".format(b / 1024.0 / 1024.0 / 1024.0)})
+END
+
+# JSON
+DEF builtin_json_parse(exe, args):
+    IF len(args) != 1: RAISE("json_parse expects 1 argument") END
+    s = Executor_value_to_string(exe, args[0])
+    TRY:
+        json = __import__("json")
+        v = json.loads(s)
+        # return Python object as-is (caller must handle)
+        RETURN(v)
+    EXCEPT AS e:
+        RAISE("json_parse: {}".format(str(e)))
+    END
+END
+
+DEF builtin_json_serialize(exe, args):
+    IF len(args) != 1: RAISE("json_serialize expects 1 argument") END
+    TRY:
+        json = __import__("json")
+        s = json.dumps(args[0])
+        RETURN({"String": s})
+    EXCEPT AS e:
+        RAISE("json_serialize: {}".format(str(e)))
+    END
+END
+
+# --- New system/math builtins from executor.rs slice ---
+DEF builtin_exit(exe, args):
+    code = int(args[0]) if len(args) >=1 and type(args[0]) in (int, float) else 0
+    exit_process(code)
+    RETURN(None)
+END
+
+DEF builtin_sleep(exe, args):
+    IF len(args) != 1: RAISE("sleep expects 1 argument (ms)") END
+    IF type(args[0]) not in (int, float): RAISE("sleep: expected number (milliseconds)") END
+    ms = float(args[0])
+    # simple sleep
+    time_sleep(ms / 1000.0)
+    RETURN(None)
+END
+
+DEF builtin_time(exe, args):
+    RETURN(float(time_now_ms() / 1000.0))
+END
+
+DEF builtin_time_ms(exe, args):
+    RETURN(float(time_now_ms()))
+END
+
+DEF builtin_env(exe, args):
+    IF len(args) != 1: RAISE("env expects 1 argument (name)") END
+    name = Executor_value_to_string(exe, args[0])
+    v = getenv(name)
+    IF v == None: RETURN({"String": ""}) END
+    RETURN({"String": v})
+END
+
+DEF builtin_rand(exe, args):
+    IF len(args) == 0:
+        RETURN(float((time_now_ns() % 1000000) / 1000000.0))
+    ELIF len(args) == 1:
+        n = args[0]
+        IF type(n) in (int, float):
+            maxv = int(round(n))
+            IF maxv <= 0: maxv = 1 END
+            RETURN(float(int(time_now_ns()) % maxv))
+        END
+        RAISE("rand: expected numeric argument")
+    ELSE:
+        RAISE("rand: expected 0 or 1 arguments")
+    END
+END
+
+DEF builtin_rand_int(exe, args):
+    IF len(args) != 2: RAISE("rand_int expects 2 arguments (lo, hi)") END
+    a = args[0]; b = args[1]
+    IF NOT (type(a) in (int, float) and type(b) in (int, float)): RAISE("rand_int: expected two numbers") END
+    lo = int(round(a)); hi = int(round(b))
+    IF hi < lo: RAISE("rand_int: hi must be >= lo") END
+    rng = int(time_now_ns())
+    span = hi - lo + 1
+    val = lo + (rng % span)
+    RETURN(float(val))
+END
+
+DEF builtin_rand_range(exe, args):
+    IF len(args) != 2: RAISE("rand_range expects 2 arguments (lo, hi)") END
+    a = args[0]; b = args[1]
+    IF NOT (type(a) in (int, float) and type(b) in (int, float)): RAISE("rand_range: expected two numbers") END
+    f = float((time_now_ns() % 1000000) / 1000000.0)
+    RETURN(float(a + f * (b - a)))
+END
+
+DEF builtin_num(exe, args):
+    IF len(args) != 1: RAISE("num/float expects 1 argument") END
+    v = args[0]
+    IF type(v) in (int, float): RETURN(float(v)) END
+    IF type(v) == dict and has_key(v, "String"):
+        TRY: RETURN(float(float(v["String"])) )
+        EXCEPT: RAISE("num: cannot parse '{}' as number".format(v["String"]))
+        END
+    IF type(v) == dict and has_key(v, "Bool"):
+        RETURN(float(1 if v["Bool"] else 0))
+    END
+    RAISE("num: cannot convert to number")
+END
+
+DEF builtin_int(exe, args):
+    IF len(args) != 1: RAISE("int expects 1 argument") END
+    v = args[0]
+    IF type(v) in (int, float): RETURN(float(int(float(v)))) END
+    IF type(v) == dict and has_key(v, "String"):
+        TRY: RETURN(float(int(float(v["String"])) ))
+        EXCEPT: RAISE("int: cannot parse '{}' as number".format(v["String"]))
+        END
+    IF type(v) == dict and has_key(v, "Bool"):
+        RETURN(float(1 if v["Bool"] else 0))
+    END
+    RAISE("int: cannot convert to integer")
+END
+
+DEF builtin_range(exe, args):
+    # supports 1,2,3 numeric args similar to Rust implementation
+    IF len(args) == 1 and type(args[0]) in (int, float):
+        end = int(round(args[0]))
+        out = []
+        FOR i IN range(1, end+1): out.append(float(i)) END
+        RETURN(out)
+    ELIF len(args) == 2 and type(args[0]) in (int,float) and type(args[1]) in (int,float):
+        s = int(round(args[0])); e = int(round(args[1]))
+        out = []
+        IF s <= e:
+            FOR i IN range(s, e+1): out.append(float(i)) END
+        ELSE:
+            FOR i IN range(e, s+1): out.insert(0, float(i)) END
+        END
+        RETURN(out)
+    ELIF len(args) == 3:
+        s = int(round(args[0])); e = int(round(args[1])); st = int(round(args[2]))
+        IF st == 0: RAISE("range: step cannot be zero") END
+        out = []
+        cur = s
+        IF st > 0:
+            WHILE cur <= e: out.append(float(cur)); cur = cur + st END
+        ELSE:
+            WHILE cur >= e: out.append(float(cur)); cur = cur + st END
+        END
+        RETURN(out)
+    END
+    RAISE("range() expects 1,2 or 3 numeric arguments")
+END
+
+DEF builtin_color(exe, args):
+    IF len(args) != 3: RAISE("color expects 3 arguments (r,g,b)") END
+    r = int(args[0]) if type(args[0]) in (int,float) else RAISE("color: r must be a number")
+    g = int(args[1]) if type(args[1]) in (int,float) else RAISE("color: g must be a number")
+    b = int(args[2]) if type(args[2]) in (int,float) else RAISE("color: b must be a number")
+    packed = (0xFF << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF)
+    RETURN(float(packed))
+END
+
+DEF builtin_ceil(exe, args):
+    IF len(args) != 1: RAISE("ceil expects 1 argument") END
+    IF type(args[0]) not in (int, float): RAISE("ceil: expected number") END
+    m = __import__("math") ; RETURN(float(m.ceil(float(args[0]))))
+END
+
+DEF builtin_round(exe, args):
+    IF len(args) != 1: RAISE("round expects 1 argument") END
+    IF type(args[0]) not in (int, float): RAISE("round: expected number") END
+    RETURN(float(round(float(args[0]))))
+END
+
+DEF builtin_min(exe, args):
+    IF len(args) != 2: RAISE("min expects 2 arguments") END
+    a = args[0]; b = args[1]
+    IF type(a) in (int,float) and type(b) in (int,float): RETURN(float(min(float(a), float(b)))) END
+    RAISE("min: expected numbers")
+END
+
+DEF builtin_max(exe, args):
+    IF len(args) != 2: RAISE("max expects 2 arguments") END
+    a = args[0]; b = args[1]
+    IF type(a) in (int,float) and type(b) in (int,float): RETURN(float(max(float(a), float(b)))) END
+    RAISE("max: expected numbers")
+END
+
+DEF builtin_clamp(exe, args):
+    IF len(args) != 3: RAISE("clamp expects 3 arguments") END
+    v = float(args[0]) if type(args[0]) in (int,float) else RAISE("clamp: expected numbers")
+    lo = float(args[1]); hi = float(args[2])
+    RETURN(float(max(lo, min(v, hi))))
+END
+
+DEF builtin_sign(exe, args):
+    IF len(args) != 1: RAISE("sign expects 1 argument") END
+    v = args[0]
+    IF type(v) not in (int,float): RAISE("sign: expected number") END
+    fv = float(v)
+    IF fv > 0: RETURN(float(1)) ELIF fv < 0: RETURN(float(-1)) ELSE: RETURN(float(0)) END
+END
+
+# trig / advanced math
+DEF builtin_sin(exe, args):
+    IF len(args) != 1: RAISE("sin expects 1 argument") END
+    m = __import__("math")
+    RETURN(float(m.sin(float(args[0]))))
+END
+DEF builtin_cos(exe, args):
+    IF len(args) != 1: RAISE("cos expects 1 argument") END
+    m = __import__("math")
+    RETURN(float(m.cos(float(args[0]))))
+END
+DEF builtin_tan(exe, args):
+    IF len(args) != 1: RAISE("tan expects 1 argument") END
+    m = __import__("math")
+    RETURN(float(m.tan(float(args[0]))))
+END
+DEF builtin_asin(exe, args):
+    IF len(args) != 1: RAISE("asin expects 1 argument") END
+    m = __import__("math")
+    RETURN(float(m.asin(float(args[0]))))
+END
+DEF builtin_acos(exe, args):
+    IF len(args) != 1: RAISE("acos expects 1 argument") END
+    m = __import__("math")
+    RETURN(float(m.acos(float(args[0]))))
+END
+DEF builtin_atan(exe, args):
+    IF len(args) != 1: RAISE("atan expects 1 argument") END
+    m = __import__("math")
+    RETURN(float(m.atan(float(args[0]))))
+END
+DEF builtin_atan2(exe, args):
+    IF len(args) != 2: RAISE("atan2 expects 2 arguments (y,x)") END
+    m = __import__("math")
+    RETURN(float(m.atan2(float(args[0]), float(args[1]))))
+END
+DEF builtin_exp(exe, args):
+    IF len(args) != 1: RAISE("exp expects 1 argument") END
+    m = __import__("math")
+    RETURN(float(m.exp(float(args[0]))))
+END
+DEF builtin_ln(exe, args):
+    IF len(args) != 1: RAISE("ln expects 1 argument") END
+    m = __import__("math")
+    RETURN(float(m.log(float(args[0]))))
+END
+DEF builtin_log2(exe, args):
+    IF len(args) != 1: RAISE("log2 expects 1 argument") END
+    m = __import__("math")
+    RETURN(float(m.log2(float(args[0]))))
+END
+DEF builtin_log10(exe, args):
+    IF len(args) != 1: RAISE("log10 expects 1 argument") END
+    m = __import__("math")
+    RETURN(float(m.log10(float(args[0]))))
+END
+DEF builtin_hypot(exe, args):
+    IF len(args) != 2: RAISE("hypot expects 2 arguments") END
+    m = __import__("math")
+    RETURN(float(m.hypot(float(args[0]), float(args[1]))))
+END
+DEF builtin_degrees(exe, args):
+    IF len(args) != 1: RAISE("degrees expects 1 argument") END
+    m = __import__("math")
+    RETURN(float(m.degrees(float(args[0]))))
+END
+DEF builtin_radians(exe, args):
+    IF len(args) != 1: RAISE("radians expects 1 argument") END
+    m = __import__("math")
+    RETURN(float(m.radians(float(args[0]))))
+END
+
+# helpers mapping to existing basic sqrt/abs if present
+DEF builtin_sqrt(exe, args):
+    IF len(args) != 1: RAISE("sqrt expects 1 argument") END
+    n = args[0]
+    IF type(n) not in (int,float): RAISE("sqrt: expected number") END
+    RETURN(float((float(n)) ** 0.5))
+END
+DEF builtin_abs(exe, args):
+    IF len(args) != 1: RAISE("abs expects 1 argument") END
+    n = args[0]
+    IF type(n) not in (int,float): RAISE("abs: expected number") END
+    RETURN(float(abs(float(n))))
+END
+
+
+DEF builtin_string_length(exe, args):
+    IF len(args) != 1: RAISE("string_length expects 1 argument") END
+    a = args[0]
+    IF type(a) == dict and has_key(a, "String"):
+        s = a["String"]
+        RETURN(float(len(list(s))))
+    ELIF type(a) == list:
+        RETURN(float(len(a)))
+    ELIF a == None:
+        RETURN(float(0))
+    ELSE:
+        RAISE("string_length: expected string, got {}".format(type(a)))
+    END
+END
+
+DEF builtin_string_concat(exe, args):
+    IF len(args) != 2: RAISE("string_concat expects 2 arguments") END
+    s1 = Executor_value_to_string(exe, args[0])
+    s2 = Executor_value_to_string(exe, args[1])
+    RETURN({"String": s1 + s2})
+END
+
+DEF builtin_string_concat_with_sep(exe, args):
+    IF len(args) != 3: RAISE("string_concat_with_sep expects 3 arguments (s1, s2, sep)") END
+    a = Executor_value_to_string(exe, args[0])
+    b = Executor_value_to_string(exe, args[1])
+    sep = Executor_value_to_string(exe, args[2])
+    RETURN({"String": "{}{}{}".format(a, sep, b)})
+END
+
+DEF builtin_string_repeat(exe, args):
+    IF len(args) != 2: RAISE("string_repeat expects 2 arguments (s, count)") END
+    s = Executor_value_to_string(exe, args[0])
+    n = args[1]
+    IF type(n) in (int, float):
+        cnt = int(round(n))
+    ELSE:
+        RAISE("string_repeat: count must be a number")
+    END
+    RETURN({"String": s * cnt})
+END
+
+DEF builtin_string_pad_left(exe, args):
+    IF len(args) != 3: RAISE("string_pad_left expects 3 arguments (s, width, pad_char)") END
+    s = Executor_value_to_string(exe, args[0])
+    width_arg = args[1]
+    IF type(width_arg) in (int, float):
+        width = int(round(width_arg))
+    ELSE:
+        RAISE("string_pad_left: width must be a number")
+    END
+    pad_ch = Executor_value_to_string(exe, args[2])
+    pad_c = pad_ch[0] if len(pad_ch) > 0 else ' '
+    cur_len = len(list(s))
+    IF cur_len >= width:
+        RETURN({"String": s})
+    END
+    padding = pad_c * (width - cur_len)
+    RETURN({"String": padding + s})
+END
+
+DEF builtin_string_pad_right(exe, args):
+    IF len(args) != 3: RAISE("string_pad_right expects 3 arguments (s, width, pad_char)") END
+    s = Executor_value_to_string(exe, args[0])
+    width_arg = args[1]
+    IF type(width_arg) in (int, float):
+        width = int(round(width_arg))
+    ELSE:
+        RAISE("string_pad_right: width must be a number")
+    END
+    pad_ch = Executor_value_to_string(exe, args[2])
+    pad_c = pad_ch[0] if len(pad_ch) > 0 else ' '
+    cur_len = len(list(s))
+    IF cur_len >= width:
+        RETURN({"String": s})
+    END
+    padding = pad_c * (width - cur_len)
+    RETURN({"String": s + padding})
+END
+
+DEF builtin_string_upper(exe, args):
+    IF len(args) != 1: RAISE("string_upper expects 1 argument") END
+    s = Executor_value_to_string(exe, args[0])
+    RETURN({"String": s.upper()})
+END
+
+# Additional string builtins (translated from executor.rs)
+DEF builtin_string_lower(exe, args):
+    IF len(args) != 1: RAISE("string_lower expects 1 argument") END
+    s = Executor_value_to_string(exe, args[0])
+    RETURN({"String": s.lower()})
+END
+
+DEF builtin_string_reverse(exe, args):
+    IF len(args) != 1: RAISE("string_reverse expects 1 argument") END
+    s = Executor_value_to_string(exe, args[0])
+    RETURN({"String": s[::-1]})
+END
+
+DEF builtin_string_trim(exe, args):
+    IF len(args) != 1: RAISE("string_trim expects 1 argument") END
+    s = Executor_value_to_string(exe, args[0])
+    RETURN({"String": s.strip()})
+END
+
+DEF builtin_string_starts_with(exe, args):
+    IF len(args) != 2: RAISE("string_starts_with expects 2 arguments") END
+    s = Executor_value_to_string(exe, args[0])
+    pre = Executor_value_to_string(exe, args[1])
+    RETURN(bool(s.startswith(pre)))
+END
+
+DEF builtin_string_ends_with(exe, args):
+    IF len(args) != 2: RAISE("string_ends_with expects 2 arguments") END
+    s = Executor_value_to_string(exe, args[0])
+    suf = Executor_value_to_string(exe, args[1])
+    RETURN(bool(s.endswith(suf)))
+END
+
+DEF builtin_string_contains(exe, args):
+    IF len(args) != 2: RAISE("string_contains expects 2 arguments") END
+    s = Executor_value_to_string(exe, args[0])
+    sub = Executor_value_to_string(exe, args[1])
+    RETURN(bool(sub in s))
+END
+
+DEF builtin_string_replace(exe, args):
+    IF len(args) != 3: RAISE("string_replace expects 3 arguments (s, old, new)") END
+    s = Executor_value_to_string(exe, args[0])
+    old = Executor_value_to_string(exe, args[1])
+    new = Executor_value_to_string(exe, args[2])
+    RETURN({"String": s.replace(old, new)})
+END
+
+DEF builtin_string_split(exe, args):
+    IF len(args) != 2: RAISE("string_split expects 2 arguments (s, delimiter)") END
+    s = Executor_value_to_string(exe, args[0])
+    del = Executor_value_to_string(exe, args[1])
+    parts = s.split(del)
+    out = []
+    FOR p IN parts: out.append({"String": p}) END
+    RETURN(out)
+END
+
+DEF builtin_string_join(exe, args):
+    IF len(args) != 2: RAISE("string_join expects 2 arguments (list, delimiter)") END
+    del = Executor_value_to_string(exe, args[1])
+    items = args[0]
+    IF type(items) != list: RAISE("string_join: first argument must be a list") END
+    parts = []
+    FOR itm IN items: parts.append(Executor_value_to_string(exe, itm)) END
+    RETURN({"String": del.join(parts)})
+END
+
+DEF builtin_string_to_chars(exe, args):
+    IF len(args) != 1: RAISE("string_to_chars expects 1 argument") END
+    s = Executor_value_to_string(exe, args[0])
+    out = []
+    FOR c IN list(s): out.append({"String": c}) END
+    RETURN(out)
+END
+
+DEF builtin_chars_to_string(exe, args):
+    IF len(args) != 1: RAISE("chars_to_string expects 1 argument") END
+    items = args[0]
+    IF type(items) != list: RAISE("chars_to_string: expected a list") END
+    parts = []
+    FOR itm IN items: parts.append(Executor_value_to_string(exe, itm)) END
+    RETURN({"String": "".join(parts)})
+END
+
+DEF builtin_trim_left(exe, args):
+    IF len(args) != 1: RAISE("trim_left expects 1 argument") END
+    s = Executor_value_to_string(exe, args[0])
+    RETURN({"String": s.lstrip()})
+END
+
+DEF builtin_trim_right(exe, args):
+    IF len(args) != 1: RAISE("trim_right expects 1 argument") END
+    s = Executor_value_to_string(exe, args[0])
+    RETURN({"String": s.rstrip()})
+END
+
+DEF builtin_replace_all(exe, args):
+    IF len(args) != 3: RAISE("replace.all expects 3 arguments (s, old, new)") END
+    s = Executor_value_to_string(exe, args[0])
+    old = Executor_value_to_string(exe, args[1])
+    new = Executor_value_to_string(exe, args[2])
+    RETURN({"String": s.replace(old, new)})
+END
+
+DEF builtin_replace_first(exe, args):
+    IF len(args) != 3: RAISE("replace.first expects 3 arguments (s, old, new)") END
+    s = Executor_value_to_string(exe, args[0])
+    old = Executor_value_to_string(exe, args[1])
+    new = Executor_value_to_string(exe, args[2])
+    RETURN({"String": s.replace(old, new, 1)})
+END
+
+DEF builtin_replace_last(exe, args):
+    IF len(args) != 3: RAISE("replace.last expects 3 arguments (s, old, new)") END
+    s = Executor_value_to_string(exe, args[0])
+    old = Executor_value_to_string(exe, args[1])
+    new_s = Executor_value_to_string(exe, args[2])
+    pos = s.rfind(old)
+    IF pos == -1:
+        RETURN({"String": s})
+    END
+    RETURN({"String": s[:pos] + new_s + s[pos+len(old):]})
+END
+
+DEF builtin_index_of(exe, args):
+    IF len(args) != 2: RAISE("index_of expects 2 arguments (string, substring)") END
+    s = Executor_value_to_string(exe, args[0])
+    sub = Executor_value_to_string(exe, args[1])
+    pos = s.find(sub)
+    IF pos == -1:
+        RETURN(float(0))
+    END
+    RETURN(float(len(list(s[:pos])) + 1))
+END
+
+DEF builtin_count_occurrences(exe, args):
+    IF len(args) != 2: RAISE("count_occurrences expects 2 arguments (string, substring)") END
+    s = Executor_value_to_string(exe, args[0])
+    sub = Executor_value_to_string(exe, args[1])
+    IF sub == "": RETURN(float(0)) END
+    RETURN(float(s.count(sub)))
+END
+
+DEF builtin_pad_left(exe, args):
+    # delegate to existing pad_left implementation
+    RETURN(builtin_string_pad_left(exe, args))
+END
+
+DEF builtin_pad_right(exe, args):
+    RETURN(builtin_string_pad_right(exe, args))
+END
+
+# Helper: executor-level value_to_string wrapper (uses existing Executor::value_to_string behavior)
+DEF Executor_value_to_string(exe, v):
+    # If the runtime exposes a utility, prefer it; otherwise, implement a simple fallback
+    IF "value_to_string" in exe:
+        fn = exe["value_to_string"]
+        TRY:
+            RETURN(fn(v)
+        EXCEPT:
+            pass
+        END
+    END
+    # Fallback conversions
+    IF type(v) == dict and has_key(v, "String"): RETURN(v["String"]) END
+    IF type(v) in (int, float): RETURN(fmt_f64(v)) END
+    IF type(v) == list:
+        parts = []
+        FOR item IN v: parts.append(Executor_value_to_string(exe, item)) END
+        RETURN("[" + ",".join(parts) + "]")
+    END
+    IF v == None: RETURN("") END
+    RETURN(str(v))
+END
+
+# String/list/regex builtins (translated from executor.rs)
+DEF builtin_substr(exe, args):
+    IF len(args) < 2 or len(args) > 3: RAISE("substr expects 2 or 3 arguments (string, start [, length])") END
+    s = Executor_value_to_string(exe, args[0])
+    chars = list(s)
+    ln = len(chars)
+    start_arg = args[1]
+    IF type(start_arg) in (int, float):
+        i = int(start_arg) - 1
+        IF i < 0: start = 0 ELSE: start = i END
+    ELSE:
+        RAISE("substr: start must be a number")
+    END
+    IF start >= ln: RETURN({"String": ""}) END
+    take = ln - start
+    IF len(args) == 3:
+        v = args[2]
+        IF type(v) in (int, float):
+            take = int(v)
+        END
+    END
+    end = start + take
+    RETURN({"String": "".join(chars[start:end])})
+END
+
+DEF builtin_regex_match(exe, args):
+    IF len(args) != 2: RAISE("regex_match expects 2 arguments (string, pattern)") END
+    s = Executor_value_to_string(exe, args[0])
+    pat = Executor_value_to_string(exe, args[1])
+    TRY:
+        re = __import__("re")
+        compiled = re.compile(pat)
+        m = compiled.search(s)
+        RETURN(bool(m != None))
+    EXCEPT AS e:
+        RAISE("regex_match: invalid pattern: {}".format(str(e)))
+    END
+END
+
+DEF builtin_regex_find(exe, args):
+    IF len(args) != 2: RAISE("regex_find expects 2 arguments (string, pattern)") END
+    s = Executor_value_to_string(exe, args[0])
+    pat = Executor_value_to_string(exe, args[1])
+    TRY:
+        re = __import__("re")
+        compiled = re.compile(pat)
+        matches = []
+        FOR m IN compiled.finditer(s):
+            matches.append({"String": m.group(0)})
+        END
+        RETURN(matches)
+    EXCEPT AS e:
+        RAISE("regex_find: invalid pattern: {}".format(str(e)))
+    END
+END
+
+DEF builtin_regex_replace(exe, args):
+    IF len(args) != 3: RAISE("regex_replace expects 3 arguments (string, pattern, replacement)") END
+    s = Executor_value_to_string(exe, args[0])
+    pat = Executor_value_to_string(exe, args[1])
+    rep = Executor_value_to_string(exe, args[2])
+    TRY:
+        re = __import__("re")
+        compiled = re.compile(pat)
+        out = compiled.sub(rep, s)
+        RETURN({"String": out})
+    EXCEPT AS e:
+        RAISE("regex_replace: invalid pattern: {}".format(str(e)))
+    END
+END
+
+DEF builtin_regex_captures(exe, args):
+    IF len(args) != 2: RAISE("regex_captures expects 2 arguments (string, pattern)") END
+    s = Executor_value_to_string(exe, args[0])
+    pat = Executor_value_to_string(exe, args[1])
+    TRY:
+        re = __import__("re")
+        compiled = re.compile(pat)
+        m = compiled.search(s)
+        caps = []
+        IF m != None:
+            # group(0) is full match; include group(0) and subsequent groups
+            caps.append({"String": m.group(0)})
+            FOR i IN range(1, len(m.groups())+1):
+                g = m.group(i)
+                IF g == None:
+                    caps.append(None)
+                ELSE:
+                    caps.append({"String": g})
+                END
+            END
+        END
+        RETURN(caps)
+    EXCEPT AS e:
+        RAISE("regex_captures: invalid pattern: {}".format(str(e)))
+    END
+END
+
+# List helpers
+DEF builtin_len(exe, args):
+    IF len(args) != 1: RAISE("length() takes exactly one argument") END
+    a = args[0]
+    IF type(a) == list: RETURN(float(len(a))) END
+    IF type(a) == dict and has_key(a, "String"): RETURN(float(len(list(a["String"])))) END
+    # placeholder for Tensor
+    RETURN(float(0))
+END
+
+DEF builtin_list_len(exe, args):
+    IF len(args) != 1: RAISE("list_len expects 1 argument") END
+    a = args[0]
+    IF type(a) == list: RETURN(float(len(a))) END
+    IF type(a) == dict and has_key(a, "String"): RETURN(float(len(list(a["String"])))) END
+    RAISE("list_len expects a list or string")
+END
+
+DEF builtin_list_push(exe, args):
+    IF len(args) != 2: RAISE("list_push expects 2 arguments (list, element)") END
+    a = args[0]
+    IF type(a) == list:
+        out = a[:]
+        out.append(args[1])
+        RETURN(out)
+    END
+    RAISE("list_push: first argument must be a list")
+END
+
+DEF builtin_list_pop(exe, args):
+    IF len(args) != 1: RAISE("list_pop expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        IF len(a) == 0: RETURN(None) END
+        RETURN(a[-1])
+    END
+    RAISE("list_pop: expected a list")
+END
+
+DEF builtin_list_first(exe, args):
+    IF len(args) != 1: RAISE("list_first expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        IF len(a) == 0: RETURN(None) END
+        RETURN(a[0])
+    END
+    RAISE("list_first: expected a list")
+END
+
+# String/list/regex builtins (translated from executor.rs)
+DEF builtin_substr(exe, args):
+    IF len(args) < 2 or len(args) > 3: RAISE("substr expects 2 or 3 arguments (string, start [, length])") END
+    s = Executor_value_to_string(exe, args[0])
+    chars = list(s)
+    ln = len(chars)
+    start_arg = args[1]
+    IF type(start_arg) in (int, float):
+        i = int(start_arg) - 1
+        IF i < 0: start = 0 ELSE: start = i END
+    ELSE:
+        RAISE("substr: start must be a number")
+    END
+    IF start >= ln: RETURN({"String": ""}) END
+    take = ln - start
+    IF len(args) == 3:
+        v = args[2]
+        IF type(v) in (int, float):
+            take = int(v)
+        END
+    END
+    end = start + take
+    RETURN({"String": "".join(chars[start:end])})
+END
+
+DEF builtin_regex_match(exe, args):
+    IF len(args) != 2: RAISE("regex_match expects 2 arguments (string, pattern)") END
+    s = Executor_value_to_string(exe, args[0])
+    pat = Executor_value_to_string(exe, args[1])
+    TRY:
+        re = __import__("re")
+        compiled = re.compile(pat)
+        m = compiled.search(s)
+        RETURN(bool(m != None))
+    EXCEPT AS e:
+        RAISE("regex_match: invalid pattern: {}".format(str(e)))
+    END
+END
+
+DEF builtin_regex_find(exe, args):
+    IF len(args) != 2: RAISE("regex_find expects 2 arguments (string, pattern)") END
+    s = Executor_value_to_string(exe, args[0])
+    pat = Executor_value_to_string(exe, args[1])
+    TRY:
+        re = __import__("re")
+        compiled = re.compile(pat)
+        matches = []
+        FOR m IN compiled.finditer(s):
+            matches.append({"String": m.group(0)})
+        END
+        RETURN(matches)
+    EXCEPT AS e:
+        RAISE("regex_find: invalid pattern: {}".format(str(e)))
+    END
+END
+
+DEF builtin_regex_replace(exe, args):
+    IF len(args) != 3: RAISE("regex_replace expects 3 arguments (string, pattern, replacement)") END
+    s = Executor_value_to_string(exe, args[0])
+    pat = Executor_value_to_string(exe, args[1])
+    rep = Executor_value_to_string(exe, args[2])
+    TRY:
+        re = __import__("re")
+        compiled = re.compile(pat)
+        out = compiled.sub(rep, s)
+        RETURN({"String": out})
+    EXCEPT AS e:
+        RAISE("regex_replace: invalid pattern: {}".format(str(e)))
+    END
+END
+
+DEF builtin_regex_captures(exe, args):
+    IF len(args) != 2: RAISE("regex_captures expects 2 arguments (string, pattern)") END
+    s = Executor_value_to_string(exe, args[0])
+    pat = Executor_value_to_string(exe, args[1])
+    TRY:
+        re = __import__("re")
+        compiled = re.compile(pat)
+        m = compiled.search(s)
+        caps = []
+        IF m != None:
+            caps.append({"String": m.group(0)})
+            FOR i IN range(1, len(m.groups())+1):
+                g = m.group(i)
+                IF g == None:
+                    caps.append(None)
+                ELSE:
+                    caps.append({"String": g})
+                END
+            END
+        END
+        RETURN(caps)
+    EXCEPT AS e:
+        RAISE("regex_captures: invalid pattern: {}".format(str(e)))
+    END
+END
+
+# List helpers
+DEF builtin_len(exe, args):
+    IF len(args) != 1: RAISE("length() takes exactly one argument") END
+    a = args[0]
+    IF type(a) == list: RETURN(float(len(a))) END
+    IF type(a) == dict and has_key(a, "String"): RETURN(float(len(list(a["String"])))) END
+    # placeholder for Tensor
+    RETURN(float(0))
+END
+
+DEF builtin_list_len(exe, args):
+    IF len(args) != 1: RAISE("list_len expects 1 argument") END
+    a = args[0]
+    IF type(a) == list: RETURN(float(len(a))) END
+    IF type(a) == dict and has_key(a, "String"): RETURN(float(len(list(a["String"])))) END
+    RAISE("list_len expects a list or string")
+END
+
+DEF builtin_list_push(exe, args):
+    IF len(args) != 2: RAISE("list_push expects 2 arguments (list, element)") END
+    a = args[0]
+    IF type(a) == list:
+        out = a[:]
+        out.append(args[1])
+        RETURN(out)
+    END
+    RAISE("list_push: first argument must be a list")
+END
+
+DEF builtin_list_pop(exe, args):
+    IF len(args) != 1: RAISE("list_pop expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        IF len(a) == 0: RETURN(None) END
+        RETURN(a[-1])
+    END
+    RAISE("list_pop: expected a list")
+END
+
+DEF builtin_list_first(exe, args):
+    IF len(args) != 1: RAISE("list_first expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        IF len(a) == 0: RETURN(None) END
+        RETURN(a[0])
+    END
+    RAISE("list_first: expected a list")
+END
+
+DEF builtin_list_last(exe, args):
+    IF len(args) != 1: RAISE("list_last expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        IF len(a) == 0: RETURN(None) END
+        RETURN(a[-1])
+    END
+    RAISE("list_last: expected a list")
+END
+
+DEF builtin_list_rest(exe, args):
+    IF len(args) != 1: RAISE("list_rest expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        IF len(a) > 1: RETURN(a[1:]) ELSE: RETURN([]) END
+    END
+    RAISE("list_rest: expected a list")
+END
+
+DEF builtin_list_rev(exe, args):
+    IF len(args) != 1: RAISE("list_rev expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        out = a[:] ; out.reverse(); RETURN(out)
+    END
+    RAISE("list_rev: expected a list")
+END
+
+DEF builtin_list_sort(exe, args):
+    IF len(args) != 1: RAISE("list_sort expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        def keyfn(x):
+            IF type(x) in (int, float): RETURN((0, float(x))) END
+            RETURN((1, Executor_value_to_string(exe, x)))
+        END
+        out = sorted(a, key=keyfn)
+        RETURN(out)
+    END
+    RAISE("list_sort: expected a list")
+END
+
+DEF builtin_list_min(exe, args):
+    IF len(args) != 1: RAISE("list_min expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        nums = []
+        FOR v IN a:
+            IF type(v) in (int, float): nums.append(float(v)) END
+        END
+        IF len(nums) == 0: RAISE("list_min: empty list") END
+        m = min(nums)
+        RETURN(float(m))
+    END
+    RAISE("list_min: expected a list")
+END
+
+DEF builtin_list_max(exe, args):
+    IF len(args) != 1: RAISE("list_max expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        nums = []
+        FOR v IN a:
+            IF type(v) in (int, float): nums.append(float(v)) END
+        END
+        IF len(nums) == 0: RAISE("list_max: empty list") END
+        m = max(nums)
+        RETURN(float(m))
+    END
+    RAISE("list_max: expected a list")
+END
+
+DEF builtin_list_avg(exe, args):
+    IF len(args) != 1: RAISE("list_avg expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        nums = []
+        FOR v IN a:
+            IF type(v) in (int, float): nums.append(float(v)) END
+        END
+        IF len(nums) == 0: RAISE("list_avg: no numeric elements") END
+        s = sum(nums)
+        RETURN(float(s / len(nums)))
+    END
+    RAISE("list_avg: expected a list")
+END
+
+DEF builtin_list_contains(exe, args):
+    IF len(args) != 2: RAISE("list_contains expects 2 arguments (list, value)") END
+    a = args[0]
+    IF type(a) == list:
+        found = False
+        FOR v IN a:
+            IF v == args[1]: found = True ; BREAK END
+        END
+        RETURN(bool(found))
+    END
+    RAISE("list_contains: first argument must be a list")
+END
+
+DEF builtin_list_take(exe, args):
+    IF len(args) != 2: RAISE("list_take expects 2 arguments (list, count)") END
+    n_arg = args[1]
+    IF type(n_arg) in (int, float): n = int(round(n_arg)) ELSE: RAISE("list_take: count must be a number") END
+    a = args[0]
+    IF type(a) == list: RETURN(a[:n]) END
+    RAISE("list_take: expected a list")
+END
+
+DEF builtin_list_drop(exe, args):
+    IF len(args) != 2: RAISE("list_drop expects 2 arguments (list, count)") END
+    n_arg = args[1]
+    IF type(n_arg) in (int, float): n = int(round(n_arg)) ELSE: RAISE("list_drop: count must be a number") END
+    a = args[0]
+    IF type(a) == list: RETURN(a[n:]) END
+    RAISE("list_drop: expected a list")
+END
+
+DEF builtin_list_slice(exe, args):
+    IF len(args) != 3: RAISE("list_slice expects 3 arguments (list, start, end)") END
+    start_arg = args[1]
+    end_arg = args[2]
+    IF type(start_arg) in (int, float): start = int(round(start_arg)) ELSE: RAISE("list_slice: start must be a number") END
+    IF type(end_arg) in (int, float): end = int(round(end_arg)) ELSE: RAISE("list_slice: end must be a number") END
+    a = args[0]
+    IF type(a) == list:
+        e = min(end, len(a))
+        s = min(start, e)
+        RETURN(a[s:e])
+    END
+    RAISE("list_slice: expected a list")
+END
+
+DEF builtin_list_concat(exe, args):
+    IF len(args) != 2: RAISE("list_concat expects 2 arguments") END
+    a = args[0]; b = args[1]
+    IF type(a) == list and type(b) == list:
+        out = a[:] ; out.extend(b) ; RETURN(out)
+    END
+    RAISE("list_concat: both arguments must be lists")
+END
+
+DEF builtin_list_flatten(exe, args):
+    IF len(args) != 1: RAISE("list_flatten expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        out = []
+        FOR v IN a:
+            IF type(v) == list: out.extend(v) ELSE: out.append(v) END
+        END
+        RETURN(out)
+    END
+    RAISE("list_flatten: expected a list")
+END
+
+# validation/collection/list extras (translated from executor.rs)
+DEF builtin_list_sum(exe, args):
+    IF len(args) != 1: RAISE("list_sum expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        s = 0.0
+        FOR v IN a:
+            IF type(v) in (int, float): s = s + float(v)
+            ELIF type(v) == dict and has_key(v, "Bool"): s = s + (1.0 if v["Bool"] else 0.0)
+            ELIF type(v) == bool: s = s + (1.0 if v else 0.0)
+            END
+        END
+        RETURN(float(s))
+    END
+    RAISE("list_sum: expected a list")
+END
+
+DEF builtin_list_average(exe, args):
+    IF len(args) != 1: RAISE("list_average expects 1 argument") END
+    a = args[0]
+    IF type(a) == list:
+        IF len(a) == 0: RETURN(float(0)) END
+        total = 0.0
+        count = 0
+        FOR v IN a:
+            IF type(v) in (int, float): total = total + float(v); count = count + 1
+            ELSE: RAISE("list_average: all elements must be numbers") END
+        END
+        IF count == 0: RAISE("list_average: no numeric elements") END
+        RETURN(float(total / count))
+    END
+    RAISE("list_average: expected a list")
+END
+
+DEF builtin_not_null(exe, args):
+    IF len(args) != 1: RAISE("not_null expects 1 argument") END
+    RETURN(bool(args[0] != None))
+END
+
+DEF builtin_identity(exe, args):
+    IF len(args) != 1: RAISE("identity expects 1 argument") END
+    RETURN(args[0])
+END
+
+DEF builtin_bool(exe, args):
+    IF len(args) != 1: RAISE("bool() takes exactly one argument") END
+    a = args[0]
+    IF a == None: RETURN(False) END
+    IF type(a) == dict and has_key(a, "Bool"): RETURN(bool(a["Bool"])) END
+    IF type(a) in (int, float): RETURN(bool(a != 0)) END
+    IF type(a) == dict and has_key(a, "String"): RETURN(bool(len(list(a["String"])))) END
+    IF type(a) == str: RETURN(bool(len(a))) END
+    IF type(a) == list: RETURN(bool(len(a))) END
+    RETURN(True)
+END
+
+DEF builtin_validate_not_empty(exe, args):
+    IF len(args) != 2: RAISE("validate_not_empty expects 2 arguments (value, name)") END
+    v = args[0]
+    is_empty = False
+    IF v == None: is_empty = True
+    ELIF type(v) == list and len(v) == 0: is_empty = True
+    ELIF type(v) == dict and has_key(v, "String") and len(list(v["String"])) == 0: is_empty = True
+    END
+    RETURN(bool(not is_empty))
+END
+
+DEF builtin_validate_is_number(exe, args):
+    IF len(args) != 2: RAISE("validate_is_number expects 2 arguments") END
+    v = args[0]
+    RETURN(bool(type(v) in (int, float)))
+END
+
+DEF builtin_validate_is_string(exe, args):
+    IF len(args) != 2: RAISE("validate_is_string expects 2 arguments") END
+    v = args[0]
+    RETURN(bool(type(v) == dict and has_key(v, "String")))
+END
+
+DEF builtin_validate_range(exe, args):
+    IF len(args) != 4: RAISE("validate_range expects 4 arguments (value, min, max, name)") END
+    v = args[0]; lo = args[1]; hi = args[2]
+    IF type(v) in (int, float) and type(lo) in (int, float) and type(hi) in (int, float):
+        RETURN(bool(v >= lo and v <= hi))
+    END
+    RAISE("validate_range: first 3 arguments must be numbers")
+END
+
+DEF builtin_validate_length(exe, args):
+    IF len(args) != 4: RAISE("validate_length expects 4 arguments") END
+    v = args[0]
+    IF type(v) == list: actual = float(len(v))
+    ELIF type(v) == dict and has_key(v, "String"): actual = float(len(list(v["String"])))
+    ELSE: RAISE("validate_length: first argument must be list or string") END
+    lo = args[1]; hi = args[2]
+    IF type(lo) in (int, float) and type(hi) in (int, float):
+        RETURN(bool(actual >= lo and actual <= hi))
+    END
+    RAISE("validate_length: min_len and max_len must be numbers")
+END
+
+# Collection helpers
+DEF builtin_collection_empty(exe, args):
+    RETURN([])
+END
+
+DEF builtin_collection_single(exe, args):
+    IF len(args) != 1: RAISE("collection_single expects 1 argument") END
+    RETURN([args[0]])
+END
+
+DEF builtin_collection_pair(exe, args):
+    IF len(args) != 2: RAISE("collection_pair expects 2 arguments") END
+    RETURN([args[0], args[1]])
+END
+
+DEF builtin_collection_triple(exe, args):
+    IF len(args) != 3: RAISE("collection_triple expects 3 arguments") END
+    RETURN([args[0], args[1], args[2]])
+END
+
+DEF builtin_collection_fill(exe, args):
+    IF len(args) != 2: RAISE("collection_fill expects 2 arguments (value, size)") END
+    n_arg = args[1]
+    IF type(n_arg) in (int, float): n = int(round(n_arg)) ELSE: RAISE("collection_fill: size must be a number") END
+    out = []
+    FOR i IN range(n): out.append(args[0]) END
+    RETURN(out)
+END
+
+DEF builtin_collection_merge(exe, args):
+    IF len(args) != 2: RAISE("collection_merge expects 2 arguments") END
+    a = args[0]; b = args[1]
+    IF type(a) == list and type(b) == list:
+        out = a[:] ; out.extend(b) ; RETURN(out)
+    END
+    RAISE("collection_merge: both arguments must be lists")
+END
+
+DEF builtin_collection_merge_unique(exe, args):
+    IF len(args) != 2: RAISE("collection_merge_unique expects 2 arguments") END
+    a = args[0]; b = args[1]
+    IF type(a) == list and type(b) == list:
+        seen = set()
+        out = []
+        FOR v IN (a + b):
+            k = Executor_value_to_string(exe, v)
+            IF k not in seen:
+                seen.add(k)
+                out.append(v)
+            END
+        END
+        RETURN(out)
+    END
+    RAISE("collection_merge_unique: both arguments must be lists")
+END
+
+DEF builtin_collection_zip(exe, args):
+    IF len(args) != 2: RAISE("collection_zip expects 2 arguments") END
+    a = args[0]; b = args[1]
+    IF type(a) == list and type(b) == list:
+        out = []
+        ln = min(len(a), len(b))
+        FOR i IN range(ln):
+            out.append([a[i], b[i]])
+        END
+        RETURN(out)
+    END
+    RAISE("collection_zip: both arguments must be lists")
+END
+
+# Directory / File helpers (high-level aliases)
+DEF builtin_dir_get_current(exe, args):
+    RETURN(fs_cwd())
+END
+
+DEF builtin_dir_exists(exe, args):
+    IF len(args) != 1: RAISE("dir_exists expects 1 argument") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        RETURN(bool(file_is_dir(p["String"])))
+    END
+    RAISE("dir_exists: path must be string")
+END
+
+DEF builtin_dir_create(exe, args):
+    IF len(args) < 1: RAISE("dir_create expects 1 argument") END
+    p = args[0]
+    IF NOT (type(p) == dict and has_key(p, "String")): RAISE("dir_create: path must be string") END
+    parents = False
+    IF len(args) >= 2 and (type(args[1]) in (bool, dict, int, float)):
+        # accept True as boolean or numeric 1
+        parents = bool(args[1])
+    END
+    fs_mkdir_all(p["String"])  # best-effort; ignore parents flag for now
+    RETURN(p["String"])
+END
+
+DEF builtin_dir_list(exe, args):
+    IF len(args) != 1: RAISE("dir_list expects 1 argument") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        lst = fs_list_dir(p["String"]) or []
+        out = []
+        FOR e IN lst: out.append({"String": e}) END
+        RETURN(out)
+    END
+    RAISE("dir_list: path must be string")
+END
+
+DEF builtin_dir_delete(exe, args):
+    IF len(args) != 1: RAISE("dir_delete expects 1 argument") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        fs_remove_dir(p["String"]) ; RETURN(p["String"]) END
+    RAISE("dir_delete: path must be string")
+END
+
+DEF builtin_file_exists(exe, args):
+    IF len(args) != 1: RAISE("file_exists expects 1 argument") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        RETURN(bool(file_exists(p["String"])))
+    END
+    RAISE("file_exists: path must be string")
+END
+
+DEF builtin_file_write(exe, args):
+    IF len(args) != 2: RAISE("file_write expects 2 arguments (path, data)") END
+    path_v = args[0]; data_v = args[1]
+    IF NOT (type(path_v) == dict and has_key(path_v, "String")): RAISE("file_write: path must be string") END
+    path = path_v["String"]
+    IF type(data_v) == dict and has_key(data_v, "String"):
+        fs_write_file(path, data_v["String"]) ; RETURN({"String": "Wrote {} bytes to {}".format(len(list(data_v["String"])), path)})
+    ELIF type(data_v) == list:
+        # expect list of numbers (bytes)
+        b = []
+        FOR it IN data_v:
+            IF type(it) in (int, float): b.append(int(round(it)) & 0xFF) ELSE: RAISE("file_write: list must contain numbers") END
+        END
+        fs_write_bytes(path, b)
+        RETURN({"String": "Wrote {} bytes to {}".format(len(b), path)})
+    END
+    RAISE("file_write: data must be string or list")
+END
+
+DEF builtin_file_size(exe, args):
+    IF len(args) != 1: RAISE("file_size expects 1 argument") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        RETURN(float(fs_file_size(p["String"])))
+    END
+    RAISE("file_size: path must be string")
+END
+
+DEF builtin_file_delete(exe, args):
+    IF len(args) != 1: RAISE("file_delete expects 1 argument") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        fs_remove_file(p["String"]) ; RETURN(p["String"]) END
+    RAISE("file_delete: path must be string")
+END
+
+DEF builtin_file_read(exe, args):
+    IF len(args) != 1: RAISE("file_read expects 1 argument") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        data = fs_read_bytes(p["String"]) or []
+        out = []
+        FOR b IN data: out.append(float(b)) END
+        RETURN(out)
+    END
+    RAISE("file_read: path must be string")
+END
+
+# High-level helpers: READ_FILE/WRITE_FILE/APPEND_FILE/READ_LINES/WRITE_LINES and aliases
+DEF builtin_read_file(exe, args):
+    IF len(args) != 1: RAISE("READ_FILE expects 1 argument: path") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        return_str = fs_read_to_string(p["String"]) or ""
+        RETURN({"String": return_str})
+    END
+    RAISE("READ_FILE: path must be a string")
+END
+
+DEF builtin_write_file(exe, args):
+    IF len(args) != 2: RAISE("WRITE_FILE expects 2 arguments: path, content") END
+    p = args[0]; content_v = args[1]
+    IF NOT (type(p) == dict and has_key(p, "String")): RAISE("WRITE_FILE: path must be a string") END
+    content = Executor_value_to_string(exe, content_v)
+    fs_write_file(p["String"], content)
+    RETURN(None)
+END
+
+DEF builtin_append_file(exe, args):
+    IF len(args) != 2: RAISE("APPEND_FILE expects 2 arguments: path, content") END
+    p = args[0]; content_v = args[1]
+    IF NOT (type(p) == dict and has_key(p, "String")): RAISE("APPEND_FILE: path must be a string") END
+    content = Executor_value_to_string(exe, content_v)
+    fs_append_file(p["String"], content)
+    RETURN(None)
+END
+
+DEF builtin_read_lines(exe, args):
+    IF len(args) != 1: RAISE("READ_LINES expects 1 argument: path") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        s = fs_read_to_string(p["String"]) or ""
+        lines = s.split('\n') if s != "" else []
+        out = []
+        FOR l IN lines:
+            IF l.endswith('\r'): l = l[:-1] END
+            IF l == "": CONTINUE END
+            out.append({"String": l})
+        END
+        RETURN(out)
+    END
+    RAISE("READ_LINES: path must be a string")
+END
+
+DEF builtin_write_lines(exe, args):
+    IF len(args) != 2: RAISE("WRITE_LINES expects 2 arguments: path, lines") END
+    p = args[0]; lines_v = args[1]
+    IF NOT (type(p) == dict and has_key(p, "String")): RAISE("WRITE_LINES: path must be a string") END
+    IF type(lines_v) != list: RAISE("WRITE_LINES: second argument must be a list") END
+    parts = []
+    FOR itm IN lines_v: parts.append(Executor_value_to_string(exe, itm)) END
+    fs_write_file(p["String"], "\n".join(parts) + "\n")
+    RETURN(None)
+END
+
+DEF builtin_FILE_EXISTS(exe, args):
+    IF len(args) != 1: RAISE("FILE_EXISTS expects 1 argument: path") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        RETURN(bool(file_exists(p["String"])))
+    END
+    RAISE("FILE_EXISTS: path must be a string")
+END
+
+DEF builtin_delete_file(exe, args):
+    IF len(args) != 1: RAISE("DELETE_FILE expects 1 argument: path") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        fs_remove_file(p["String"]) ; RETURN(None)
+    END
+    RAISE("DELETE_FILE: path must be a string")
+END
+
+DEF builtin_rename_file(exe, args):
+    IF len(args) != 2: RAISE("RENAME_FILE expects 2 arguments: src, dst") END
+    src = args[0]; dst = args[1]
+    IF NOT (type(src) == dict and has_key(src, "String") and type(dst) == dict and has_key(dst, "String")): RAISE("RENAME_FILE: src/dst must be strings") END
+    fs_rename_file(src["String"], dst["String"]) ; RETURN(None)
+END
+
+DEF builtin_copy_file(exe, args):
+    IF len(args) != 2: RAISE("COPY_FILE expects 2 arguments: src, dst") END
+    src = args[0]; dst = args[1]
+    IF NOT (type(src) == dict and has_key(src, "String") and type(dst) == dict and has_key(dst, "String")): RAISE("COPY_FILE: src/dst must be strings") END
+    fs_copy_file(src["String"], dst["String"]) ; RETURN(None)
+END
+
+DEF builtin_FILE_SIZE(exe, args):
+    IF len(args) != 1: RAISE("FILE_SIZE expects 1 argument: path") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        RETURN(float(fs_file_size(p["String"])))
+    END
+    RAISE("FILE_SIZE: path must be a string")
+END
+
+# File handle API: OPEN/READLINE/WRITELINE and helpers
+DEF builtin_open(exe, args):
+    IF len(args) != 2: RAISE("OPEN expects 2 arguments: path, mode") END
+    p = args[0]; mode_v = args[1]
+    IF NOT (type(p) == dict and has_key(p, "String")): RAISE("OPEN: path must be a string") END
+    mode = Executor_value_to_string(exe, mode_v)
+    hid = "file://{}".format(exe.get("next_file_id",1))
+    exe["next_file_id"] = exe.get("next_file_id",1) + 1
+    # store a simple handle mapping; backend file operations use helper fs_* wrappers
+    exe["open_files"][hid] = {"path": p["String"], "mode": mode}
+    RETURN({"String": hid})
+END
+
+DEF builtin_readline(exe, args):
+    IF len(args) != 1: RAISE("READLINE expects 1 argument: file handle") END
+    h = args[0]
+    IF NOT (type(h) == dict and has_key(h, "String")): RAISE("READLINE: handle must be a string") END
+    hid = h["String"]
+    ent = exe["open_files"].get(hid, None)
+    IF ent == None: RAISE("READLINE: unknown handle \"{}\"".format(hid)) END
+    # fallback: read entire file and simulate line reads (not stateful)
+    s = fs_read_to_string(ent["path"]) or ""
+    IF s == "": RETURN(None) END
+    first_line = s.split('\n')[0]
+    RETURN({"String": first_line.rstrip('\r')})
+END
+
+DEF builtin_writeline(exe, args):
+    IF len(args) != 2: RAISE("WRITELINE expects 2 arguments: handle, text") END
+    h = args[0]; text_v = args[1]
+    IF NOT (type(h) == dict and has_key(h, "String")): RAISE("WRITELINE: handle must be a string") END
+    hid = h["String"]
+    ent = exe["open_files"].get(hid, None)
+    IF ent == None: RAISE("WRITELINE: unknown handle \"{}\"".format(hid)) END
+    txt = Executor_value_to_string(exe, text_v) + "\n"
+    # append to file
+    fs_append_file(ent["path"], txt)
+    RETURN(None)
+END
+
+# End FS & collection helpers
+DEF builtin_fs_mkdir(exe, args):
+    IF len(args) != 1: RAISE("fs.mkdir expects 1 argument (path)") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        fs_mkdir_all(p["String"]) 
+        RETURN(None)
+    END
+    RAISE("fs.mkdir: path must be a string")
+END
+
+DEF builtin_fs_rmdir(exe, args):
+    IF len(args) != 1: RAISE("fs.rmdir expects 1 argument (path)") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        fs_remove_dir(p["String"]) 
+        RETURN(None)
+    END
+    RAISE("fs.rmdir: path must be a string")
+END
+
+DEF builtin_fs_size(exe, args):
+    IF len(args) != 1: RAISE("fs.size expects 1 argument (path)") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        RETURN(float(fs_file_size(p["String"])))
+    END
+    RAISE("fs.size: path must be a string")
+END
+
+DEF builtin_fs_is_dir(exe, args):
+    IF len(args) != 1: RAISE("fs.is_dir expects 1 argument (path)") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        RETURN(bool(file_is_dir(p["String"])))
+    END
+    RAISE("fs.is_dir: path must be a string")
+END
+
+DEF builtin_fs_is_file(exe, args):
+    IF len(args) != 1: RAISE("fs.is_file expects 1 argument (path)") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        RETURN(bool(file_is_file(p["String"])))
+    END
+    RAISE("fs.is_file: path must be a string")
+END
+
+DEF builtin_fs_copy(exe, args):
+    IF len(args) != 2: RAISE("fs.copy expects 2 arguments (src, dst)") END
+    s = args[0]; d = args[1]
+    IF type(s)==dict and has_key(s,"String") and type(d)==dict and has_key(d,"String"):
+        fs_copy_file(s["String"], d["String"])
+        RETURN(None)
+    END
+    RAISE("fs.copy: arguments must be strings")
+END
+
+DEF builtin_fs_move(exe, args):
+    IF len(args) != 2: RAISE("fs.move expects 2 arguments (src, dst)") END
+    s = args[0]; d = args[1]
+    IF type(s)==dict and has_key(s,"String") and type(d)==dict and has_key(d,"String"):
+        fs_rename_file(s["String"], d["String"])
+        RETURN(None)
+    END
+    RAISE("fs.move: arguments must be strings")
+END
+
+DEF builtin_fs_realpath(exe, args):
+    IF len(args) != 1: RAISE("fs.realpath expects 1 argument (path)") END
+    p = args[0]
+    IF type(p)==dict and has_key(p,"String"):
+        IF p["String"] == "fs.getcwd": RETURN(fs_cwd()) END
+        RETURN(fs_canonicalize(p["String"]))
+    END
+    RAISE("fs.realpath: path must be a string")
+END
+
+DEF builtin_fs_touch(exe, args):
+    IF len(args) != 1: RAISE("fs.touch expects 1 argument (path)") END
+    p = args[0]
+    IF type(p)==dict and has_key(p,"String"):
+        fs_touch_file(p["String"]) 
+        RETURN(None)
+    END
+    RAISE("fs.touch: path must be a string")
+END
+
+DEF builtin_fs_basename(exe, args):
+    IF len(args) != 1: RAISE("fs.basename expects 1 argument (path)") END
+    p = args[0]
+    IF type(p)==dict and has_key(p,"String"):
+        RETURN(fs_basename(p["String"]))
+    END
+    RAISE("fs.basename: path must be a string")
+END
+
+DEF builtin_fs_dirname(exe, args):
+    IF len(args) != 1: RAISE("fs.dirname expects 1 argument (path)") END
+    p = args[0]
+    IF type(p)==dict and has_key(p,"String"):
+        RETURN(fs_dirname(p["String"]))
+    END
+    RAISE("fs.dirname: path must be a string")
+END
+
+DEF builtin_fs_ext(exe, args):
+    IF len(args) != 1: RAISE("fs.ext expects 1 argument (path)") END
+    p = args[0]
+    IF type(p)==dict and has_key(p,"String"):
+        RETURN(fs_extension(p["String"]))
+    END
+    RAISE("fs.ext: path must be a string")
+END
+
+# rand.int advanced behavior (0/1/2 args) and rand.ls
+DEF builtin_rand_int(exe, args):
+    ln = len(args)
+    IF ln == 0:
+        # 31-bit-ish random via time_ns
+        RETURN(float(int(time_now_ns()) & 0x7FFFFFFF))
+    ELIF ln == 1:
+        a = args[0]
+        IF type(a) in (int, float):
+            maxv = int(a)
+            IF maxv <= 0:
+                RETURN(float(0))
+            END
+            RETURN(float(int(time_now_ns()) % maxv))
+        END
+        RAISE("rand.int: expected numeric argument")
+    ELIF ln == 2:
+        a = args[0]; b = args[1]
+        IF type(a) in (int, float) and type(b) in (int, float):
+            mn = int(a); mx = int(b)
+            IF mx <= mn:
+                RETURN(float(mn))
+            END
+            rng = int(time_now_ns())
+            RETURN(float((rng % (mx - mn)) + mn))
+        END
+        RAISE("rand.int: expected two numeric arguments")
+    ELSE:
+        RAISE("rand.int: expected 0, 1, or 2 arguments")
+    END
+END
+
+DEF builtin_rand_ls(exe, args):
+    n = int(args[0]) if len(args) >= 1 and type(args[0]) in (int, float) else 8
+    res = []
+    FOR i IN range(n):
+        res.append(float((time_now_ns() % 1000000) / 1000000.0))
+    END
+    RETURN(res)
+END
+
+# tensor.* helpers (basic implementations)
+DEF builtin_tensor_rand(exe, args):
+    IF len(args) != 1: RAISE("tensor.rand expects 1 argument (shape)") END
+    shape_arg = args[0]
+    IF type(shape_arg) == dict and has_key(shape_arg, "List"):
+        dims = [int(x) for x in shape_arg["List"]]
+    ELIF type(shape_arg) == list:
+        dims = [int(x) if type(x) in (int,float) else 0 for x in shape_arg]
+    ELIF type(shape_arg) in (int, float):
+        dims = [int(shape_arg)]
+    ELSE:
+        RAISE("tensor.rand: argument must be a list or number")
+    END
+    numel = 1
+    FOR d IN dims: numel = numel * d END
+    seed = int(time_now_ns())
+    state = seed ^ 0xDEADBEEFCAFEBABE
+    data = []
+    FOR _ IN range(numel):
+        state = (state * 6364136223846793005 + 1442695040888963407) & ((1<<64)-1)
+        data.append(float((state >> 33) & 0xFFFFFFFF) / float(0xFFFFFFFF))
+    END
+    # Represent tensor as dict: {"Tensor": {"shape": dims, "dtype":"float32", "data": data}}
+    RETURN({"Tensor": {"shape": dims, "dtype": "float32", "data": data}})
+END
+
+DEF builtin_tensor_eye(exe, args):
+    IF len(args) != 1: RAISE("tensor.eye expects 1 argument (n)") END
+    n = int(args[0]) if type(args[0]) in (int, float) else 0
+    data = [0.0 for _ in range(n*n)]
+    i = 0
+    WHILE i < n:
+        data[i*n + i] = 1.0
+        i = i + 1
+    END
+    RETURN({"Tensor": {"shape": [n, n], "dtype": "float32", "data": data}})
+END
+
+DEF builtin_tensor_from_list(exe, args):
+    IF len(args) != 1: RAISE("tensor.from_list expects 1 argument") END
+    items = args[0]
+    IF type(items) != list: RAISE("tensor.from_list: argument must be a list") END
+    data = []
+    FOR item IN items:
+        IF type(item) in (int, float): data.append(float(item))
+        ELSE: RAISE("tensor.from_list: non-numeric element") END
+    END
+    RETURN({"Tensor": {"shape": [len(data)], "dtype": "float32", "data": data}})
+END
+
+# tensor helpers: shape, dtype, sum, mean, zeros, ones, reshape, transpose, flatten, add, sub, mul
+DEF builtin_tensor_shape(exe, args):
+    IF len(args) != 1: RAISE("tensor.shape expects 1 argument") END
+    t = args[0]
+    IF type(t) == dict and has_key(t, "Tensor"):
+        shape = t["Tensor"].get("shape", [])
+        RETURN([{"Number": float(s)} if False else s for s in shape])
+    END
+    RAISE("tensor.shape expects a tensor")
+END
+
+DEF builtin_tensor_dtype(exe, args):
+    IF len(args) != 1: RAISE("tensor.dtype expects 1 argument") END
+    t = args[0]
+    IF type(t) == dict and has_key(t, "Tensor"):
+        RETURN(t["Tensor"].get("dtype", ""))
+    END
+    RAISE("tensor.dtype expects a tensor")
+END
+
+DEF builtin_tensor_sum(exe, args):
+    IF len(args) != 1: RAISE("tensor.sum expects 1 argument") END
+    t = args[0]
+    IF type(t) == dict and has_key(t, "Tensor"):
+        data = t["Tensor"].get("data", [])
+        s = 0.0
+        FOR v IN data: s = s + float(v) END
+        RETURN(float(s))
+    END
+    RAISE("tensor.sum expects a tensor")
+END
+
+DEF builtin_tensor_mean(exe, args):
+    IF len(args) != 1: RAISE("tensor.mean expects 1 argument") END
+    t = args[0]
+    IF type(t) == dict and has_key(t, "Tensor"):
+        data = t["Tensor"].get("data", [])
+        cnt = len(data)
+        IF cnt == 0: RETURN(float(0.0)) END
+        s = 0.0
+        FOR v IN data: s = s + float(v) END
+        RETURN(float(s / cnt))
+    END
+    RAISE("tensor.mean expects a tensor")
+END
+
+DEF builtin_tensor_zeros(exe, args):
+    IF len(args) != 1: RAISE("tensor.zeros expects 1 argument (shape)") END
+    shape_arg = args[0]
+    IF type(shape_arg) == list:
+        shape = [int(x) if type(x) in (int,float) else 0 for x in shape_arg]
+    ELIF type(shape_arg) in (int, float):
+        shape = [int(shape_arg)]
+    ELSE:
+        RAISE("tensor.zeros: argument must be a list or number")
+    END
+    numel = 1
+    FOR d IN shape: numel = numel * d END
+    RETURN({"Tensor": {"shape": shape, "dtype": "float32", "data": [0.0 for _ in range(numel)]}})
+END
+
+DEF builtin_tensor_ones(exe, args):
+    IF len(args) != 1: RAISE("tensor.ones expects 1 argument (shape)") END
+    shape_arg = args[0]
+    IF type(shape_arg) == list:
+        shape = [int(x) if type(x) in (int,float) else 0 for x in shape_arg]
+    ELIF type(shape_arg) in (int, float):
+        shape = [int(shape_arg)]
+    ELSE:
+        RAISE("tensor.ones: argument must be a list or number")
+    END
+    numel = 1
+    FOR d IN shape: numel = numel * d END
+    RETURN({"Tensor": {"shape": shape, "dtype": "float32", "data": [1.0 for _ in range(numel)]}})
+END
+
+DEF builtin_tensor_reshape(exe, args):
+    IF len(args) != 2: RAISE("tensor.reshape expects 2 arguments (tensor, shape)") END
+    t = args[0]
+    newshape = args[1]
+    IF NOT (type(t) == dict and has_key(t, "Tensor")): RAISE("tensor.reshape expects a tensor") END
+    IF type(newshape) != list: RAISE("tensor.reshape: shape must be a list") END
+    old = t["Tensor"]
+    data = old.get("data", [])
+    new = [int(x) if type(x) in (int,float) else 0 for x in newshape]
+    numel = 1
+    FOR d IN new: numel = numel * d END
+    IF numel != len(data): RAISE("tensor.reshape: size mismatch") END
+    RETURN({"Tensor": {"shape": new, "dtype": old.get("dtype","float32"), "data": data[:]}})
+END
+
+DEF builtin_tensor_transpose(exe, args):
+    IF len(args) != 1: RAISE("tensor.transpose expects 1 argument") END
+    t = args[0]
+    IF NOT (type(t) == dict and has_key(t, "Tensor")): RAISE("tensor.transpose expects a tensor") END
+    old = t["Tensor"]
+    shape = old.get("shape", [])
+    data = old.get("data", [])
+    IF len(shape) != 2: RAISE("tensor.transpose: expected 2D tensor") END
+    rows = int(shape[0]); cols = int(shape[1])
+    new = [cols, rows]
+    newdata = [0.0 for _ in range(rows*cols)]
+    r = 0
+    WHILE r < rows:
+        c = 0
+        WHILE c < cols:
+            newdata[c*rows + r] = data[r*cols + c]
+            c = c + 1
+        END
+        r = r + 1
+    END
+    RETURN({"Tensor": {"shape": new, "dtype": old.get("dtype","float32"), "data": newdata}})
+END
+
+DEF builtin_tensor_flatten(exe, args):
+    IF len(args) != 1: RAISE("tensor.flatten expects 1 argument") END
+    t = args[0]
+    IF NOT (type(t) == dict and has_key(t, "Tensor")): RAISE("tensor.flatten expects a tensor") END
+    old = t["Tensor"]
+    data = old.get("data", [])
+    RETURN({"Tensor": {"shape": [len(data)], "dtype": old.get("dtype","float32"), "data": data[:]}})
+END
+
+DEF _tensor_binary_op(a, b, op):
+    # op is a string: 'add','sub','mul'
+    IF NOT (type(a)==dict and has_key(a,"Tensor")):
+        RAISE("tensor op: first arg must be tensor")
+    END
+    at = a["Tensor"]
+    IF type(b) == dict and has_key(b, "Tensor"):
+        bt = b["Tensor"]
+        IF at.get("shape",[]) != bt.get("shape",[]): RAISE("tensor op: shape mismatch") END
+        data = []
+        FOR i IN range(len(at["data"])):
+            av = float(at["data"][i]); bv = float(bt["data"][i])
+            IF op == 'add': data.append(av + bv)
+            ELIF op == 'sub': data.append(av - bv)
+            ELIF op == 'mul': data.append(av * bv)
+            END
+        END
+        RETURN({"Tensor": {"shape": at.get("shape",[]), "dtype": at.get("dtype","float32"), "data": data}})
+    ELIF type(b) in (int, float):
+        data = []
+        FOR v IN at["data"]:
+            IF op == 'add': data.append(float(v) + float(b))
+            ELIF op == 'sub': data.append(float(v) - float(b))
+            ELIF op == 'mul': data.append(float(v) * float(b))
+            END
+        END
+        RETURN({"Tensor": {"shape": at.get("shape",[]), "dtype": at.get("dtype","float32"), "data": data}})
+    ELSE:
+        RAISE("tensor op: unsupported rhs")
+    END
+END
+
+DEF builtin_tensor_add(exe, args):
+    IF len(args) != 2: RAISE("tensor.add expects 2 arguments") END
+    RETURN(_tensor_binary_op(args[0], args[1], 'add'))
+END
+
+DEF builtin_tensor_sub(exe, args):
+    IF len(args) != 2: RAISE("tensor.sub expects 2 arguments") END
+    RETURN(_tensor_binary_op(args[0], args[1], 'sub'))
+END
+
+DEF builtin_tensor_mul(exe, args):
+    IF len(args) != 2: RAISE("tensor.mul expects 2 arguments") END
+    RETURN(_tensor_binary_op(args[0], args[1], 'mul'))
+END
+
+# tensor.div
+DEF builtin_tensor_div(exe, args):
+    IF len(args) != 2: RAISE("tensor.div expects 2 arguments") END
+    a = args[0]
+    b = args[1]
+    IF type(a) != dict or not has_key(a, "Tensor"): RAISE("tensor.div: first arg must be tensor") END
+    at = a["Tensor"]
+    data_a = at.get("data", [])
+    IF type(b) == dict and has_key(b, "Tensor"):
+        bt = b["Tensor"]
+        IF at.get("shape",[]) != bt.get("shape",[]): RAISE("tensor.div: shape mismatch") END
+        data = []
+        FOR i IN range(len(data_a)):
+            denom = float(bt.get("data",[])[i])
+            IF denom == 0.0:
+                data.append(float('nan'))
+            ELSE:
+                data.append(float(data_a[i]) / denom)
+            END
+        END
+        RETURN({"Tensor": {"shape": at.get("shape",[]), "dtype": at.get("dtype","float32"), "data": data}})
+    ELIF type(b) in (int, float):
+        IF float(b) == 0.0: RAISE("tensor.div: division by zero") END
+        data = [float(x)/float(b) for x in data_a]
+        RETURN({"Tensor": {"shape": at.get("shape",[]), "dtype": at.get("dtype","float32"), "data": data}})
+    ELSE:
+        RAISE("tensor.div: expected (tensor, tensor) or (tensor, number)")
+    END
+END
+
+# tensor.matmul (naive 2D matmul)
+DEF builtin_tensor_matmul(exe, args):
+    IF len(args) != 2: RAISE("tensor.matmul expects 2 arguments (a,b)") END
+    a = args[0]; b = args[1]
+    IF type(a) != dict or not has_key(a, "Tensor") or type(b) != dict or not has_key(b, "Tensor"):
+        RAISE("tensor.matmul requires two tensors")
+    END
+    A = a["Tensor"]; B = b["Tensor"]
+    if len(A.get("shape",[])) != 2 or len(B.get("shape",[])) != 2:
+        RAISE("tensor.matmul: only 2D tensors supported")
+    END
+    rows = int(A["shape"][0]); mid = int(A["shape"][1]); cols = int(B["shape"][1])
+    IF mid != int(B["shape"][0]): RAISE("tensor.matmul: inner dims mismatch") END
+    out = [0.0 for _ in range(rows*cols)]
+    r = 0
+    WHILE r < rows:
+        c = 0
+        WHILE c < cols:
+            s = 0.0
+            k = 0
+            WHILE k < mid:
+                s = s + float(A["data"][r*mid + k]) * float(B["data"][k*cols + c])
+                k = k + 1
+            END
+            out[r*cols + c] = s
+            c = c + 1
+        END
+        r = r + 1
+    END
+    RETURN({"Tensor": {"shape": [rows, cols], "dtype": A.get("dtype","float32"), "data": out}})
+END
+
+# AI helpers (relu, softmax, losses, tensor<->list)
+DEF builtin_ai_relu(exe, args):
+    IF len(args) != 1: RAISE("ai.relu expects 1 argument") END
+    t = args[0]
+    IF type(t) != dict or not has_key(t, "Tensor"): RAISE("ai.relu expects a tensor") END
+    old = t["Tensor"]
+    data = [max(0.0, float(x)) for x in old.get("data",[])]
+    RETURN({"Tensor": {"shape": old.get("shape",[]), "dtype": old.get("dtype","float32"), "data": data}})
+END
+
+DEF builtin_ai_softmax(exe, args):
+    IF len(args) != 1: RAISE("ai.softmax expects 1 argument") END
+    t = args[0]
+    IF type(t) != dict or not has_key(t, "Tensor"): RAISE("ai.softmax expects a tensor") END
+    old = t["Tensor"]
+    data = old.get("data",[])
+    # simple softmax over full vector
+    maxv = max([float(x) for x in data]) if len(data) > 0 else 0.0
+    exps = [math_exp(float(x) - maxv) for x in data]
+    s = sum(exps)
+    IF s == 0.0: res = [0.0 for _ in exps]
+    ELSE: res = [e / s for e in exps]
+    END
+    RETURN({"Tensor": {"shape": old.get("shape",[]), "dtype": old.get("dtype","float32"), "data": res}})
+END
+
+DEF builtin_ai_loss_mse(exe, args):
+    IF len(args) != 2: RAISE("ai.loss.mse expects 2 arguments") END
+    p = args[0]; t = args[1]
+    IF type(p) != dict or not has_key(p, "Tensor") or type(t) != dict or not has_key(t, "Tensor"): RAISE("ai.loss.mse expects two tensors") END
+    pd = p["Tensor"].get("data",[]); td = t["Tensor"].get("data",[])
+    IF len(pd) != len(td): RAISE("MSE loss: tensors must have same size") END
+    s = 0.0
+    FOR i IN range(len(pd)): d = float(pd[i]) - float(td[i]); s = s + d*d END
+    RETURN(float(s / len(pd) if len(pd)>0 else 0.0))
+END
+
+DEF builtin_ai_loss_crossentropy(exe, args):
+    IF len(args) != 2: RAISE("ai.loss.crossentropy expects 2 arguments") END
+    logits = args[0]; target = args[1]
+    IF type(logits) != dict or not has_key(logits, "Tensor") or type(target) not in (int, float, dict): RAISE("ai.loss.crossentropy expects (logits_tensor, target_class_number)") END
+    data = logits["Tensor"].get("data",[])
+    tgt = int(target) if type(target) in (int, float) else int(target.get("Number",0))
+    # compute softmax and cross-entropy
+    maxv = max([float(x) for x in data]) if len(data)>0 else 0.0
+    exps = [math_exp(float(x)-maxv) for x in data]
+    s = sum(exps)
+    probs = [e/s for e in exps] if s != 0 else [0.0 for _ in exps]
+    IF tgt < 0 or tgt >= len(probs): RAISE("ai.loss.crossentropy: target out of range") END
+    loss = -math_log(max(probs[tgt], 1e-15))
+    RETURN(float(loss))
+END
+
+DEF builtin_ai_tensor_to_list(exe, args):
+    IF len(args) != 1: RAISE("ai.tensor_to_list expects 1 argument") END
+    t = args[0]
+    IF type(t) != dict or not has_key(t, "Tensor"): RAISE("ai.tensor_to_list expects a tensor") END
+    RETURN([float(x) for x in t["Tensor"].get("data",[])])
+END
+
+DEF builtin_ai_list_to_tensor(exe, args):
+    IF len(args) != 1: RAISE("ai.list_to_tensor expects 1 argument") END
+    items = args[0]
+    IF type(items) != list: RAISE("ai.list_to_tensor expects a list") END
+    data = []
+    FOR it IN items:
+        IF type(it) in (int, float): data.append(float(it))
+        ELSE: RAISE("ai.list_to_tensor: list must contain only numbers") END
+    END
+    RETURN({"Tensor": {"shape": [len(data)], "dtype": "float32", "data": data}})
+END
+
+# shell helpers
+DEF builtin_shell_pwd(exe, args): RETURN(fs_cwd()) END
+
+DEF builtin_shell_cd(exe, args):
+    IF len(args) != 1: RAISE("cd expects 1 argument (directory)") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        fs_chdir(p["String"]) 
+        RETURN(p["String"])
+    END
+    RAISE("cd: path must be a string")
+END
+
+DEF builtin_shell_ls(exe, args):
+    path = None
+    IF len(args) == 1 and type(args[0]) == dict and has_key(args[0], "String"):
+        path = args[0]["String"]
+    END
+    entries = fs_list_dir(path) if path != None else fs_list_dir(fs_cwd())
+    RETURN([{"String": e} for e in entries])
+END
+
+DEF builtin_shell_ls_long(exe, args):
+    path = None
+    IF len(args) == 1 and type(args[0]) == dict and has_key(args[0], "String"):
+        path = args[0]["String"]
+    END
+    entries = fs_list_dir_long(path)
+    RETURN(entries)
+END
+
+DEF builtin_shell_mkdir(exe, args):
+    IF len(args) == 0 or len(args) > 2: RAISE("mkdir expects 1-2 arguments (path, [parents])") END
+    path = args[0]["String"] if type(args[0])==dict and has_key(args[0],"String") else None
+    parents = False
+    IF len(args) == 2:
+        parents = bool(args[1])
+    END
+    IF path == None: RAISE("mkdir: path must be a string") END
+    fs_mkdir_all(path) if parents else fs_mkdir(path)
+    RETURN(path)
+END
+
+DEF builtin_shell_rm(exe, args):
+    IF len(args) != 1: RAISE("rm expects 1 argument (file)") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        fs_delete_file(p["String"]) 
+        RETURN(None)
+    END
+    RAISE("rm: path must be a string")
+END
+
+# rand.choice / seed
+DEF builtin_rand_choice(exe, args):
+    IF len(args) != 1: RAISE("rand.choice expects 1 arg (list)") END
+    lst = args[0]
+    IF type(lst) != list: RAISE("rand.choice: argument must be a list") END
+    IF len(lst) == 0: RAISE("rand.choice: list is empty") END
+    idx = int(time_now_ns()) % len(lst)
+    RETURN(lst[idx])
+END
+
+DEF builtin_rand_seed(exe, args):
+    # No persistent RNG state in this PS runtime; ignore or set exe.rng seed if supported
+    IF len(args) >= 1:
+        exe["rng_seed"] = int(args[0])
+    END
+    RETURN(None)
+END
+
+# GC builtins
+DEF builtin_gc_collect(exe, args):
+    n = collect_garbage(exe)
+    RETURN(float(n))
+END
+
+DEF builtin_gc_count(exe, args):
+    # best-effort: try to read allocated_count from strainer if present
+    gc = exe.get("gc", None)
+    IF gc != None and type(gc) == dict and has_key(gc, "allocated_count"):
+        RETURN(float(gc["allocated_count"]))
+    END
+    RETURN(float(0.0))
+END
+
+DEF builtin_gc_stats(exe, args):
+    cnt = builtin_gc_count(exe, [])
+    RETURN("gc: {} objects live".format(int(cnt)))
+END
+
+DEF builtin_gc_pause(exe, args): RETURN(None) END
+DEF builtin_gc_resume(exe, args): RETURN(None) END
+
+# debug.* builtins
+DEF builtin_debug_print(exe, args):
+    FOR v IN args:
+        TRY:
+            print("[DEBUG] {}".format(value_to_string(v)))
+        EXCEPT:
+            print("[DEBUG] {}".format(str(v)))
+        END
+    END
+    RETURN(None)
+END
+
+DEF builtin_debug_type(exe, args):
+    IF len(args) != 1: RAISE("debug.type expects 1 argument") END
+    v = args[0]
+    t = "unknown"
+    IF type(v) in (int, float): t = "number"
+    ELIF type(v) == str: t = "string"
+    ELIF type(v) == bool: t = "bool"
+    ELIF type(v) == list: t = "list"
+    ELIF type(v) == dict:
+        IF has_key(v, "Tensor"): t = "tensor"
+        ELIF has_key(v, "Lambda"): t = "lambda"
+        ELIF has_key(v, "LazyImport"): t = "lazy"
+        ELIF has_key(v, "Heap"): t = "heap"
+        ELIF has_key(v, "Dict"): t = "dict"
+        ELIF has_key(v, "Pending"): t = "pending"
+        ELIF has_key(v, "Pointer"): t = "pointer"
+        ELIF has_key(v, "FamilyNode"): t = "family_node"
+        ELIF has_key(v, "Builtin"): t = "builtin"
+        ELIF has_key(v, "String"): t = "string"
+        ELSE: t = "dict"
+        END
+    ELIF v == None: t = "none"
+    END
+    RETURN(t)
+END
+
+DEF builtin_debug_len(exe, args):
+    IF len(args) != 1: RAISE("debug.len expects 1 argument") END
+    v = args[0]
+    IF type(v) == list: RETURN(float(len(v))) END
+    IF type(v) == dict and has_key(v, "String"): RETURN(float(len(v["String"]))) END
+    RAISE("debug.len: expected list or string")
+END
+
+DEF builtin_debug_dump(exe, args):
+    # best-effort dump of environment
+    print(exe.get("env", {}))
+    RETURN(None)
+END
+
+DEF builtin_debug_trace(exe, args):
+    IF len(args) != 1: RAISE("debug.trace expects 1 argument") END
+    IF getenv("PASTA_TRACE") != None:
+        print("[TRACE] {}".format(value_to_string(args[0])))
+    END
+    RETURN(None)
+END
+
+DEF builtin_debug_assert(exe, args):
+    IF len(args) == 0: RAISE("debug.assert expects 1 or 2 arguments") END
+    cond = args[0]
+    truthy = False
+    IF cond == None: truthy = False
+    ELIF cond == False: truthy = False
+    ELIF type(cond) in (int, float) and cond == 0: truthy = False
+    ELIF type(cond) == str and cond == "": truthy = False
+    ELSE: truthy = True
+    END
+    IF NOT truthy:
+        msg = "assertion failed"
+        IF len(args) >= 2:
+            msg = value_to_string(args[1])
+        END
+        RAISE("[ASSERT] {}".format(msg))
+    END
+    RETURN(None)
+END
+
+DEF builtin_debug_backtrace(exe, args):
+    tb = exe.get("traceback", {})
+    frames = tb.get("frames", []) if type(tb) == dict else []
+    IF len(frames) == 0:
+        print("[BACKTRACE]\n  (no frames)")
+    ELSE:
+        out = []
+        i = 0
+        FOR f IN frames:
+            i = i + 1
+            out.append("  #{} {}".format(i, str(f)))
+        END
+        print("[BACKTRACE]\n" + "\n".join(out))
+    END
+    RETURN(None)
+END
+
+# fs.* builtins (use existing helpers where available)
+DEF builtin_fs_read(exe, args):
+    IF len(args) != 1: RAISE("fs.read expects 1 argument (path)") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        RETURN(fs_read_to_string(p["String"]))
+    END
+    RAISE("fs.read: path must be a string")
+END
+
+DEF builtin_fs_write(exe, args):
+    IF len(args) != 2: RAISE("fs.write expects 2 arguments (path, content)") END
+    p = args[0]
+    v = args[1]
+    IF type(p) == dict and has_key(p, "String"):
+        content = value_to_string(v)
+        fs_write_file(p["String"], content)
+        RETURN(None)
+    END
+    RAISE("fs.write: path must be a string")
+END
+
+DEF builtin_fs_append(exe, args):
+    IF len(args) != 2: RAISE("fs.append expects 2 arguments (path, content)") END
+    p = args[0]
+    v = args[1]
+    IF type(p) == dict and has_key(p, "String"):
+        content = value_to_string(v)
+        fs_append_file(p["String"], content)
+        RETURN(None)
+    END
+    RAISE("fs.append: path must be a string")
+END
+
+DEF builtin_fs_exists(exe, args):
+    IF len(args) != 1: RAISE("fs.exists expects 1 argument (path)") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        RETURN(bool(file_exists(p["String"])))
+    END
+    RAISE("fs.exists: path must be a string")
+END
+
+DEF builtin_fs_delete(exe, args):
+    IF len(args) != 1: RAISE("fs.delete expects 1 argument (path)") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        fs_delete_file(p["String"]) 
+        RETURN(None)
+    END
+    RAISE("fs.delete: path must be a string")
+END
+
+DEF builtin_fs_list(exe, args):
+    IF len(args) != 1: RAISE("fs.list expects 1 argument (dir)") END
+    p = args[0]
+    IF type(p) == dict and has_key(p, "String"):
+        entries = fs_list_dir(p["String"]) if callable(fs_list_dir) else []
+        RETURN([{"String": e} for e in entries])
+    END
+    RAISE("fs.list: path must be a string")
+END

@@ -1,0 +1,42 @@
+logs/
+logs/*
+.DS_Store
+__pycache__/
+*.pyc# Build artifacts
+build/
+bin/
+lib/
+*.o
+*.a
+*.so
+*.dylib
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+.pytest_cache/
+
+# Data files (large)
+data/vectors/*.bin
+data/corpus/*.jsonl
+
+# Keep examples
+!data/corpus/example_*.jsonl
+
+# Test outputs
+tests/output/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

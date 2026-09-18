@@ -1,0 +1,8 @@
+2026-07-16T06:55:49.382342700+00:00 | user=unknown | cmd=change_fs | target=local | result=success
+2026-07-16T06:55:57.749378100+00:00 | user=unknown | cmd=cd | target=tests | result=success
+2026-07-16T06:56:08.175879500+00:00 | user=unknown | cmd=cd | target=.. | result=success
+2026-07-16T06:57:00.028278700+00:00 | user=unknown | cmd=cd | target=examples | result=success
+2026-07-16T06:57:09.465944900+00:00 | user=unknown | cmd=cd | target=.. | result=success
+2026-07-16T06:57:16.447606200+00:00 | user=unknown | cmd=cd | target=tests | result=success
+2026-07-16T07:32:52.749335600+00:00 | user=unknown | cmd=change_fs | target=local | result=success
+2026-07-16T07:33:02.260684400+00:00 | user=unknown | cmd=cd | target=tests | result=success

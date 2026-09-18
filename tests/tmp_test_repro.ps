@@ -1,0 +1,4 @@
+FROM repro USE test END
+
+# Do not call test(); ensure import alone does not execute function body
+PRINT "imported"

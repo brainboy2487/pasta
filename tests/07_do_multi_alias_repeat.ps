@@ -1,0 +1,17 @@
+# Define three simple lambdas
+DEF a:
+    print "A"
+END
+
+DEF b:
+    print "B"
+END
+
+DEF c:
+    print "C"
+END
+
+# DO with multiple targets, alias, and repeat counts
+DO a, b, c AS name FOR 2, 1, 3:
+    print name
+END

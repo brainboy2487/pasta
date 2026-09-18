@@ -1,0 +1,5 @@
+{"id": "1f71e0f4ac9b47cd", "key": "bonjour", "token": "bonjour", "responses": ["bonjour"], "type": "other"}
+{"id": "21eb6533733a5e47", "key": "foobaz", "token": "foobaz", "responses": ["foobaz"], "type": "other"}
+{"id": "593b743b207e10ff", "key": "le", "token": "le", "responses": ["le"], "type": "other"}
+{"id": "e4e00d3dfecfd734", "key": "monde", "token": "monde", "responses": ["monde"], "type": "other"}
+{"id": "b54ba7f5621240d4", "key": "qux", "token": "qux", "responses": ["qux"], "type": "other"}

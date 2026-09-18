@@ -1,0 +1,8 @@
+{"key": "a", "responses": ["tiny"]}
+{"key": "world", "responses": ["this"]}
+{"key": "is", "responses": ["a"]}
+{"key": "corpus", "responses": ["hello"]}
+{"key": "training", "responses": ["corpus"]}
+{"key": "this", "responses": ["is"]}
+{"key": "hello", "responses": ["world", "mage"]}
+{"key": "tiny", "responses": ["training"]}

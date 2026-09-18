@@ -1,0 +1,5 @@
+{"id":"greeting-1","key":"hello","aliases":["hi","hey"],"type":"greeting","responses":["Hello! I am Mage. How can I help you today?"],"tags":["greeting"]}
+{"id":"farewell-1","key":"goodbye","aliases":["bye","see ya"],"type":"farewell","responses":["Goodbye!","See you later!"],"tags":["farewell"]}
+{"id":"joke-1","key":"joke","aliases":["tell me a joke"],"type":"joke","responses":["Why did the programmer quit his job? Because he didn't get arrays."],"tags":["joke"]}
+{"id":"fact-1","key":"fact","aliases":["tell me a fact"],"type":"fact","responses":["Honey never spoils — edible honey has been found in ancient tombs."],"tags":["fact"]}
+{"id":"cmd-help","key":"help","aliases":["help -all"],"type":"command","responses":["Type 'help -all' to list commands."],"tags":["command"]}

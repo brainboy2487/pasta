@@ -1,0 +1,24 @@
+{"id":"gen0001","key":"a","type":"other","responses":["tiny"]}
+{"id":"gen0002","key":"world","type":"other","responses":["this"]}
+{"id":"gen0003","key":"is","type":"other","responses":["a"]}
+{"id":"gen0004","key":"corpus","type":"other","responses":["hello"]}
+{"id":"gen0005","key":"training","type":"other","responses":["corpus"]}
+{"id":"gen0006","key":"this","type":"other","responses":["is"]}
+{"id":"gen0007","key":"hello","type":"other","responses":["world","mage"]}
+{"id":"gen0008","key":"tiny","type":"other","responses":["training"]}
+{"key": "a", "responses": ["tiny"]}
+{"key": "world", "responses": ["this"]}
+{"key": "is", "responses": ["a"]}
+{"key": "corpus", "responses": ["hello"]}
+{"key": "training", "responses": ["corpus"]}
+{"key": "this", "responses": ["is"]}
+{"key": "hello", "responses": ["world", "mage"]}
+{"key": "tiny", "responses": ["training"]}
+{"key": "a", "type": "other", "responses": ["tiny"]}
+{"key": "world", "type": "other", "responses": ["this"]}
+{"key": "is", "type": "other", "responses": ["a"]}
+{"key": "corpus", "type": "other", "responses": ["hello"]}
+{"key": "training", "type": "other", "responses": ["corpus"]}
+{"key": "this", "type": "other", "responses": ["is"]}
+{"key": "hello", "type": "other", "responses": ["world", "mage"]}
+{"key": "tiny", "type": "other", "responses": ["training"]}

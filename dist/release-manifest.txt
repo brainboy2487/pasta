@@ -1,0 +1,5 @@
+os=windows
+artifact=pasta-windows-x64.zip
+checksum_file=pasta-windows-x64.sha256
+cargo_version=0.1.0-alpha
+created_utc=2026-07-16T19:29:42.2776894Z

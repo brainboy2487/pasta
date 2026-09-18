@@ -1,0 +1,5 @@
+{
+  "run_time": 1769390559,
+  "input": "data/corpus/scraped_sample.jsonl",
+  "vocab_out": "data/vocab/generated_vocab.jsonl"
+}

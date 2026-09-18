@@ -1,0 +1,5 @@
+FROM json_bad USE loads, dumps END
+s = read_file("tests/tmp_json_input.json")
+PRINT s
+v = loads(s)
+PRINT dumps(v)

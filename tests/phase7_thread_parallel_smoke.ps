@@ -1,0 +1,19 @@
+THREAD smoke_worker_main:
+    sleep(15)
+
+PARALLEL:
+    THREAD smoke_lane_alpha:
+        sleep(10)
+    THREAD smoke_lane_beta:
+        sleep(10)
+
+WAIT FOR smoke_worker_main
+WAIT FOR smoke_lane_alpha
+WAIT FOR smoke_lane_beta
+
+status = thread.status("smoke_worker_main")
+IF thread smoke_worker_main is finished:
+    PRINT("thread-main-finished")
+END
+PRINT(status)
+PRINT("=== PHASE7 THREAD PARALLEL SMOKE PASS ===")

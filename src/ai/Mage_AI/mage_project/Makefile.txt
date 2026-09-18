@@ -1,0 +1,241 @@
+# MAGE Build System
+# ===================
+# Generated: 2026-01-23 15:32:35
+
+CC = gcc
+CFLAGS = -Wall -Wextra -O3 -march=native -std=c11 -fPIC -Iinclude
+LDFLAGS = -lm -lpthread -ldl
+
+# Auto-detect utf8proc (prefer pkg-config). If found, enable HAVE_UTF8PROC
+UTF8PROC_CFLAGS := $(shell pkg-config --cflags utf8proc 2>/dev/null)
+UTF8PROC_LIBS := $(shell pkg-config --libs utf8proc 2>/dev/null)
+ifeq ($(UTF8PROC_LIBS),)
+ifneq (,$(wildcard /usr/include/utf8proc.h))
+	UTF8PROC_CFLAGS := -I/usr/include
+	UTF8PROC_LIBS := -lutf8proc
+endif
+endif
+ifeq ($(UTF8PROC_LIBS),)
+HAVE_UTF8PROC := 0
+else
+HAVE_UTF8PROC := 1
+CFLAGS += -DHAVE_UTF8PROC $(UTF8PROC_CFLAGS)
+LDFLAGS += $(UTF8PROC_LIBS)
+endif
+
+# Detect GLFW via pkg-config (preferred) or a common header path fallback
+GLFW_CFLAGS := $(shell pkg-config --cflags glfw3 2>/dev/null)
+GLFW_LIBS := $(shell pkg-config --libs glfw3 2>/dev/null)
+ifeq ($(GLFW_LIBS),)
+	ifneq (,$(wildcard /usr/include/GLFW/glfw3.h))
+		GLFW_CFLAGS := -I/usr/include
+		GLFW_LIBS := -lglfw -lGL
+	endif
+endif
+
+# Set GUI source depending on availability of GLFW (we always build a gui binary,
+# but use a lightweight stub if GLFW isn't available so builds don't fail).
+ifeq ($(GLFW_LIBS),)
+	GUI_SRC = $(SRC_DIR)/gui/mage_gui_stub.c
+	GUI_CFLAGS =
+	GUI_LIBS =
+else
+	GUI_SRC = $(SRC_DIR)/gui/mage_gui.c
+	GUI_CFLAGS = $(GLFW_CFLAGS) -DUSE_GLFW
+	GUI_LIBS = $(GLFW_LIBS) -lGL
+endif
+
+# Vocabulary validation
+VALIDATE_PY = python3 tools/validate_vocab.py
+VOCAB_FILES = $(wildcard data/vocab_*.jsonl)
+
+# Directories
+SRC_DIR = src
+BUILD_DIR = build
+BIN_DIR = bin
+LIB_DIR = lib
+GUI_DIR = src/gui
+
+# Source files
+CORE_SRCS = $(wildcard $(SRC_DIR)/core/*.c)
+SRC_TOP_SRCS = $(wildcard $(SRC_DIR)/*.c)
+GEN_SRCS = $(wildcard $(SRC_DIR)/generators/*.c)
+IO_SRCS = $(wildcard $(SRC_DIR)/io/*.c)
+UTIL_SRCS = $(wildcard $(SRC_DIR)/utils/*.c)
+ 
+ALL_SRCS = $(SRC_TOP_SRCS) $(CORE_SRCS) $(GEN_SRCS) $(IO_SRCS) $(UTIL_SRCS)
+ALL_OBJS = $(ALL_SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
+
+GUI_SRCS = $(wildcard $(SRC_DIR)/gui/*.c)
+GUI_OBJS = $(GUI_SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
+
+# Targets
+.PHONY: all clean test benchmark
+
+all: $(LIB_DIR)/libmage.so $(BIN_DIR)/mage_cli tools/gen_mphf
+
+# Validate vocabulary JSONL files
+.PHONY: validate-vocab ci
+validate-vocab:
+	@if [ -z "$(VOCAB_FILES)" ]; then \
+		echo "No vocab files found (glob: data/vocab_*.jsonl)"; exit 0; \
+	fi
+	@for f in $(VOCAB_FILES); do \
+		echo "Validating $$f"; \
+		$(VALIDATE_PY) $$f || exit 1; \
+	done
+
+# Validate the canonical generated vocab file
+.PHONY: validate-generated-vocab
+validate-generated-vocab:
+	@echo "Validating data/vocab/generated_vocab.jsonl"
+	@./$(BIN_DIR)/mage_cli validate-vocab data/vocab/generated_vocab.jsonl || exit 1
+
+# CI convenience target — run lightweight checks (vocab validation for now)
+ci: validate-vocab validate-generated-vocab $(BIN_DIR)/test_tokenizer $(BIN_DIR)/test_rp $(BIN_DIR)/test_rp_parity $(BIN_DIR)/test_rp_k
+	./$(BIN_DIR)/test_tokenizer
+	./$(BIN_DIR)/test_rp || exit 1
+	./$(BIN_DIR)/test_rp_parity || exit 1
+	./$(BIN_DIR)/test_rp_k || exit 1
+	@echo "CI checks passed"
+
+# Shared library
+$(LIB_DIR)/libmage.so: $(ALL_OBJS)
+	@mkdir -p $(LIB_DIR)
+	$(CC) $(CFLAGS) -shared -o $@ $^ $(LDFLAGS)
+
+# CLI tool
+$(BIN_DIR)/mage_cli: $(SRC_DIR)/mage_cli.c $(LIB_DIR)/libmage.so
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $< -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+
+# GUI target: build the real GLFW GUI when available, otherwise build a lightweight stub
+$(BIN_DIR)/mage_gui: $(GUI_SRC) $(LIB_DIR)/libmage.so
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) $(GUI_CFLAGS) -o $@ $(GUI_SRC) -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS) $(GUI_LIBS)
+
+# Object files
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# Tests
+test: $(BIN_DIR)/test_runner
+	./$(BIN_DIR)/test_runner
+
+$(BIN_DIR)/test_runner: tests/test_runner.c $(LIB_DIR)/libmage.so
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $< -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+
+$(BIN_DIR)/test_vocab_pipeline: tests/test_vocab_pipeline.c $(LIB_DIR)/libmage.so
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $< -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+
+$(BIN_DIR)/bench_tap_shortlist: tests/bench_tap_shortlist.c $(LIB_DIR)/libmage.so
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $< -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+
+$(BIN_DIR)/test_tokenizer: tests/unit/test_tokenizer.c $(LIB_DIR)/libmage.so
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $< -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+
+$(BIN_DIR)/test_rp: tests/unit/test_rp.c $(LIB_DIR)/libmage.so
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $< -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+
+$(BIN_DIR)/test_rp_parity: tests/unit/test_rp_parity.c tests/golden/rp_golden.txt $(LIB_DIR)/libmage.so
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ tests/unit/test_rp_parity.c -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+
+tests/golden/rp_golden.txt: tools/gen_rp_golden.c $(LIB_DIR)/libmage.so
+	@mkdir -p tests/golden
+	$(CC) $(CFLAGS) -o bin/gen_rp_golden tools/gen_rp_golden.c -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+	./bin/gen_rp_golden tests/golden/rp_golden.txt 1024 0x12345678
+
+$(BIN_DIR)/test_rp_k: tests/unit/test_rp_k.c $(LIB_DIR)/libmage.so
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ tests/unit/test_rp_k.c -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+
+$(BIN_DIR)/test_tokenizer_golden: tests/unit/test_tokenizer_golden.c $(LIB_DIR)/libmage.so
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $< -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+
+$(BIN_DIR)/test_tokenizer_parity: tests/unit/test_tokenizer_parity.c $(LIB_DIR)/libmage.so
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $< -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+
+# Benchmarks
+benchmark: $(BIN_DIR)/benchmark_suite
+	./$(BIN_DIR)/benchmark_suite
+
+$(BIN_DIR)/benchmark_suite: tests/benchmarks/benchmark_suite.c $(LIB_DIR)/libmage.so
+	@mkdir -p $(BIN_DIR)
+	$(CC) $(CFLAGS) -o $@ $< -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+
+clean:
+	rm -rf $(BUILD_DIR) $(BIN_DIR) $(LIB_DIR)
+
+# tools helper build (compiled C helper)
+tools/gen_mphf: tools/gen_mphf.c | $(LIB_DIR)/libmage.so
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -Iinclude -o $@ tools/gen_mphf.c -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+
+# CHD-style MPHF generator (preferred when available)
+tools/gen_mphf_chd: tools/gen_mphf_chd.c | $(LIB_DIR)/libmage.so
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -Iinclude -o $@ tools/gen_mphf_chd.c -L$(LIB_DIR) -lmage -Wl,-rpath,'$$ORIGIN/../lib' $(LDFLAGS)
+
+# Install tools into bin for packaging convenience
+install-tools: tools/gen_mphf_chd tools/gen_mphf
+	@mkdir -p $(BIN_DIR)
+	# Install both binaries; prefer CHD generator as the default gen_mphf
+	cp -f tools/gen_mphf_chd $(BIN_DIR)/gen_mphf_chd || true
+	cp -f tools/gen_mphf $(BIN_DIR)/gen_mphf || true
+	if [ -f tools/gen_mphf_chd ]; then cp -f tools/gen_mphf_chd $(BIN_DIR)/gen_mphf; fi
+
+# Development targets
+debug: CFLAGS += -g -O0 -DDEBUG
+debug: all
+
+profile: CFLAGS += -pg
+profile: all
+
+simd: CFLAGS += -mavx2 -mfma
+simd: all
+
+# Integration harness runner (optional CI job)
+.PHONY: integration-harness
+integration-harness: all
+	@echo "Running integration harness tests/integration/cli_harness.py"
+	python3 tests/integration/cli_harness.py || exit 1
+
+# Full integration suite (python-driven)
+.PHONY: integration-full
+integration-full: all
+	@echo "Running full integration suite tests/integration/full_integration.py"
+	python3 tests/integration/full_integration.py || exit 1
+
+# Smoke tests (quick checks)
+.PHONY: smoke
+smoke: all
+	@echo "Running smoke checks"
+	./bin/mage_cli version || exit 1
+	./bin/mage_cli ping || exit 1
+	python3 tests/integration/test_response_improvement.py || exit 1
+	@echo "Smoke checks passed"
+
+
+# Convenience: run the Python-first training pipeline on the default scraped corpus
+.PHONY: train-pipeline
+train-pipeline:
+	@echo "Running training pipeline (python/tools/train_pipeline.py)"
+	python3 python/tools/train_pipeline.py --input data/corpus/scraped.jsonl --vocab-out data/vocab/generated_vocab.jsonl || exit 1
+
+.PHONY: examples serve
+examples:
+	@echo "Building examples/simple_client"
+	gcc -Iinclude -Llib -lmage -o examples/simple_client examples/simple_client.c || true
+
+serve:
+	@echo "Starting minimal HTTP serve_api (python/tools/serve_api.py)"
+	python3 python/tools/serve_api.py

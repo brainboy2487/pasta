@@ -1,0 +1,1892 @@
+# src/parser/parser.ps
+# Translated from src/parser/parser.rs — initial section (ParseError, Parser, helpers)
+
+# ParseError: simple struct-like dict with span and message
+DEF ParseError_new(span, message):
+    RETURN({"span": span, "message": message})
+END
+
+# Parser factory: parser is represented as a dict with fields and helper functions
+DEF Parser_new(tokens):
+    # precedence map: higher number binds tighter
+    prec = {
+        "At": 45,
+        "Caret": 42,
+        "Star": 40,
+        "Slash": 40,
+        "FloorDiv": 40,
+        "Backslash": 40,
+        "Percent": 40,
+        "Plus": 30,
+        "Minus": 30,
+        "LShift": 25,
+        "RShift": 25,
+        "Ampersand": 15,
+        "EqEq": 20,
+        "Neq": 20,
+        "Lt": 20,
+        "Gt": 20,
+        "Lte": 20,
+        "Gte": 20,
+        "Approx": 20,
+        "NotEq": 20,
+        "StrictEq": 20,
+        "And": 10,
+        "Or": 5,
+        "Pipe": 4,
+        "PipeOr": 4,
+        "PipeBoth": 4,
+        "PipeMap": 4,
+        "PipeArrow": 3,
+        "FloorDiv": 40,
+        "Backslash": 40
+    }
+
+    diagnostics = []
+    # eof token placeholder: a minimal token-like dict
+    eof = {"kind": "Eof", "value": None, "line": 0, "col": 0}
+
+    parser = {
+        "tokens": tokens,
+        "pos": 0,
+        "prec": prec,
+        "diagnostics": diagnostics,
+        "eof": eof
+    }
+
+    RETURN(parser)
+END
+
+# Helper: peek current token
+DEF parser_peek(p):
+    pos = p["pos"]
+    tks = p["tokens"]
+    IF pos >= list_len(tks):
+        RETURN(p["eof"])
+    END
+    RETURN(tks[pos])
+END
+
+# Helper: advance and return current token
+DEF parser_advance(p):
+    pos = p["pos"]
+    tks = p["tokens"]
+    IF pos >= list_len(tks):
+        RETURN(p["eof"])
+    END
+    t = tks[pos]
+    # increment pos
+    p["pos"] = pos + 1
+    RETURN(t)
+END
+
+# match_token: if next token kind equals kind (string), consume and return true
+DEF parser_match_token(p, kind):
+    IF parser_check(p, kind):
+        parser_advance(p)
+        RETURN(true)
+    END
+    RETURN(false)
+END
+
+# check token kind without consuming
+DEF parser_check(p, kind):
+    t = parser_peek(p)
+    RETURN(t["kind"] == kind)
+END
+
+# is_eof: whether next token is Eof
+DEF parser_is_eof(p):
+    t = parser_peek(p)
+    RETURN(t["kind"] == "Eof")
+END
+
+# current source span from current token
+DEF parser_current_span(p):
+    t = parser_peek(p)
+    # Span is represented as dict {line_start, col_start, line_end, col_end}
+    RETURN({"line_start": t["line"], "col_start": t["col"], "line_end": t["line"], "col_end": t["col"]})
+END
+
+# case-insensitive identifier check
+DEF parser_check_identifier_ci(p, expected):
+    t = parser_peek(p)
+    IF t["kind"] != "Identifier":
+        RETURN(false)
+    END
+    v = t["value"]
+    IF v == None:
+        RETURN(false)
+    END
+    # eq_ignore_ascii_case: implement simple lowercase compare
+    RETURN(str.lower(v) == str.lower(expected))
+END
+
+# precedence lookup
+DEF parser_get_prec(p, kind):
+    prec = p["prec"]
+    IF has_key(prec, kind):
+        RETURN(prec[kind])
+    END
+    RETURN(0)
+END
+
+# token to binary op mapping
+DEF parser_token_to_binop(kind):
+    IF kind == "Plus": RETURN("Add")
+    IF kind == "Minus": RETURN("Sub")
+    IF kind == "Star": RETURN("Mul")
+    IF kind == "Slash": RETURN("Div")
+    IF kind == "Percent": RETURN("Mod")
+    IF kind == "Caret": RETURN("Pow")
+    IF kind == "At": RETURN("MatMul")
+    IF kind == "EqEq": RETURN("Eq")
+    IF kind == "Neq": RETURN("Neq")
+    IF kind == "Lt": RETURN("Lt")
+    IF kind == "Gt": RETURN("Gt")
+    IF kind == "Lte": RETURN("Lte")
+    IF kind == "Gte": RETURN("Gte")
+    IF kind == "Approx": RETURN("Approx")
+    IF kind == "NotEq": RETURN("NotEq")
+    IF kind == "StrictEq": RETURN("StrictEq")
+    IF kind == "And": RETURN("And")
+    IF kind == "Or": RETURN("Or")
+    IF kind == "Pipe": RETURN("Pipe")
+    IF kind == "PipeOr": RETURN("PipeOr")
+    IF kind == "PipeBoth": RETURN("PipeBoth")
+    IF kind == "PipeMap": RETURN("PipeMap")
+    IF kind == "PipeArrow": RETURN("PipeArrow")
+    IF kind == "FloorDiv": RETURN("FloorDiv")
+    IF kind == "Backslash": RETURN("TruncDiv")
+    IF kind == "LShift": RETURN("Shl")
+    IF kind == "RShift": RETURN("Shr")
+    IF kind == "Ampersand": RETURN("BitAnd")
+    # fallback
+    RETURN("Add")
+END
+
+# recover_to_next_statement: skip tokens until Newline or Dedent
+DEF parser_recover_to_next_statement(p):
+    WHILE (NOT parser_is_eof(p)) AND (NOT parser_check(p, "Newline")) AND (NOT parser_check(p, "Dedent")):
+        parser_advance(p)
+    END
+    IF parser_check(p, "Newline"):
+        parser_advance(p)
+    END
+END
+
+# End of translated section (lines ~1-200). Further functions (parse, parse_statement, parse_expression)
+# will be implemented in subsequent passes, line-by-line, preserving behavior.
+
+# ---------------------------------------------------------------------------
+# Next: parse_statement (delegates to specialized parsers implemented later)
+# ---------------------------------------------------------------------------
+DEF parser_parse_statement(p):
+    # Skip leading newlines
+    WHILE parser_check(p, "Newline"):
+        parser_advance(p)
+    END
+    IF parser_is_eof(p):
+        RETURN(None)
+    END
+
+    # If next is Dedent, consume and return None (block end sentinel)
+    IF parser_check(p, "Dedent"):
+        parser_advance(p)
+        RETURN(None)
+    END
+
+    tok = parser_peek(p)
+    kind = tok["kind"]
+
+    # Dispatch by token kind. Many branches delegate to helper parser_* functions
+    IF kind == "Obj":
+        # Guard for accidental use of reserved keyword as variable (OBJ = ...)
+        pos = p["pos"]
+        next_is_assign = false
+        IF pos + 1 < list_len(p["tokens"]):
+            next_tok = p["tokens"][pos + 1]
+            IF next_tok["kind"] == "Eq":
+                next_is_assign = true
+            END
+        END
+        IF next_is_assign:
+            bad_tok = parser_advance(p) # consume `obj`
+            parser_recover_to_next_statement(p)
+            RETURN({"type": "Other", "kind": "reserved_keyword_error", "payload": "cannot use reserved keyword 'obj' as a variable name — try renaming it (e.g. 'result', 'data', 'record')", "span": {"line": bad_tok["line"], "col": bad_tok["col"]}})
+        END
+        # Lookahead to decide family-new vs obj-decl
+        is_fam_new = false
+        IF pos + 3 < list_len(p["tokens"]):
+            p3 = p["tokens"][pos + 3]
+            IF p3["kind"] == "LParen":
+                is_fam_new = true
+            END
+        END
+        IF is_fam_new:
+            RETURN(parser_parse_expr_statement(p))
+        ELSE:
+            RETURN(parser_parse_obj_decl(p))
+        END
+    END
+
+    IF kind == "DoesParentExist":
+        parser_advance(p)
+        # consume possible newlines, parse target expression
+        WHILE parser_check(p, "Newline"):
+            parser_advance(p)
+        END
+        target = parser_parse_expression(p, 0)
+        WHILE parser_check(p, "Newline"):
+            parser_advance(p)
+        END
+        RETURN({"type": "ExprStmt", "expr": {"type": "DoesParentExist", "target": target}, "span": parser_current_span(p)})
+    END
+
+    IF kind == "ColonColon":
+        parser_advance(p) # consume ::
+        # optional USE/UNSAFE parsing simplified — delegate to parser_parse_use_unsafe
+        RETURN(parser_parse_colon_colon(p))
+    END
+
+    IF kind == "Identifier":
+        # Handle many identifier-starting statements: mod, ret, assignments, imports, etc.
+        val = tok["value"]
+        IF val != None:
+            up = str.upper(val)
+            IF up == "MOD":
+                RETURN(parser_parse_module_decl(p))
+            END
+            # Detect RET.NOW / RET.LATE variants
+            is_ret = false
+            IF up.startswith("RET.NOW") OR up.startswith("RET.LATE"):
+                is_ret = true
+            ELSE:
+                # Three-token form: RET . NOW/LATE
+                pos = p["pos"]
+                IF pos + 2 < list_len(p["tokens"]):
+                    if p["tokens"][pos + 1]["kind"] == "Dot" and p["tokens"][pos + 2]["value"] != None:
+                        s = str.upper(p["tokens"][pos + 2]["value"]) 
+                        IF s == "NOW" OR s == "LATE":
+                            is_ret = true
+                        END
+                    END
+                END
+            END
+            IF is_ret:
+                RETURN(parser_parse_ret_statement(p))
+            END
+            # assignment detection
+            IF parser_peek_is_assign(p) OR parser_peek_is_multi_assign(p):
+                RETURN(parser_parse_assignment_statement(p))
+            END
+            # import/use detection (simple heuristic)
+            low = str.lower(val)
+            IF low == "import" OR low == "use" OR low == "require" OR low == "include":
+                RETURN(parser_parse_import_alias_statement(p))
+            END
+            # priority override heuristic
+            IF parser_peek_is_priority_override(p):
+                RETURN(parser_parse_priority_override(p))
+            END
+        END
+        # default: expression statement
+        RETURN(parser_parse_expr_statement(p))
+    END
+
+    IF kind == "Spawn":
+        RETURN(parser_parse_spawn_block(p))
+    END
+    IF kind == "Def":
+        RETURN(parser_parse_def_statement(p))
+    END
+    IF kind == "From":
+        RETURN(parser_parse_from_block(p))
+    END
+    IF kind == "Return":
+        # alias: return expr -> RET.NOW form
+        parser_advance(p)
+        IF parser_check(p, "Colon"): parser_advance(p) END
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        value = parser_parse_expression(p, 0)
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        RETURN({"type": "RetNow", "value": value, "span": parser_current_span(p)})
+    END
+    IF kind == "Try":
+        RETURN(parser_parse_try_statement(p))
+    END
+    IF kind == "Set":
+        parser_advance(p)
+        RETURN(parser_parse_assignment_statement(p))
+    END
+    IF kind == "Const":
+        parser_advance(p)
+        stmt = parser_parse_assignment_statement(p)
+        # convert Assignment -> ConstAssignment (stubs handled by later impl)
+        RETURN(parser_wrap_const_assignment(stmt))
+    END
+    IF kind == "If":
+        RETURN(parser_parse_if_statement(p))
+    END
+    IF kind == "Do":
+        RETURN(parser_parse_do_statement(p))
+    END
+    IF kind == "While":
+        RETURN(parser_parse_while_statement(p))
+    END
+    IF kind == "For":
+        RETURN(parser_parse_for_in_statement(p))
+    END
+    IF kind == "Print":
+        RETURN(parser_parse_print_statement(p))
+    END
+    IF kind == "Break":
+        parser_advance(p)
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        RETURN({"type": "Break", "span": parser_current_span(p)})
+    END
+    IF kind == "Continue":
+        parser_advance(p)
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        RETURN({"type": "Continue", "span": parser_current_span(p)})
+    END
+    IF kind == "End":
+        parser_advance(p)
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        RETURN(None)
+    END
+    IF kind == "Pass":
+        parser_advance(p)
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        RETURN(None)
+    END
+    IF kind == "Assert":
+        parser_advance(p)
+        span = parser_current_span(p)
+        cond = parser_parse_expression(p, 0)
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        # Build an IF NOT cond: error("Assertion failed") END representation
+        RETURN(parser_build_assert_stmt(span, cond))
+    END
+    IF kind == "Unless":
+        RETURN(parser_parse_unless_statement(p))
+    END
+
+    # Pointer statements
+    IF kind == "Goto": RETURN(parser_parse_goto_statement(p)) END
+    IF kind == "Pull": RETURN(parser_parse_pull_statement(p)) END
+    IF kind == "Push": RETURN(parser_parse_push_statement(p)) END
+    IF kind == "Alloc": RETURN(parser_parse_alloc_statement(p)) END
+    IF kind == "Free": RETURN(parser_parse_free_statement(p)) END
+    IF kind == "Info": RETURN(parser_parse_info_statement(p)) END
+    IF kind == "Seek": RETURN(parser_parse_seek_statement(p)) END
+    IF kind == "Swap": RETURN(parser_parse_swap_statement(p)) END
+
+    # Default: expression statement
+    RETURN(parser_parse_expr_statement(p))
+END
+
+# Note: The functions referenced above will be implemented incrementally.
+
+# parse_obj_decl
+DEF parser_parse_obj_decl(p):
+    # consume OBJ
+    start_tok = parser_advance(p)
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    # expect Dot
+    IF NOT parser_match_token(p, "Dot"):
+        RETURN({"err": "Expected '.' after OBJ", "span": parser_current_span(p)})
+    END
+    # family group identifier
+    IF NOT parser_check(p, "Identifier"):
+        RETURN({"err": "Expected family group after OBJ.", "span": parser_current_span(p)})
+    END
+    fg_tok = parser_advance(p)
+    family_group = fg_tok["value"]
+    # optional .MUT
+    IF parser_check(p, "Dot"):
+        parser_advance(p)
+        IF NOT parser_check(p, "Identifier"):
+            RETURN({"err": "Expected 'MUT' after '.' in OBJ declaration", "span": parser_current_span(p)})
+        END
+        mut_tok = parser_advance(p)
+        mut_name = mut_tok["value"]
+        IF str.upper(mut_name) != "MUT":
+            RETURN({"err": "Expected object name or optional '.MUT' after family group", "span": parser_current_span(p)})
+        END
+    END
+    # object name
+    IF NOT parser_check(p, "Identifier"):
+        RETURN({"err": "Expected object name after family group", "span": parser_current_span(p)})
+    END
+    name_tok = parser_advance(p)
+    name = {"name": name_tok["value"], "span": {"line": name_tok["line"], "col": name_tok["col"]}}
+    # params
+    params = []
+    IF parser_match_token(p, "LParen"):
+        WHILE (NOT parser_check(p, "RParen")) AND (NOT parser_is_eof(p)):
+            IF parser_check(p, "Identifier"):
+                ptk = parser_advance(p)
+                params = list_concat(params, [{"name": ptk["value"], "span": {"line": ptk["line"], "col": ptk["col"]}}])
+            END
+            IF parser_check(p, "Comma"): parser_advance(p) ELSE: BREAK END
+        END
+        IF NOT parser_match_token(p, "RParen"):
+            RETURN({"err": "Expected ')' after parameter list", "span": parser_current_span(p)})
+        END
+    END
+    # expect Colon
+    IF NOT parser_match_token(p, "Colon"):
+        RETURN({"err": "Expected ':' after OBJ header", "span": parser_current_span(p)})
+    END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    IF NOT parser_match_token(p, "Indent"):
+        RETURN({"err": "Expected indented body after OBJ header", "span": parser_current_span(p)})
+    END
+    fields = []
+    mutation_table = []
+    constructor = None
+    methods = []
+    WHILE (NOT parser_check(p, "Dedent")) AND (NOT parser_is_eof(p)):
+        IF parser_check(p, "Newline"): parser_advance(p); CONTINUE END
+        IF parser_check(p, "Identifier"):
+            look = parser_peek(p)
+            val = look["value"]
+            IF val != None:
+                up = str.upper(val)
+                IF up == "FIELD":
+                    res = parser_parse_field_decl(p)
+                    IF has_key(res, "err"):
+                        parser_recover_to_next_statement(p)
+                    ELSE:
+                        fields = list_concat(fields, [res])
+                    END
+                    CONTINUE
+                END
+                IF up == "DEF":
+                    # consume DEF and peek next word without losing position
+                    pos_before = p["pos"]
+                    parser_advance(p)
+                    IF parser_check(p, "Identifier"):
+                        next = parser_peek(p)
+                        IF next["value"] != None AND str.upper(next["value"]) == "MUTATION_TABLE":
+                            parser_advance(p) # consume MUTATION_TABLE
+                            IF parser_match_token(p, "Colon"):
+                                IF parser_check(p, "Newline"): parser_advance(p) END
+                                IF parser_match_token(p, "Indent"):
+                                    WHILE (NOT parser_check(p, "Dedent")) AND (NOT parser_is_eof(p)):
+                                        IF parser_check(p, "Newline"): parser_advance(p); CONTINUE END
+                                        IF parser_check(p, "Identifier"):
+                                            me = parser_parse_mut_entry(p)
+                                            IF has_key(me, "err"):
+                                                parser_recover_to_next_statement(p)
+                                            ELSE:
+                                                mutation_table = list_concat(mutation_table, [me])
+                                            END
+                                        ELSE:
+                                            parser_advance(p)
+                                        END
+                                    END
+                                    IF NOT parser_match_token(p, "Dedent"):
+                                        RETURN({"err": "Expected DEDENT after MUTATION_TABLE body", "span": parser_current_span(p)})
+                                    END
+                                    IF NOT parser_match_token(p, "End"):
+                                        RETURN({"err": "Expected END after MUTATION_TABLE", "span": parser_current_span(p)})
+                                    END
+                                    IF parser_check(p, "Newline"): parser_advance(p) END
+                                    CONTINUE
+                                ELSE:
+                                    RETURN({"err": "Expected indented MUTATION_TABLE body", "span": parser_current_span(p)})
+                                END
+                            ELSE:
+                                RETURN({"err": "Expected ':' after MUTATION_TABLE", "span": parser_current_span(p)})
+                            END
+                        END
+                    END
+                    # not mutation table: rewind and parse method
+                    p["pos"] = pos_before
+                    method = parser_parse_method_decl(p)
+                    IF has_key(method, "err"):
+                        parser_recover_to_next_statement(p)
+                    ELSE:
+                        methods = list_concat(methods, [method])
+                    END
+                    CONTINUE
+                END
+                IF up == "CONSTRUCTOR":
+                    ctor = parser_parse_constructor_decl(p)
+                    IF NOT has_key(ctor, "err"):
+                        constructor = ctor
+                    END
+                    CONTINUE
+                END
+            END
+        END
+        # fallback: parse statement and ignore
+        st = parser_parse_statement(p)
+        CONTINUE
+    END
+    # consume Dedent
+    IF NOT parser_match_token(p, "Dedent"):
+        RETURN({"err": "Expected DEDENT after OBJ body", "span": parser_current_span(p)})
+    END
+    IF NOT parser_match_token(p, "End"):
+        RETURN({"err": "Expected END after OBJ declaration", "span": parser_current_span(p)})
+    END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"type": "ObjDecl", "name": name, "family_group": family_group, "params": params, "fields": fields, "mutation_table": mutation_table, "constructor": constructor, "methods": methods, "span": start_span})
+END
+
+# parse_field_decl
+DEF parser_parse_field_decl(p):
+    tok = parser_advance(p) # FIELD
+    start_span = {"line": tok["line"], "col": tok["col"]}
+    IF NOT parser_check(p, "Identifier"):
+        RETURN({"err": "Expected identifier after FIELD", "span": parser_current_span(p)})
+    END
+    name_tok = parser_advance(p)
+    name = {"name": name_tok["value"], "span": {"line": name_tok["line"], "col": name_tok["col"]}}
+    IF NOT parser_match_token(p, "Eq"):
+        RETURN({"err": "Expected '=' in FIELD declaration", "span": parser_current_span(p)})
+    END
+    value = parser_parse_expression(p, 0)
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"name": name, "value": value, "span": start_span})
+END
+
+# parse_mut_entry
+DEF parser_parse_mut_entry(p):
+    mut_tok = parser_advance(p) # MUT
+    start_span = {"line": mut_tok["line"], "col": mut_tok["col"]}
+    IF NOT parser_check(p, "Identifier"):
+        RETURN({"err": "Expected mutation name after MUT", "span": parser_current_span(p)})
+    END
+    name_tok = parser_advance(p)
+    name = {"name": name_tok["value"], "span": {"line": name_tok["line"], "col": name_tok["col"]}}
+    IF NOT parser_match_token(p, "Eq"):
+        RETURN({"err": "Expected '=' after mutation name", "span": parser_current_span(p)})
+    END
+    IF NOT parser_match_token(p, "Do"):
+        RETURN({"err": "Expected DO in mutation body", "span": parser_current_span(p)})
+    END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    IF parser_match_token(p, "Indent"):
+        body = []
+        WHILE (NOT parser_check(p, "Dedent")) AND (NOT parser_is_eof(p)):
+            s = parser_parse_statement(p)
+            IF s != None: body = list_concat(body, [s]) END
+        END
+        IF NOT parser_match_token(p, "Dedent"):
+            RETURN({"err": "Expected DEDENT after mutation DO body", "span": parser_current_span(p)})
+        END
+        IF NOT parser_match_token(p, "End"):
+            RETURN({"err": "Expected END after mutation DO block", "span": parser_current_span(p)})
+        END
+        IF parser_check(p, "Newline"): parser_advance(p) END
+        RETURN({"name": name, "body": {"type": "Block", "stmts": body}, "span": start_span})
+    ELSE:
+        expr = parser_parse_expression(p, 0)
+        IF parser_check(p, "End"): parser_advance(p) END
+        IF parser_check(p, "Newline"): parser_advance(p) END
+        RETURN({"name": name, "body": {"type": "Expr", "expr": expr}, "span": start_span})
+    END
+END
+
+# parse_constructor_decl
+DEF parser_parse_constructor_decl(p):
+    tok = parser_advance(p) # CONSTRUCTOR
+    start_span = {"line": tok["line"], "col": tok["col"]}
+    IF NOT parser_match_token(p, "LParen"):
+        RETURN({"err": "Expected '(' after CONSTRUCTOR", "span": parser_current_span(p)})
+    END
+    params = []
+    WHILE (NOT parser_check(p, "RParen")) AND (NOT parser_is_eof(p)):
+        IF parser_check(p, "Identifier"):
+            pt = parser_advance(p)
+            params = list_concat(params, [{"name": pt["value"], "span": {"line": pt["line"], "col": pt["col"]}}])
+        END
+        IF parser_check(p, "Comma"): parser_advance(p) ELSE: BREAK END
+    END
+    IF NOT parser_match_token(p, "RParen"):
+        RETURN({"err": "Expected ')' after constructor params", "span": parser_current_span(p)})
+    END
+    IF NOT parser_match_token(p, "Colon"):
+        RETURN({"err": "Expected ':' after CONSTRUCTOR header", "span": parser_current_span(p)})
+    END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    IF NOT parser_match_token(p, "Indent"):
+        RETURN({"err": "Expected indented constructor body", "span": parser_current_span(p)})
+    END
+    body = []
+    WHILE (NOT parser_check(p, "Dedent")) AND (NOT parser_is_eof(p)):
+        s = parser_parse_statement(p)
+        IF s != None: body = list_concat(body, [s]) END
+    END
+    IF NOT parser_match_token(p, "Dedent"):
+        RETURN({"err": "Expected DEDENT after constructor body", "span": parser_current_span(p)})
+    END
+    IF NOT parser_match_token(p, "End"):
+        RETURN({"err": "Expected END after constructor", "span": parser_current_span(p)})
+    END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"params": params, "body": body, "span": start_span})
+END
+
+# parse_method_decl
+DEF parser_parse_method_decl(p):
+    def_tok = parser_advance(p) # DEF
+    start_span = {"line": def_tok["line"], "col": def_tok["col"]}
+    IF NOT parser_check(p, "Identifier"):
+        RETURN({"err": "Expected method name after DEF", "span": parser_current_span(p)})
+    END
+    name_tok = parser_advance(p)
+    name = {"name": name_tok["value"], "span": {"line": name_tok["line"], "col": name_tok["col"]}}
+    params = []
+    IF parser_match_token(p, "LParen"):
+        WHILE (NOT parser_check(p, "RParen")) AND (NOT parser_is_eof(p)):
+            IF parser_check(p, "Identifier"):
+                pt = parser_advance(p)
+                params = list_concat(params, [{"name": pt["value"], "span": {"line": pt["line"], "col": pt["col"]}}])
+            END
+            IF parser_check(p, "Comma"): parser_advance(p) ELSE: BREAK END
+        END
+        IF NOT parser_match_token(p, "RParen"):
+            RETURN({"err": "Expected ')' after method params", "span": parser_current_span(p)})
+        END
+    END
+    IF NOT parser_match_token(p, "Colon"):
+        RETURN({"err": "Expected ':' after method header", "span": parser_current_span(p)})
+    END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    IF NOT parser_match_token(p, "Indent"):
+        RETURN({"err": "Expected indented method body", "span": parser_current_span(p)})
+    END
+    body = []
+    WHILE (NOT parser_check(p, "Dedent")) AND (NOT parser_is_eof(p)):
+        s = parser_parse_statement(p)
+        IF s != None: body = list_concat(body, [s]) END
+    END
+    IF NOT parser_match_token(p, "Dedent"):
+        RETURN({"err": "Expected DEDENT after method body", "span": parser_current_span(p)})
+    END
+    IF NOT parser_match_token(p, "End"):
+        RETURN({"err": "Expected END after method", "span": parser_current_span(p)})
+    END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"name": name, "params": params, "body": body, "span": start_span})
+END
+
+# End of added functions for this pass
+# Further functions (spawn/def/etc.) will follow in later passes.
+
+# ---------------------------------------------------------------------------
+# Remaining parser functions (translated). Compact implementations follow.
+# ---------------------------------------------------------------------------
+
+# parse_spawn_block
+DEF parser_parse_spawn_block(p):
+    start_tok = parser_advance(p) # SPAWN
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    IF NOT parser_match_token(p, "Colon"):
+        RETURN({"err": "Expected ':' after SPAWN", "span": parser_current_span(p)})
+    END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    IF NOT parser_match_token(p, "Indent"):
+        RETURN({"err": "Expected indented SPAWN body", "span": parser_current_span(p)})
+    END
+    entries = []
+    WHILE (NOT parser_check(p, "Dedent")) AND (NOT parser_is_eof(p)):
+        IF parser_check(p, "Newline"): parser_advance(p); CONTINUE END
+        res = parser_parse_spawn_entry(p)
+        IF has_key(res, "err"):
+            parser_recover_to_next_statement(p)
+        ELSE:
+            entries = list_concat(entries, [res])
+        END
+    END
+    IF NOT parser_match_token(p, "Dedent"):
+        RETURN({"err": "Expected DEDENT after SPAWN body", "span": parser_current_span(p)})
+    END
+    IF NOT parser_match_token(p, "End"):
+        RETURN({"err": "Expected END after SPAWN block", "span": parser_current_span(p)})
+    END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"type": "SpawnBlock", "entries": entries, "span": start_span})
+END
+
+# parse_spawn_entry (simplified)
+DEF parser_parse_spawn_entry(p):
+    start_span = parser_current_span(p)
+    # parse lhs via helper; here call generic parse_expression and expect qualifiers
+    father_expr = parser_parse_expression(p, 0)
+    # Expect ':' then indented body
+    IF NOT parser_match_token(p, "Colon"):
+        RETURN({"err": "Expected ':' after SPAWN LHS", "span": parser_current_span(p)})
+    END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    IF NOT parser_match_token(p, "Indent"):
+        RETURN({"err": "Expected indented SPAWN actions", "span": parser_current_span(p)})
+    END
+    actions = []
+    WHILE (NOT parser_check(p, "Dedent")) AND (NOT parser_is_eof(p)):
+        s = parser_parse_statement(p)
+        IF s != None: actions = list_concat(actions, [s]) END
+    END
+    IF NOT parser_match_token(p, "Dedent"):
+        RETURN({"err": "Expected DEDENT after SPAWN actions", "span": parser_current_span(p)})
+    END
+    IF NOT parser_match_token(p, "End"):
+        RETURN({"err": "Expected END after SPAWN entry", "span": parser_current_span(p)})
+    END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"father_expr": father_expr, "father_family": None, "mother_expr": None, "mother_family": None, "actions": actions, "span": start_span})
+END
+
+# parse_def_statement (compact)
+DEF parser_parse_def_statement(p):
+    start_tok = parser_advance(p) # DEF
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    # DO form: DEF DO name UNTIL cond ...
+    IF parser_check(p, "Do"):
+        parser_advance(p)
+        IF NOT parser_check(p, "Identifier"):
+            RETURN({"err": "Expected identifier after DEF DO", "span": parser_current_span(p)})
+        END
+        name_tok = parser_advance(p)
+        name = {"name": name_tok["value"], "span": {"line": name_tok["line"], "col": name_tok["col"]}}
+        # consume UNTIL (identifier) and cond
+        IF NOT parser_match_token(p, "Identifier"):
+            RETURN({"err": "Expected UNTIL after DEF DO name", "span": parser_current_span(p)})
+        END
+        cond = parser_parse_expression(p, 0)
+        IF NOT parser_match_token(p, "Colon"):
+            RETURN({"err": "Expected ':' after DEF DO UNTIL header", "span": parser_current_span(p)})
+        END
+        IF parser_check(p, "Newline"): parser_advance(p) END
+        IF NOT parser_match_token(p, "Indent"):
+            RETURN({"err": "Expected indented body after DEF DO header", "span": parser_current_span(p)})
+        END
+        body = []
+        WHILE (NOT parser_check(p, "Dedent")) AND (NOT parser_is_eof(p)):
+            s = parser_parse_statement(p)
+            IF s != None: body = list_concat(body, [s]) END
+        END
+        IF NOT parser_match_token(p, "Dedent"):
+            RETURN({"err": "Expected DEDENT after DEF DO body", "span": parser_current_span(p)})
+        END
+        IF NOT parser_match_token(p, "End"):
+            RETURN({"err": "Expected END after DEF DO body", "span": parser_current_span(p)})
+        END
+        # LX optional ignored for now
+        IF parser_check(p, "Newline"): parser_advance(p) END
+        RETURN({"type": "DefDoUntil", "name": name, "until_condition": cond, "body": body, "span": start_span})
+    END
+    # Regular DEF name(params) : body
+    IF NOT parser_check(p, "Identifier"):
+        RETURN({"err": "Expected identifier after DEF", "span": parser_current_span(p)})
+    END
+    name_tok = parser_advance(p)
+    full_name = name_tok["value"]
+    name_span = {"line": name_tok["line"], "col": name_tok["col"]}
+    # consume dotted segments
+    WHILE parser_check(p, "Dot"):
+        parser_advance(p)
+        IF parser_check(p, "Identifier"):
+            seg = parser_advance(p)
+            full_name = full_name + "." + seg["value"]
+        END
+    END
+    params = []
+    IF parser_check(p, "LParen"):
+        parser_advance(p)
+        WHILE (NOT parser_check(p, "RParen")) AND (NOT parser_is_eof(p)):
+            IF parser_check(p, "Identifier"):
+                pt = parser_advance(p)
+                params = list_concat(params, [{"name": pt["value"], "span": {"line": pt["line"], "col": pt["col"]}}])
+            END
+            IF parser_check(p, "Comma"): parser_advance(p) ELSE: BREAK END
+        END
+        IF parser_check(p, "RParen"): parser_advance(p) END
+    END
+    saw_eq = false
+    saw_do = false
+    saw_colon = false
+    FOR i IN [1,2,3]:
+        IF parser_match_token(p, "Eq"): saw_eq = true; CONTINUE END
+        IF parser_match_token(p, "Do"): saw_do = true; CONTINUE END
+        IF parser_match_token(p, "Colon"): saw_colon = true; CONTINUE END
+        BREAK
+    END
+    IF saw_eq AND NOT saw_do AND NOT saw_colon:
+        saw_do = true
+    END
+    # Inline single-line body
+    IF saw_colon AND NOT parser_check(p, "Newline") AND NOT parser_check(p, "Indent") AND NOT parser_is_eof(p):
+        inline_body = []
+        WHILE NOT parser_check(p, "Newline") AND NOT parser_is_eof(p):
+            s = parser_parse_statement(p)
+            IF s != None: inline_body = list_concat(inline_body, [s]) ELSE: BREAK END
+        END
+        IF parser_check(p, "Newline"): parser_advance(p) END
+        parser_match_token(p, "End")
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        RETURN({"type": "FunctionDef", "name": {"name": full_name, "span": name_span}, "params": params, "body": inline_body, "span": start_span})
+    END
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    IF NOT parser_match_token(p, "Indent"):
+        parser_match_token(p, "End")
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        RETURN({"type": "FunctionDef", "name": {"name": full_name, "span": name_span}, "params": params, "body": [], "span": start_span})
+    END
+    body = []
+    WHILE (NOT parser_check(p, "Dedent")) AND (NOT parser_is_eof(p)):
+        IF parser_check(p, "End"):
+            parser_advance(p)
+            WHILE parser_check(p, "Newline"): parser_advance(p) END
+            CONTINUE
+        END
+        s = parser_parse_statement(p)
+        IF s != None: body = list_concat(body, [s]) END
+    END
+    IF NOT parser_match_token(p, "Dedent"):
+        RETURN({"err": "Expected DEDENT after DEF", "span": parser_current_span(p)})
+    END
+    parser_match_token(p, "End")
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"type": "FunctionDef", "name": {"name": full_name, "span": name_span}, "params": params, "body": body, "span": start_span})
+END
+
+# parse_ret_statement
+DEF parser_parse_ret_statement(p):
+    # Handle RET.NOW and RET.LATE
+    # Merge single-token and three-token forms
+    peek_val = parser_peek(p)["value"]
+    sval = ""
+    IF peek_val != None:
+        sval = str.upper(peek_val)
+    END
+    IF sval.startswith("RET.NOW") OR sval.startswith("RET.LATE"):
+        t = parser_advance(p)
+        token_val = str.upper(t["value"])
+        ret_tok = t
+    ELSE:
+        base = parser_advance(p)
+        # consume Dot
+        IF parser_check(p, "Dot"): parser_advance(p) END
+        suffix = parser_advance(p)
+        token_val = "RET." + str.upper(suffix["value"])
+        ret_tok = base
+    END
+    span = {"line": ret_tok["line"], "col": ret_tok["col"]}
+    IF token_val.startswith("RET.NOW"):
+        # optional paren or colon
+        IF parser_check(p, "LParen"):
+            parser_advance(p)
+            IF NOT parser_check(p, "RParen"):
+                e = parser_parse_expression(p, 0)
+                IF parser_check(p, "RParen"): parser_advance(p) END
+            ELSE:
+                parser_advance(p)
+                IF parser_check(p, "Colon"):
+                    parser_advance(p)
+                    WHILE parser_check(p, "Newline"): parser_advance(p) END
+                    e = parser_parse_expression(p, 0)
+                ELSE:
+                    e = {"type": "None"}
+                END
+            END
+        ELSE:
+            IF parser_check(p, "Colon"): parser_advance(p) END
+            WHILE parser_check(p, "Newline"): parser_advance(p) END
+            e = parser_parse_expression(p, 0)
+        END
+        IF parser_check(p, "Colon"): parser_advance(p) END
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        RETURN({"type": "RetNow", "value": e, "span": span})
+    ELSE:
+        # RET.LATE handling simplified: expect paren and either WHEN name or NUMBER ms
+        IF NOT parser_check(p, "LParen"):
+            RETURN({"err": "RET.LATE requires a condition in parentheses", "span": parser_current_span(p)})
+        END
+        parser_advance(p)
+        IF parser_check(p, "When"):
+            parser_advance(p)
+            fn_tok = parser_advance(p)
+            cond = {"type": "WhenCalled", "fn": fn_tok["value"]}
+        ELSE:
+            cond_expr = parser_parse_expression(p, 1)
+            # expect ms identifier
+            IF parser_check(p, "Identifier") AND str.lower(parser_peek(p)["value"]) == "ms":
+                parser_advance(p)
+                cond = {"type": "AfterMs", "expr": cond_expr}
+            ELSE:
+                RETURN({"err": "RET.LATE time-based form requires 'ms' suffix", "span": parser_current_span(p)})
+            END
+        END
+        IF parser_check(p, "RParen"): parser_advance(p) END
+        IF parser_check(p, "Colon"): parser_advance(p) END
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        value = parser_parse_expression(p, 0)
+        RETURN({"type": "RetLate", "value": value, "condition": cond, "span": span})
+    END
+END
+
+# parse_if_statement and parse_unless_statement (compact)
+DEF parser_parse_if_statement(p):
+    start_tok = parser_advance(p)
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    # scope modifier ignored
+    conditions = [parser_parse_expression(p, 6)]
+    WHILE parser_match_token(p, "Or"):
+        conditions = list_concat(conditions, [parser_parse_expression(p, 6)])
+    END
+    # expect Then/Do/Colon/LBrace or newline style
+    IF NOT (parser_match_token(p, "Then") OR parser_match_token(p, "Do") OR parser_match_token(p, "Colon") OR parser_check(p, "LBrace") OR parser_check(p, "Newline")):
+        RETURN({"err": "Expected THEN/DO/:/{ or newline after IF", "span": parser_current_span(p)})
+    END
+    then_body = parser_parse_do_body(p)
+    else_body = None
+    IF parser_match_token(p, "Otherwise"):
+        parser_match_token(p, "Do") OR parser_match_token(p, "Colon")
+        else_body = parser_parse_do_body(p)
+    END
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"type": "If", "conditions": conditions, "then_body": then_body, "else_body": else_body, "span": start_span})
+END
+
+DEF parser_parse_unless_statement(p):
+    t = parser_advance(p)
+    span = {"line": t["line"], "col": t["col"]}
+    cond = parser_parse_expression(p, 0)
+    not_cond = {"type": "Not", "expr": cond}
+    IF NOT (parser_match_token(p, "Then") OR parser_match_token(p, "Do") OR parser_match_token(p, "Colon") OR parser_check(p, "LBrace") OR parser_check(p, "Newline")):
+        RETURN({"err": "Expected THEN/DO/:/{ or newline after UNLESS", "span": parser_current_span(p)})
+    END
+    then_body = parser_parse_do_body(p)
+    else_body = None
+    IF parser_match_token(p, "Otherwise"):
+        parser_match_token(p, "Do") OR parser_match_token(p, "Colon")
+        else_body = parser_parse_do_body(p)
+    END
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"type": "If", "conditions": [not_cond], "then_body": then_body, "else_body": else_body, "span": span})
+END
+
+# parse_do_statement (compact)
+DEF parser_parse_do_statement(p):
+    start_tok = parser_advance(p)
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    targets = []
+    IF parser_check(p, "While"):
+        parser_advance(p)
+        condition = parser_parse_expression(p, 0)
+        body = parser_parse_do_body(p)
+        RETURN({"type": "WhileBlock", "targets": targets, "alias": None, "condition": condition, "body": body, "span": start_span})
+    END
+    # optional targets
+    IF parser_check(p, "Identifier") AND (NOT parser_peek_is_assign(p)):
+        LOOP:
+            t = parser_advance(p)
+            targets = list_concat(targets, [{"name": t["value"], "span": {"line": t["line"], "col": t["col"]}}])
+            IF parser_check(p, "Comma"): parser_advance(p); CONTINUE LOOP END
+        END
+    END
+    alias = None
+    IF parser_match_token(p, "As"):
+        IF parser_check(p, "Identifier"):
+            t = parser_advance(p)
+            alias = {"name": t["value"], "span": {"line": t["line"], "col": t["col"]}}
+        ELSE:
+            RETURN({"err": "Expected identifier after AS", "span": parser_current_span(p)})
+        END
+    END
+    IF parser_check(p, "For"):
+        parser_advance(p)
+        expr = parser_parse_expression(p, 1)
+        repeats = None
+        duration_ms = None
+        IF parser_check(p, "Identifier") AND str.lower(parser_peek(p)["value"]) == "ms":
+            parser_advance(p)
+            duration_ms = expr
+        ELSE:
+            reps = [expr]
+            WHILE parser_check(p, "Comma"):
+                parser_advance(p)
+                reps = list_concat(reps, [parser_parse_expression(p, 0)])
+            END
+            repeats = reps
+        END
+        body = parser_parse_do_body(p)
+        RETURN({"type": "DoBlock", "targets": targets, "alias": alias, "repeats": repeats, "duration_ms": duration_ms, "body": body, "span": start_span})
+    END
+    pre_body = parser_parse_do_while_body(p)
+    IF parser_match_token(p, "While"):
+        condition = parser_parse_expression(p, 0)
+        IF NOT pre_body == []:
+            parser_match_token(p, "End")
+            final_body = pre_body
+        ELSEIF parser_check(p, "Colon") OR parser_check(p, "Newline"):
+            final_body = parser_parse_do_body(p)
+        ELSE:
+            parser_match_token(p, "End")
+            final_body = []
+        END
+        RETURN({"type": "WhileBlock", "targets": targets, "alias": alias, "condition": condition, "body": final_body, "span": start_span})
+    END
+    IF NOT parser_match_token(p, "End"):
+        RETURN({"err": "Expected END after DO block", "span": parser_current_span(p)})
+    END
+    RETURN({"type": "DoBlock", "targets": targets, "alias": alias, "repeats": None, "duration_ms": None, "body": pre_body, "span": start_span})
+END
+
+# parse_do_while_body and parse_do_body simplified
+DEF parser_parse_do_while_body(p):
+    IF parser_check(p, "Newline"):
+        parser_advance(p)
+        IF parser_match_token(p, "Indent"):
+            body = []
+            WHILE (NOT parser_check(p, "Dedent")) AND (NOT parser_check(p, "While")) AND (NOT parser_is_eof(p)):
+                s = parser_parse_statement(p)
+                IF s != None: body = list_concat(body, [s]) END
+            END
+            IF parser_match_token(p, "Dedent") OR parser_check(p, "While"):
+                RETURN(body)
+            END
+            RETURN({"err": "Expected DEDENT or WHILE after DO block", "span": parser_current_span(p)})
+        ELSE:
+            RETURN([])
+        END
+    END
+    inline = []
+    WHILE (NOT parser_check(p, "While")) AND (NOT parser_check(p, "Newline")) AND (NOT parser_is_eof(p)):
+        s = parser_parse_statement(p)
+        IF s != None: inline = list_concat(inline, [s]) ELSE: BREAK END
+    END
+    RETURN(inline)
+END
+
+DEF parser_parse_do_body(p):
+    IF parser_check(p, "LBrace"):
+        RETURN(parser_parse_brace_body(p))
+    ELSEIF parser_match_token(p, "Colon"):
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        IF parser_check(p, "LBrace"): RETURN(parser_parse_brace_body(p)) END
+        IF parser_match_token(p, "Indent"):
+            body = []
+            WHILE (NOT parser_check(p, "Dedent")) AND (NOT parser_is_eof(p)):
+                IF parser_check(p, "End"): parser_advance(p); WHILE parser_check(p, "Newline"): parser_advance(p) END; CONTINUE END
+                s = parser_parse_statement(p)
+                IF s != None: body = list_concat(body, [s]) END
+            END
+            IF NOT parser_match_token(p, "Dedent"):
+                RETURN({"err": "Expected DEDENT after block", "span": parser_current_span(p)})
+            END
+            RETURN(body)
+        ELSE:
+            RETURN([])
+        END
+    ELSEIF parser_check(p, "Newline"):
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        IF parser_check(p, "LBrace"): RETURN(parser_parse_brace_body(p)) END
+        IF parser_match_token(p, "Indent"):
+            body = []
+            WHILE (NOT parser_check(p, "Dedent")) AND (NOT parser_is_eof(p)):
+                IF parser_check(p, "End"): parser_advance(p); WHILE parser_check(p, "Newline"): parser_advance(p) END; CONTINUE END
+                s = parser_parse_statement(p)
+                IF s != None: body = list_concat(body, [s]) END
+            END
+            IF NOT parser_match_token(p, "Dedent"):
+                RETURN({"err": "Expected DEDENT after block", "span": parser_current_span(p)})
+            END
+            RETURN(body)
+        ELSE:
+            RETURN([])
+        END
+    ELSE:
+        inline = []
+        WHILE (NOT parser_check(p, "Newline")) AND (NOT parser_check(p, "Eof")) AND (NOT parser_is_eof(p)):
+            IF parser_check(p, "End"): parser_advance(p); BREAK END
+            s = parser_parse_statement(p)
+            IF s != None: inline = list_concat(inline, [s]) ELSE: BREAK END
+        END
+        IF parser_check(p, "Newline"): parser_advance(p) END
+        RETURN(inline)
+    END
+END
+
+# parse_for_in_statement
+DEF parser_parse_for_in_statement(p):
+    start_tok = parser_advance(p) # FOR
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    # scope modifier ignored
+    IF NOT parser_check(p, "Identifier"):
+        RETURN({"err": "Expected identifier after FOR", "span": parser_current_span(p)})
+    END
+    var_tok = parser_advance(p)
+    var = {"name": var_tok["value"], "span": {"line": var_tok["line"], "col": var_tok["col"]}}
+    IF NOT parser_match_token(p, "In"):
+        RETURN({"err": "Expected 'IN' after loop variable in FOR loop", "span": parser_current_span(p)})
+    END
+    iterable = parser_parse_expression(p, 0)
+    parser_match_token(p, "Colon")
+    body = parser_parse_do_body(p)
+    RETURN({"type": "ForIn", "var": var, "iterable": iterable, "body": body, "span": start_span})
+END
+
+# parse_module_decl kept minimal: delegate to earlier parse_module_decl? Already implemented earlier; skip.
+
+# parse_import_alias_statement simplified
+DEF parser_parse_import_alias_statement(p):
+    start_tok = parser_advance(p)
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    module_expr = None
+    IF parser_check(p, "String"):
+        tok = parser_advance(p)
+        module_expr = {"type": "String", "value": tok["value"], "span": {"line": tok["line"], "col": tok["col"]}}
+    ELSEIF parser_check(p, "Identifier"):
+        tok = parser_advance(p)
+        module_expr = {"type": "String", "value": tok["value"], "span": {"line": tok["line"], "col": tok["col"]}}
+    ELSE:
+        RETURN({"err": "Expected module name after IMPORT/USE/REQUIRE/INCLUDE", "span": parser_current_span(p)})
+    END
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    call = {"type": "Call", "callee": {"type": "Identifier", "name": "import"}, "args": [module_expr], "span": start_span}
+    RETURN({"type": "ExprStmt", "expr": call, "span": start_span})
+END
+
+# parse_try_statement simplified
+DEF parser_parse_try_statement(p):
+    start_tok = parser_advance(p)
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    err_var = None
+    IF parser_check(p, "LParen"):
+        parser_advance(p)
+        IF parser_check(p, "Identifier"):
+            et = parser_advance(p)
+            err_var = {"name": et["value"], "span": {"line": et["line"], "col": et["col"]}}
+        ELSE:
+            RETURN({"err": "ATTEMPT expects identifier", "span": start_span})
+        END
+        IF NOT parser_match_token(p, "RParen"):
+            RETURN({"err": "Expected ')' after ATTEMPT variable", "span": start_span})
+        END
+    END
+    parser_match_token(p, "Colon")
+    try_body = parser_parse_flexible_body(p)
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    else_body = []
+    IF parser_match_token(p, "Otherwise"):
+        parser_match_token(p, "Colon")
+        else_body = parser_parse_flexible_body(p)
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+    END
+    parser_match_token(p, "End")
+    IF err_var != None:
+        RETURN({"type": "AttemptBlock", "err_var": err_var, "try_body": try_body, "else_body": else_body, "span": start_span})
+    ELSE:
+        RETURN({"type": "TryBlock", "try_body": try_body, "else_body": else_body, "span": start_span})
+    END
+END
+
+DEF parser_parse_flexible_body(p):
+    body = []
+    _ = parser_match_token(p, "Do")
+    IF parser_check(p, "LBrace"):
+        RETURN(parser_parse_brace_body(p))
+    ELSEIF parser_check(p, "Newline"):
+        WHILE parser_check(p, "Newline"): parser_advance(p) END
+        IF parser_check(p, "LBrace"): RETURN(parser_parse_brace_body(p)) END
+        IF parser_match_token(p, "Indent"):
+            WHILE (NOT parser_check(p, "Dedent")) AND (NOT parser_is_eof(p)):
+                IF parser_check(p, "Otherwise"): BREAK END
+                s = parser_parse_statement(p)
+                IF s != None: body = list_concat(body, [s]) END
+            END
+            parser_match_token(p, "Dedent")
+        ELSE:
+            WHILE (NOT parser_check(p, "Otherwise")) AND (NOT parser_check(p, "End")) AND (NOT parser_is_eof(p)):
+                s = parser_parse_statement(p)
+                IF s != None: body = list_concat(body, [s]) END
+                WHILE parser_check(p, "Newline"): parser_advance(p) END
+            END
+        END
+    ELSEIF (NOT parser_check(p, "Otherwise")) AND (NOT parser_check(p, "End")) AND (NOT parser_is_eof(p)):
+        s = parser_parse_statement(p)
+        IF s != None: body = list_concat(body, [s]) END
+    END
+    RETURN(body)
+END
+
+# parse_expr_statement
+DEF parser_parse_expr_statement(p):
+    expr = parser_parse_expression(p, 0)
+    IF parser_check(p, "Semicolon"): parser_advance(p) END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    span = expr["span"] IF has_key(expr, "span") ELSE parser_current_span(p) END
+    RETURN({"type": "ExprStmt", "expr": expr, "span": span})
+END
+
+# peek helpers
+DEF parser_peek_is_assign(p):
+    i = p["pos"] + 1
+    WHILE i < list_len(p["tokens"]):
+        k = p["tokens"][i]["kind"]
+        IF k == "Eq": RETURN(true) END
+        IF k == "Dot":
+            i = i + 1
+            IF i >= list_len(p["tokens"]) OR p["tokens"][i]["kind"] != "Identifier": RETURN(false) END
+            i = i + 1
+            CONTINUE
+        END
+        IF k == "LBracket":
+            depth = 1
+            i = i + 1
+            WHILE i < list_len(p["tokens"]) AND depth > 0:
+                kk = p["tokens"][i]["kind"]
+                IF kk == "LBracket": depth = depth + 1 END
+                IF kk == "RBracket": depth = depth - 1 END
+                i = i + 1
+            END
+            IF depth != 0: RETURN(false) END
+        ELSE:
+            RETURN(false)
+        END
+    END
+    RETURN(false)
+END
+
+DEF parser_peek_is_multi_assign(p):
+    i = p["pos"] + 1
+    WHILE i < list_len(p["tokens"]):
+        k = p["tokens"][i]["kind"]
+        IF k == "Comma":
+            i = i + 1
+            IF i < list_len(p["tokens"]) AND p["tokens"][i]["kind"] == "Identifier": i = i + 1 ELSE: RETURN(false) END
+            CONTINUE
+        END
+        IF k == "Eq": RETURN(true) END
+        RETURN(false)
+    END
+    RETURN(false)
+END
+
+DEF parser_peek_is_priority_override(p):
+    IF p["pos"] + 1 < list_len(p["tokens"]):
+        RETURN(p["tokens"][p["pos"] + 1]["kind"] == "Over")
+    END
+    RETURN(false)
+END
+
+# Expression parsing (precedence climbing)
+DEF parser_can_start_primary(kind):
+    RETURN(kind == "String" OR kind == "Number" OR kind == "Bool" OR kind == "NoneVal" OR kind == "Identifier" OR kind == "LParen" OR kind == "LBracket")
+END
+
+DEF parser_parse_expression(p, min_prec):
+    left = parser_parse_unary(p)
+    left = parser_parse_postfix(p, left)
+    LOOP:
+        tok = parser_peek(p)
+        prec = parser_get_prec(p, tok["kind"]) IF has_key(tok, "kind") ELSE 0 END
+        IF prec == 0 AND min_prec == 0 AND parser_can_start_primary(tok["kind"]) AND NOT (tok["kind"] == "Newline" OR tok["kind"] == "Eof" OR tok["kind"] == "End" OR tok["kind"] == "Otherwise" OR tok["kind"] == "If" OR tok["kind"] == "While" OR tok["kind"] == "Do" OR tok["kind"] == "Def" OR tok["kind"] == "Print" OR tok["kind"] == "Set"):
+            right = parser_parse_unary(p)
+            right = parser_parse_postfix(p, right)
+            span = {"start": left["span"], "end": right["span"]} IF has_key(left, "span") AND has_key(right, "span") ELSE parser_current_span(p) END
+            left = {"type": "Binary", "op": "Add", "left": left, "right": right, "span": span}
+            CONTINUE LOOP
+        END
+        IF prec < min_prec OR prec == 0: BREAK END
+        op_tok = parser_advance(p)
+        op = parser_token_to_binop(op_tok["kind"]) IF has_key(op_tok, "kind") ELSE "Add" END
+        next_min = prec IF op_tok["kind"] == "Caret" ELSE prec + 1 END
+        right = parser_parse_expression(p, next_min)
+        span = {"start": left["span"], "end": right["span"]} IF has_key(left, "span") AND has_key(right, "span") ELSE parser_current_span(p) END
+        left = {"type": "Binary", "op": op, "left": left, "right": right, "span": span}
+    END
+    RETURN(left)
+END
+
+DEF parser_parse_postfix(p, expr):
+    LOOP:
+        IF parser_check(p, "LBracket"):
+            lbr = parser_advance(p)
+            indices = []
+            WHILE (NOT parser_check(p, "RBracket")) AND (NOT parser_is_eof(p)):
+                indices = list_concat(indices, [parser_parse_expression(p, 0)])
+                IF parser_check(p, "Comma"): parser_advance(p) ELSE: BREAK END
+            END
+            IF parser_check(p, "RBracket"): end_tok = parser_advance(p) ELSE: end_tok = {"line": lbr["line"], "col": lbr["col"]} END
+            span = {"start": expr["span"], "end": {"line": end_tok["line"], "col": end_tok["col"]}} IF has_key(expr, "span") ELSE parser_current_span(p) END
+            expr = {"type": "Index", "base": expr, "indices": indices, "span": span}
+        ELSE:
+            BREAK
+        END
+    END
+    RETURN(expr)
+END
+
+DEF parser_skip_layout_tokens(p):
+    WHILE parser_check(p, "Newline") OR parser_check(p, "Indent") OR parser_check(p, "Dedent"):
+        parser_advance(p)
+    END
+END
+
+DEF parser_parse_unary(p):
+    IF parser_match_token(p, "Minus"):
+        rhs = parser_parse_unary(p)
+        zero = {"type": "Number", "value": 0.0, "span": rhs["span"]} IF has_key(rhs, "span") ELSE {"type": "Number", "value": 0.0}
+        span = rhs["span"] IF has_key(rhs, "span") ELSE parser_current_span(p)
+        RETURN({"type": "Binary", "op": "Sub", "left": zero, "right": rhs, "span": span})
+    ELSEIF parser_match_token(p, "Not"):
+        rhs = parser_parse_unary(p)
+        zero = {"type": "Number", "value": 0.0, "span": rhs["span"]}
+        span = rhs["span"]
+        RETURN({"type": "Binary", "op": "Not", "left": zero, "right": rhs, "span": span})
+    ELSE:
+        RETURN(parser_parse_primary(p))
+    END
+END
+
+DEF parser_parse_primary(p):
+    tok = parser_peek(p)
+    k = tok["kind"]
+    IF k == "Number":
+        t = parser_advance(p)
+        text = t["value"] IF has_key(t, "value") ELSE "0"
+        # remove underscores
+        # assume parse to float done in interpreter later
+        RETURN({"type": "Number", "value_text": text, "span": {"line": t["line"], "col": t["col"]}})
+    END
+    IF k == "String":
+        t = parser_advance(p)
+        RETURN({"type": "String", "value": t["value"], "span": {"line": t["line"], "col": t["col"]}})
+    END
+    IF k == "Bool":
+        t = parser_advance(p)
+        b = (str.lower(t["value"]) == "true")
+        RETURN({"type": "Bool", "value": b, "span": {"line": t["line"], "col": t["col"]}})
+    END
+    IF k == "NoneVal":
+        t = parser_advance(p)
+        RETURN({"type": "None", "span": {"line": t["line"], "col": t["col"]}})
+    END
+    IF k == "Identifier" OR k == "Class":
+        # lambda shorthand
+        IF parser_peek(p)["value"] != None AND str.lower(parser_peek(p)["value"]) == "lambda":
+            lam_tok = parser_advance(p)
+            lam_span = {"line": lam_tok["line"], "col": lam_tok["col"]}
+            params = []
+            WHILE (NOT parser_check(p, "Colon")) AND (NOT parser_is_eof(p)) AND (NOT parser_check(p, "Newline")):
+                IF parser_check(p, "Identifier"):
+                    ptk = parser_advance(p)
+                    params = list_concat(params, [{"name": ptk["value"], "span": {"line": ptk["line"], "col": ptk["col"]}}])
+                ELSEIF parser_check(p, "Comma"): parser_advance(p) ELSE: BREAK END
+            END
+            IF parser_check(p, "Colon"): parser_advance(p) END
+            body_expr = parser_parse_expression(p, 0)
+            body_stmt = {"type": "ExprStmt", "expr": body_expr, "span": lam_span}
+            stmts = params # simplified
+            RETURN({"type": "Lambda", "body": [body_stmt], "span": lam_span})
+        END
+        id_tok = parser_advance(p)
+        id_name = id_tok["value"]
+        id_span = {"line": id_tok["line"], "col": id_tok["col"]}
+        # dotted segments
+        WHILE parser_check(p, "Dot"):
+            parser_advance(p)
+            IF parser_check(p, "Identifier"):
+                seg = parser_advance(p)
+                id_name = id_name + "." + seg["value"]
+            END
+        END
+        id = {"type": "Identifier", "name": id_name, "span": id_span}
+        IF parser_check(p, "LParen"):
+            parser_advance(p)
+            args = []
+            parser_skip_layout_tokens(p)
+            WHILE (NOT parser_check(p, "RParen")) AND (NOT parser_is_eof(p)):
+                parser_skip_layout_tokens(p)
+                args = list_concat(args, [parser_parse_expression(p, 0)])
+                parser_skip_layout_tokens(p)
+                IF parser_check(p, "Comma"): parser_advance(p); parser_skip_layout_tokens(p) ELSE: BREAK END
+            END
+            IF parser_check(p, "RParen"): r = parser_advance(p) END
+            span = {"start": id_span, "end": {"line": r["line"], "col": r["col"]}} IF has_key(r, "line") ELSE id_span END
+            RETURN({"type": "Call", "callee": id, "args": args, "span": span})
+        END
+        RETURN(id)
+    END
+    IF k == "Obj":
+        parser_advance(p)
+        span = parser_current_span(p)
+        IF NOT parser_match_token(p, "Dot"): RETURN({"type": "Raw", "value": "OBJ missing '.'", "span": span}) END
+        IF NOT parser_check(p, "Identifier"): RETURN({"type": "Raw", "value": "OBJ missing group name", "span": span}) END
+        grp_tok = parser_advance(p)
+        group = str.upper(grp_tok["value"])
+        mutable = false
+        IF parser_check(p, "Dot"):
+            saved = p["pos"]
+            parser_advance(p)
+            IF parser_check(p, "Identifier") AND str.upper(parser_peek(p)["value"]) == "MUT":
+                parser_advance(p)
+                mutable = true
+            ELSE:
+                p["pos"] = saved
+            END
+        END
+        IF NOT parser_match_token(p, "LParen"): RETURN({"type": "Raw", "value": "OBJ missing '('", "span": span}) END
+        parent_a = parser_parse_expression(p, 0)
+        IF parser_check(p, "Comma"): parser_advance(p) END
+        parent_b = parser_parse_expression(p, 0)
+        IF parser_check(p, "RParen"): parser_advance(p) END
+        RETURN({"type": "ObjFamNew", "group": group, "mutable": mutable, "parent_a": parent_a, "parent_b": parent_b, "span": span})
+    END
+    IF k == "Typeof":
+        t = parser_advance(p)
+        span = {"line": t["line"], "col": t["col"]}
+        IF parser_check(p, "LParen"): parser_advance(p); target = parser_parse_expression(p, 0); IF parser_check(p, "RParen"): parser_advance(p) END
+        ELSE: target = parser_parse_unary(p)
+        END
+        RETURN({"type": "Call", "callee": {"type": "Identifier", "name": "type", "span": span}, "args": [target], "span": span})
+    END
+    IF k == "DoesParentExist":
+        t = parser_advance(p)
+        span = {"line": t["line"], "col": t["col"]}
+        target = parser_parse_unary(p)
+        RETURN({"type": "DoesParentExist", "target": target, "span": span})
+    END
+    IF k == "LParen":
+        parser_advance(p)
+        e = parser_parse_expression(p, 0)
+        IF parser_check(p, "RParen"): parser_advance(p) END
+        RETURN(e)
+    END
+    IF k == "Ref":
+        ref_tok = parser_advance(p)
+        ref_span = {"line": ref_tok["line"], "col": ref_tok["col"]}
+        IF NOT parser_match_token(p, "Dot"): RETURN({"type": "Raw", "value": "REF missing '.'", "span": ref_span}) END
+        IF NOT parser_check(p, "Identifier"): RETURN({"type": "Raw", "value": "REF missing kind", "span": ref_span}) END
+        kind_tok = parser_advance(p)
+        kind = str.upper(kind_tok["value"]) 
+        IF NOT parser_match_token(p, "LParen"): RETURN({"type": "Raw", "value": "REF missing '('", "span": ref_span}) END
+        target = parser_parse_expression(p, 0)
+        IF NOT parser_match_token(p, "RParen"): RETURN({"type": "Raw", "value": "REF missing ')'", "span": ref_span}) END
+        metadata = []
+        IF parser_check(p, "Identifier") AND str.lower(parser_peek(p)["value"]) == "with":
+            parser_advance(p)
+            IF parser_match_token(p, "LBrace"):
+                WHILE (NOT parser_check(p, "RBrace")) AND (NOT parser_is_eof(p)):
+                    IF parser_check(p, "Newline"): parser_advance(p); CONTINUE END
+                    IF NOT parser_check(p, "Identifier"): BREAK END
+                    key_tok = parser_advance(p)
+                    key = key_tok["value"]
+                    IF NOT (parser_match_token(p, "Colon") OR parser_match_token(p, "Eq")): BREAK END
+                    val = parser_parse_expression(p, 0)
+                    metadata = list_concat(metadata, [[key, val]])
+                    IF parser_check(p, "Comma"): parser_advance(p) END
+                END
+                parser_match_token(p, "RBrace")
+            END
+        END
+        RETURN({"type": "Ref", "kind": kind, "target": target, "metadata": metadata, "span": ref_span})
+    END
+    IF k == "LBracket":
+        parser_advance(p)
+        items = []
+        parser_skip_layout_tokens(p)
+        WHILE (NOT parser_check(p, "RBracket")) AND (NOT parser_is_eof(p)):
+            parser_skip_layout_tokens(p)
+            items = list_concat(items, [parser_parse_expression(p, 0)])
+            parser_skip_layout_tokens(p)
+            IF parser_check(p, "Comma"): parser_advance(p); parser_skip_layout_tokens(p) ELSE: BREAK END
+        END
+        IF parser_check(p, "RBracket"): r = parser_advance(p); span = {"line": r["line"], "col": r["col"]} ELSE: span = parser_current_span(p) END
+        RETURN({"type": "List", "items": items, "span": span})
+    END
+    IF k == "LBrace":
+        open = parser_advance(p)
+        span = {"line": open["line"], "col": open["col"]}
+        pairs = []
+        parser_skip_layout_tokens(p)
+        WHILE (NOT parser_check(p, "RBrace")) AND (NOT parser_is_eof(p)):
+            parser_skip_layout_tokens(p)
+            key = parser_parse_expression(p, 0)
+            parser_skip_layout_tokens(p)
+            IF NOT parser_match_token(p, "Colon"): BREAK END
+            parser_skip_layout_tokens(p)
+            val = parser_parse_expression(p, 0)
+            pairs = list_concat(pairs, [[key, val]])
+            parser_skip_layout_tokens(p)
+            IF parser_check(p, "Comma"): parser_advance(p); parser_skip_layout_tokens(p) END
+        END
+        parser_match_token(p, "RBrace")
+        RETURN({"type": "Dict", "pairs": pairs, "span": span})
+    END
+    # fallback raw
+    t = parser_advance(p)
+    RETURN({"type": "Raw", "value": t["value"], "span": {"line": t["line"], "col": t["col"]}})
+END
+
+# parse_brace_body used earlier
+DEF parser_parse_brace_body(p):
+    parser_advance(p) # consume '{'
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    body = []
+    LOOP:
+        # consume layout tokens
+        WHILE parser_check(p, "Newline") OR parser_check(p, "Indent") OR parser_check(p, "Dedent"):
+            parser_advance(p)
+        END
+        IF parser_check(p, "RBrace") OR parser_is_eof(p): BREAK END
+        IF parser_check(p, "End"): parser_advance(p); CONTINUE END
+        before = p["pos"]
+        s = parser_parse_statement(p)
+        IF s != None: body = list_concat(body, [s]) ELSEIF p["pos"] == before: parser_advance(p) END
+    END
+    IF NOT parser_match_token(p, "RBrace"):
+        RETURN({"err": "Expected '}' to close block", "span": parser_current_span(p)})
+    END
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    RETURN(body)
+END
+
+# parse_print_statement minimal
+DEF parser_parse_print_statement(p):
+    t = parser_advance(p)
+    start_span = {"line": t["line"], "col": t["col"]}
+    first = parser_parse_expression(p, 0)
+    IF parser_check(p, "Comma"):
+        items = [first]
+        WHILE parser_check(p, "Comma"):
+            parser_advance(p)
+            items = list_concat(items, [parser_parse_expression(p, 0)])
+        END
+        span = parser_current_span(p)
+        expr = {"type": "List", "items": items, "span": span}
+    ELSE:
+        expr = first
+    END
+    loop_var_id = None
+    IF expr["type"] == "Identifier": loop_var_id = expr END
+    print_stmt = {"type": "Print", "expr": expr, "span": parser_current_span(p)}
+    IF parser_match_token(p, "While"):
+        condition = parser_parse_expression(p, 0)
+        IF parser_check(p, "Newline"): parser_advance(p) END
+        body = [print_stmt]
+        IF loop_var_id != None:
+            id = loop_var_id
+            inc_expr = {"type": "Binary", "op": "Add", "left": {"type": "Identifier", "name": id["name"]}, "right": {"type": "Number", "value": 1}, "span": parser_current_span(p)}
+            body = list_concat(body, [{"type": "Assignment", "target": id, "value": inc_expr, "span": parser_current_span(p)}])
+        END
+        return {"type": "WhileBlock", "targets": [], "alias": None, "condition": condition, "body": body, "span": parser_current_span(p)}
+    END
+    IF parser_match_token(p, "For"):
+        count_expr = parser_parse_expression(p, 0)
+        IF parser_check(p, "Newline"): parser_advance(p) END
+        dummy_target = {"name": "_print_for_", "span": parser_current_span(p)}
+        RETURN({"type": "DoBlock", "targets": [dummy_target], "alias": None, "repeats": [count_expr], "duration_ms": None, "body": [print_stmt], "span": parser_current_span(p)})
+    END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    RETURN(print_stmt)
+END
+
+# parse_assignment_statement simplified
+DEF parser_parse_assignment_statement(p):
+    id_tok = parser_advance(p)
+    name = id_tok["value"]
+    start_span = {"line": id_tok["line"], "col": id_tok["col"]}
+    end_span = start_span
+    WHILE parser_check(p, "Dot"):
+        parser_advance(p)
+        IF parser_check(p, "Identifier"):
+            next_tok = parser_advance(p)
+            name = name + "." + next_tok["value"]
+            end_span = {"line": next_tok["line"], "col": next_tok["col"]}
+        ELSE:
+            RETURN({"err": "Expected identifier after '.' in assignment target", "span": parser_current_span(p)})
+        END
+    END
+    target = {"name": name, "span": {"start": start_span, "end": end_span}}
+    target_expr = {"type": "Identifier", "name": name, "span": target["span"]}
+    WHILE parser_check(p, "LBracket"):
+        lbr = parser_advance(p)
+        indices = []
+        WHILE NOT parser_check(p, "RBracket") AND (NOT parser_is_eof(p)):
+            indices = list_concat(indices, [parser_parse_expression(p, 0)])
+            IF parser_check(p, "Comma"): parser_advance(p) ELSE: BREAK END
+        END
+        IF NOT parser_match_token(p, "RBracket"):
+            RETURN({"err": "Expected ']' in assignment target", "span": parser_current_span(p)})
+        END
+        span = {"start": target_expr["span"], "end": {"line": lbr["line"], "col": lbr["col"]}}
+        target_expr = {"type": "Index", "base": target_expr, "indices": indices, "span": span}
+    END
+    is_index_target = (target_expr["type"] == "Index")
+    IF NOT is_index_target AND parser_check(p, "Comma"):
+        targets = [target]
+        WHILE parser_check(p, "Comma"):
+            parser_advance(p)
+            IF NOT parser_check(p, "Identifier"): RETURN({"err": "Expected identifier after ',' in multi-label assignment", "span": parser_current_span(p)}) END
+            t = parser_advance(p)
+            targets = list_concat(targets, [{"name": t["value"], "span": {"line": t["line"], "col": t["col"]}}])
+        END
+        IF NOT parser_match_token(p, "Eq"):
+            RETURN({"err": "Expected '=' in multi-label assignment", "span": parser_current_span(p)})
+        END
+        value = parser_parse_expression(p, 0)
+        IF parser_check(p, "Newline"): parser_advance(p) END
+        span = {"start": start_span, "end": value["span"]}
+        RETURN({"type": "MultiAssignment", "targets": targets, "value": value, "span": span})
+    END
+    IF NOT parser_match_token(p, "Eq"):
+        RETURN({"err": "Expected '=' in assignment", "span": parser_current_span(p)})
+    END
+    # special forms: LOOP, PRINT, DO handled minimally
+    IF parser_check(p, "Loop"):
+        loop_tok = parser_advance(p)
+        loop_span = {"line": loop_tok["line"], "col": loop_tok["col"]}
+        body = parser_parse_do_body(p)
+        RETURN({"type": "LoopBlock", "name": target["name"], "body": body, "span": target["span"]})
+    END
+    IF parser_check(p, "Print"):
+        print_stmt = parser_parse_print_statement(p)
+        span = print_stmt["span"]
+        lam = {"type": "Lambda", "body": [print_stmt], "span": span}
+        RETURN({"type": "Assignment", "target": target, "value": lam, "span": target["span"]})
+    END
+    IF parser_check(p, "Do"):
+        do_stmt = parser_parse_do_statement(p)
+        span = do_stmt["span"] IF has_key(do_stmt, "span") ELSE parser_current_span(p)
+        lam = {"type": "Lambda", "body": [do_stmt], "span": span}
+        RETURN({"type": "Assignment", "target": target, "value": lam, "span": target["span"]})
+    END
+    first = parser_parse_expression(p, 0)
+    IF parser_check(p, "Comma"):
+        items = [first]
+        WHILE parser_check(p, "Comma"):
+            parser_advance(p)
+            items = list_concat(items, [parser_parse_expression(p, 0)])
+        END
+        start = items[0]["span"]
+        end = items[-1]["span"]
+        span = {"start": start, "end": end}
+        expr = {"type": "List", "items": items, "span": span}
+    ELSE:
+        expr = first
+    END
+    IF parser_check(p, "Semicolon"): parser_advance(p) END
+    IF parser_check(p, "Newline"): parser_advance(p) END
+    IF is_index_target:
+        RETURN({"type": "IndexAssignment", "target": target_expr, "value": expr, "span": target["span"]})
+    ELSE:
+        RETURN({"type": "Assignment", "target": target, "value": expr, "span": target["span"]})
+    END
+END
+
+# Remaining pointer and info/alloc/push/pull/seek/swap functions implemented below.
+
+# parse_goto_statement
+DEF parser_parse_goto_statement(p):
+    start_tok = parser_advance(p) # GOTO
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    IF NOT parser_check(p, "Identifier"):
+        RETURN({"err": "Expected label or pointer name after GOTO", "span": parser_current_span(p)})
+    END
+    label_tok = parser_advance(p)
+    name = label_tok["value"]
+    IF parser_check(p, "Colon"):
+        body = parser_parse_do_body(p)
+        RETURN({"type": "GotoBlock", "name": name, "body": body, "span": start_span})
+    END
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"type": "GotoLabel", "label": name, "span": start_span})
+END
+
+# parse_pull_statement
+DEF parser_parse_pull_statement(p):
+    start_tok = parser_advance(p) # PULL
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    IF NOT parser_match_token(p, "Dot"):
+        RETURN({"err": "Expected '.' after PULL", "span": parser_current_span(p)})
+    END
+    IF NOT parser_check(p, "Identifier"):
+        RETURN({"err": "Expected data type after PULL.", "span": parser_current_span(p)})
+    END
+    dtype_tok = parser_advance(p)
+    dtype = str.upper(dtype_tok["value"]) IF has_key(dtype_tok, "value") ELSE "" END
+    explicit_ptr = None
+    IF parser_check(p, "Identifier"):
+        next_is_ptr_sentinel = true
+        IF p["pos"] + 1 < list_len(p["tokens"]):
+            nt = p["tokens"][p["pos"] + 1]
+            next_is_ptr_sentinel = (nt["kind"] == "Arrow" OR nt["kind"] == "Newline" OR nt["kind"] == "Eof")
+        END
+        IF next_is_ptr_sentinel:
+            explicit_ptr = parser_parse_expression(p, 0)
+        END
+    END
+    args = []
+    IF parser_check(p, "LParen"):
+        parser_advance(p)
+        WHILE (NOT parser_check(p, "RParen")) AND (NOT parser_is_eof(p)):
+            args = list_concat(args, [parser_parse_expression(p, 0)])
+            IF parser_check(p, "Comma"): parser_advance(p) ELSE: BREAK END
+        END
+        IF NOT parser_match_token(p, "RParen"):
+            RETURN({"err": "Expected ')' after PULL arguments", "span": parser_current_span(p)})
+        END
+    END
+    target = None
+    IF parser_match_token(p, "Arrow"):
+        IF NOT parser_check(p, "Identifier"):
+            RETURN({"err": "Expected identifier after '->'", "span": parser_current_span(p)})
+        END
+        tgt = parser_advance(p)
+        target = {"name": tgt["value"], "span": {"line": tgt["line"], "col": tgt["col"]}}
+    END
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"type": "Pull", "dtype": dtype, "explicit_ptr": explicit_ptr, "args": args, "target": target, "span": start_span})
+END
+
+# parse_push_statement
+DEF parser_parse_push_statement(p):
+    start_tok = parser_advance(p) # PUSH
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    IF NOT parser_match_token(p, "Dot"):
+        RETURN({"err": "Expected '.' after PUSH", "span": parser_current_span(p)})
+    END
+    IF NOT parser_check(p, "Identifier"):
+        RETURN({"err": "Expected data type after PUSH.", "span": parser_current_span(p)})
+    END
+    dtype_tok = parser_advance(p)
+    dtype = str.upper(dtype_tok["value"]) IF has_key(dtype_tok, "value") ELSE "" END
+    args = []
+    IF parser_check(p, "LParen"):
+        parser_advance(p)
+        WHILE (NOT parser_check(p, "RParen")) AND (NOT parser_is_eof(p)):
+            args = list_concat(args, [parser_parse_expression(p, 0)])
+            IF parser_check(p, "Comma"): parser_advance(p) ELSE: BREAK END
+        END
+        IF NOT parser_match_token(p, "RParen"):
+            RETURN({"err": "Expected ')' after PUSH arguments", "span": parser_current_span(p)})
+        END
+    END
+    first = parser_parse_expression(p, 0)
+    explicit_ptr = None
+    value = first
+    IF parser_check(p, "Comma"):
+        parser_advance(p)
+        explicit_ptr = first
+        value = parser_parse_expression(p, 0)
+    END
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"type": "Push", "dtype": dtype, "explicit_ptr": explicit_ptr, "value": value, "args": args, "span": start_span})
+END
+
+# parse_alloc_statement
+DEF parser_parse_alloc_statement(p):
+    start_tok = parser_advance(p) # ALLOC
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    IF NOT parser_match_token(p, "Dot"):
+        RETURN({"err": "Expected '.' after ALLOC", "span": parser_current_span(p)})
+    END
+    IF NOT parser_check(p, "Identifier"):
+        RETURN({"err": "Expected pointer kind after ALLOC.", "span": parser_current_span(p)})
+    END
+    kind_tok = parser_advance(p)
+    kind = str.upper(kind_tok["value"]) IF has_key(kind_tok, "value") ELSE "" END
+    args = []
+    IF parser_check(p, "LParen"):
+        parser_advance(p)
+        WHILE (NOT parser_check(p, "RParen")) AND (NOT parser_is_eof(p)):
+            args = list_concat(args, [parser_parse_expression(p, 0)])
+            IF parser_check(p, "Comma"): parser_advance(p) ELSE: BREAK END
+        END
+        IF NOT parser_match_token(p, "RParen"):
+            RETURN({"err": "Expected ')' after ALLOC arguments", "span": parser_current_span(p)})
+        END
+    END
+    metadata = []
+    IF parser_check(p, "Identifier") AND str.lower(parser_peek(p)["value"]) == "with":
+        parser_advance(p)
+        IF parser_match_token(p, "LBrace"):
+            WHILE (NOT parser_check(p, "RBrace")) AND (NOT parser_is_eof(p)):
+                IF parser_check(p, "Newline"): parser_advance(p); CONTINUE END
+                IF NOT parser_check(p, "Identifier"): BREAK END
+                key_tok = parser_advance(p)
+                key = key_tok["value"]
+                IF NOT (parser_match_token(p, "Colon") OR parser_match_token(p, "Eq")): RETURN({"err": "Expected ':' or '=' after metadata key", "span": parser_current_span(p)}) END
+                val = parser_parse_expression(p, 0)
+                metadata = list_concat(metadata, [[key, val]])
+                IF parser_check(p, "Comma"): parser_advance(p) END
+            END
+            parser_match_token(p, "RBrace")
+        END
+    END
+    IF NOT parser_match_token(p, "Arrow"):
+        RETURN({"err": "Expected '->' after ALLOC to specify target variable", "span": parser_current_span(p)})
+    END
+    IF NOT parser_check(p, "Identifier"):
+        RETURN({"err": "Expected identifier after '->'", "span": parser_current_span(p)})
+    END
+    target_tok = parser_advance(p)
+    target = {"name": target_tok["value"], "span": {"line": target_tok["line"], "col": target_tok["col"]}}
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"type": "Alloc", "target": target, "kind": kind, "args": args, "metadata": metadata, "span": start_span})
+END
+
+# parse_free_statement
+DEF parser_parse_free_statement(p):
+    start_tok = parser_advance(p) # FREE
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    pointer_expr = parser_parse_expression(p, 0)
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"type": "Free", "pointer_expr": pointer_expr, "span": start_span})
+END
+
+# parse_info_statement
+DEF parser_parse_info_statement(p):
+    start_tok = parser_advance(p) # INFO
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    pointer_expr = parser_parse_expression(p, 0)
+    target = None
+    IF parser_match_token(p, "Arrow"):
+        IF NOT parser_check(p, "Identifier"): RETURN({"err": "Expected identifier after '->'", "span": parser_current_span(p)}) END
+        tgt = parser_advance(p)
+        target = {"name": tgt["value"], "span": {"line": tgt["line"], "col": tgt["col"]}}
+    END
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"type": "Info", "pointer_expr": pointer_expr, "target": target, "span": start_span})
+END
+
+# parse_seek_statement
+DEF parser_parse_seek_statement(p):
+    start_tok = parser_advance(p) # SEEK
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    pointer_expr = parser_parse_expression(p, 0)
+    IF NOT parser_match_token(p, "Comma"):
+        RETURN({"err": "Expected ',' after pointer in SEEK", "span": parser_current_span(p)})
+    END
+    offset_expr = parser_parse_expression(p, 0)
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    RETURN({"type": "Seek", "pointer_expr": pointer_expr, "offset_expr": offset_expr, "span": start_span})
+END
+
+# parse_swap_statement
+DEF parser_parse_swap_statement(p):
+    start_tok = parser_advance(p) # SWAP
+    start_span = {"line": start_tok["line"], "col": start_tok["col"]}
+    IF NOT parser_check(p, "Identifier"): RETURN({"err": "Expected identifier after SWAP", "span": parser_current_span(p)}) END
+    var1_tok = parser_advance(p)
+    IF NOT parser_match_token(p, "Comma"): RETURN({"err": "Expected ',' between variables in SWAP", "span": parser_current_span(p)}) END
+    IF NOT parser_check(p, "Identifier"): RETURN({"err": "Expected identifier after ',' in SWAP", "span": parser_current_span(p)}) END
+    var2_tok = parser_advance(p)
+    WHILE parser_check(p, "Newline"): parser_advance(p) END
+    var1 = {"name": var1_tok["value"], "span": {"line": var1_tok["line"], "col": var1_tok["col"]}}
+    var2 = {"name": var2_tok["value"], "span": {"line": var2_tok["line"], "col": var2_tok["col"]}}
+    RETURN({"type": "Swap", "var1": var1, "var2": var2, "span": start_span})
+END
+
+# End of parser.ps translation.
+# Note: Some nuanced error messages and span merging simplified.
+# Tests require interpreter harness; try running tests when environment supports pty.node.

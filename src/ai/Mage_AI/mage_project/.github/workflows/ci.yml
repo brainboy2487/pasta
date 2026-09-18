@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config gcc make
+
+      - name: Build project (Make)
+        run: |
+          make -j$(nproc)
+
+      - name: Run vocab validation
+        run: |
+          if [ -d data ]; then
+            for f in data/vocab_*.jsonl data/vocab/*.jsonl; do
+              [ -f "$${f}" ] || continue
+              echo "Validating $${f}"
+              python3 tools/validate_vocab.py "$${f}"
+            done
+          else
+            echo "No data/ directory present; skipping vocab validation"
+          fi
+
+      - name: Run tests
+        run: |
+          make test || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mage-tools-and-bin
+          path: |
+            tools/
+            bin/

@@ -1,0 +1,15 @@
+DEF inc(n):
+    RET.NOW(n + 1)
+END
+
+value = 0
+count = 0
+WHILE count < 4:
+    count = count + 1
+    IF count == 2:
+        CONTINUE
+    END
+    value = value + inc(count)
+END
+
+PRINT value

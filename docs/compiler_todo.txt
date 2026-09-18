@@ -1,0 +1,246 @@
+# 🍝 **Pasta Hybrid Linking System — Actionable TODO Guide**
+
+A structured, dependency‑aware plan for implementing multi‑file compilation, object generation, and linking using Pasta’s existing module import system.
+
+---
+
+# **PHASE 1 — Compiler/Loader Integration**
+
+### **1. Add “compilation mode” to the module loader**
+**Goal:** Loader behaves differently when invoked by the compiler.
+
+**Tasks:**
+- Add a `Mode` enum: `Interpret`, `Compile`.
+- When in `Compile` mode:
+  - Do not execute code.
+  - Do not lazy-load functions.
+  - Only resolve module paths + parse AST.
+  - Expose module metadata to the compiler.
+
+**Output:**  
+Module loader can act as a dependency graph generator for the compiler.
+
+---
+
+### **2. Expose module metadata to the compiler**
+**Goal:** Compiler receives structured info about each module.
+
+**Tasks:**
+- Add a `ModuleInfo` struct containing:
+  - module name  
+  - file path  
+  - exported symbols  
+  - imported symbols  
+  - hash of file contents  
+  - timestamp  
+- Add loader → compiler callback or query API.
+
+**Output:**  
+Compiler can request dependency info for any module.
+
+---
+
+# **PHASE 2 — Object File Format (`.pobj`)**
+
+### **3. Define `.pobj` schema**
+**Goal:** A Pasta-native object file format.
+
+**Tasks:**
+- Create `.pobj` structure:
+  - IR block  
+  - export table  
+  - import table  
+  - module metadata  
+- Choose serialization format (binary or Pasta-native text).
+
+**Output:**  
+Formal `.pobj` spec + serializer/deserializer stubs.
+
+---
+
+### **4. Implement IR serialization**
+**Goal:** Convert IR → `.pobj`.
+
+**Tasks:**
+- Add IR → byte stream serializer.
+- Add byte stream → IR deserializer.
+- Ensure stable ordering for deterministic builds.
+
+**Output:**  
+Compiler can emit `.pobj` files for each module.
+
+---
+
+### **5. Add symbol table generation**
+**Goal:** Every module produces a complete symbol table.
+
+**Tasks:**
+- Walk AST to collect:
+  - functions  
+  - structs  
+  - globals  
+- Mark visibility:
+  - `public` → exported  
+  - `private` → internal  
+- Store in `.pobj`.
+
+**Output:**  
+Each module has a complete import/export map.
+
+---
+
+# **PHASE 3 — Linking**
+
+### **6. Build dependency graph from imports**
+**Goal:** Compiler knows which modules must be compiled.
+
+**Tasks:**
+- Use module loader to:
+  - Resolve imports recursively.
+  - Build a DAG of modules.
+  - Detect cycles.
+- Cache graph for incremental builds.
+
+**Output:**  
+A complete dependency graph for the program.
+
+---
+
+### **7. Implement minimal IR-level linker**
+**Goal:** Merge `.pobj` files into one linked IR bundle.
+
+**Tasks:**
+- Load all `.pobj` files in dependency order.
+- Merge IR blocks.
+- Resolve imports → exports.
+- Detect:
+  - missing symbols  
+  - duplicate symbols  
+  - conflicting definitions  
+- Produce `.plir` (linked IR bundle).
+
+**Output:**  
+A single linked IR file ready for backend codegen.
+
+---
+
+### **8. Add incremental build support**
+**Goal:** Only recompile changed modules.
+
+**Tasks:**
+- Compare module hash/timestamp with cached `.pobj`.
+- Skip compilation if unchanged.
+- Rebuild only affected dependents.
+
+**Output:**  
+Fast rebuilds for large projects.
+
+---
+
+# **PHASE 4 — Backend Integration**
+
+### **9. Add `.plir` → machine code pipeline**
+**Goal:** Backend consumes linked IR.
+
+**Tasks:**
+- Update backend entry point to accept `.plir`.
+- Generate machine code.
+- Emit final executable.
+
+**Output:**  
+Native binary generation from multi-module Pasta code.
+
+---
+
+# **PHASE 5 — Ecosystem Integration**
+
+### **10. Make imports always imply linking**
+**Goal:** Simple, predictable behavior.
+
+**Tasks:**
+- Compiler treats every import as a compile-time dependency.
+- Interpreter still lazy-loads at runtime.
+- No mode-specific syntax.
+
+**Output:**  
+Unified import semantics across the language.
+
+---
+
+### **11. Add caching directory**
+**Goal:** Store `.pobj` and `.plir` artifacts.
+
+**Tasks:**
+- Create `.pasta-cache/` or `target/`.
+- Store:
+  - module hash  
+  - `.pobj`  
+  - `.plir`  
+- Add cleanup command.
+
+**Output:**  
+Stable build cache for the compiler.
+
+---
+
+# **PHASE 6 — Self-Hosting Prep**
+
+### **12. Stabilize ABI**
+**Goal:** Allow Pasta to compile itself.
+
+**Tasks:**
+- Define calling convention.
+- Define struct layout rules.
+- Define string/array/slice representation.
+- Define runtime API surface.
+
+**Output:**  
+Stable ABI for compiler + runtime interop.
+
+---
+
+### **13. Begin rewriting compiler modules in Pasta**
+**Goal:** Move toward self-hosting.
+
+**Tasks:**
+- Start with:
+  - lexer  
+  - parser  
+  - AST  
+- Gradually replace Rust components.
+
+**Output:**  
+Pasta compiler v2 (partially self-hosted).
+
+---
+
+# **PHASE 7 — Full Self-Hosting**
+
+### **14. Compile Pasta compiler using Pasta**
+**Goal:** Achieve self-hosting.
+
+**Tasks:**
+- Use Pasta compiler to compile its own modules.
+- Compare output with Rust-compiled version.
+- Fix discrepancies.
+- Iterate until stable.
+
+**Output:**  
+Pasta compiler v3 — fully self-hosted.
+
+---
+
+# **PHASE 8 — Final Polish**
+
+### **15. Add developer-facing commands**
+**Goal:** Smooth UX.
+
+**Tasks:**
+- `pasta build`  
+- `pasta clean`  
+- `pasta run`  
+- `pasta test` (future)
+
+**Output:**  
+A complete Pasta-native build workflow.
+

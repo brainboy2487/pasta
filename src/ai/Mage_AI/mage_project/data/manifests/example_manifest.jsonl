@@ -1,0 +1,2 @@
+{"docid": 0, "url": "https://example.com/doc1", "text": "The Markov Answer...", "vectorindex": 0, "dim": 128, "meta": {}}
+{"docid": 1, "url": "https://example.com/doc2", "text": "Deterministic inference...", "vectorindex": 1, "dim": 128, "meta": {}}

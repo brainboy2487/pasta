@@ -1,0 +1,8 @@
+FROM json USE loads, dumps END
+
+s = read_file("tests/json_nested.json")
+v = loads(s)
+PRINT dumps(v)
+IF v["obj"]["inner"][2]["x"] != "y": RAISE("nested: x mismatch") END
+IF v["obj"]["empty"] != {}: RAISE("nested: empty mismatch") END
+PRINT "OK: json_nested"

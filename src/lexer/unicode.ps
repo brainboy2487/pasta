@@ -1,0 +1,63 @@
+# Unicode normalization helpers (translation of src/lexer/unicode.rs)
+
+DEF normalize_unicode(s):
+    IF s == None: RETURN("") END
+    # fast path: if none of the mapped characters present, return original
+    specials = ["×","⋅","·","÷","⁄","⁰","¹","²","³","⁴","⁵","⁶","⁷","⁸","⁹","−"]
+    found = false
+    FOR ch IN specials:
+        IF str.find(s, ch) != -1:
+            found = true
+            BREAK
+        END
+    END
+    IF NOT found:
+        RETURN(s)
+    END
+    out = ""
+    FOR ch IN s:
+        IF ch == '×' OR ch == '⋅' OR ch == '·': out = out + '*'
+        ELSEIF ch == '÷' OR ch == '⁄': out = out + '/'
+        ELSEIF ch == '⁰': out = out + '0'
+        ELSEIF ch == '¹': out = out + '1'
+        ELSEIF ch == '²': out = out + '2'
+        ELSEIF ch == '³': out = out + '3'
+        ELSEIF ch == '⁴': out = out + '4'
+        ELSEIF ch == '⁵': out = out + '5'
+        ELSEIF ch == '⁶': out = out + '6'
+        ELSEIF ch == '⁷': out = out + '7'
+        ELSEIF ch == '⁸': out = out + '8'
+        ELSEIF ch == '⁹': out = out + '9'
+        ELSEIF ch == '−': out = out + '-'
+        ELSE: out = out + ch
+        END
+    END
+    RETURN(out)
+
+# simple exponent caret normalizer (optional)
+DEF normalize_exponent_caret(s):
+    s2 = normalize_unicode(s)
+    out = ""
+    i = 0
+    L = len(s2)
+    WHILE i < L:
+        ch = s2[i]
+        IF ch == '1' AND i + 1 < L AND s2[i+1] == '0':
+            # consume '10'
+            out = out + '10'
+            i = i + 2
+            # collect digits
+            digits = ""
+            WHILE i < L AND s2[i].isdigit():
+                digits = digits + s2[i]
+                i = i + 1
+            END
+            IF digits != "":
+                out = out + '^' + digits
+            END
+            CONTINUE
+        END
+        out = out + ch
+        i = i + 1
+    END
+    RETURN(out)

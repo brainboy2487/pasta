@@ -1,0 +1,381 @@
+FROM term USE tty_available, screen_size, screen_rows, screen_begin, screen_end, move_to, write_text, wait_key, show_cursor_now, hide_cursor_now, flush_output, draw_buffer_view END
+
+GUTTER = 6
+UNTITLED_NAME = "untitled"
+
+DEF clamp_num(value, low, high):
+    IF value < low:
+        RETURN low
+    END
+    IF value > high:
+        RETURN high
+    END
+    RETURN value
+END
+
+DEF normalize_lines(lines):
+    IF list_len(lines) == 0:
+        RETURN [""]
+    END
+    RETURN lines
+END
+
+DEF line_at(lines, idx):
+    IF idx < 0:
+        RETURN ""
+    END
+    IF idx >= list_len(lines):
+        RETURN ""
+    END
+    RETURN lines[idx]
+END
+
+DEF replace_line(lines, idx, value):
+    before = list_slice(lines, 0, idx)
+    after = list_slice(lines, idx + 1, list_len(lines))
+    RETURN before + [value] + after
+END
+
+DEF insert_line(lines, idx, value):
+    before = list_slice(lines, 0, idx)
+    after = list_slice(lines, idx, list_len(lines))
+    RETURN before + [value] + after
+END
+
+DEF delete_line(lines, idx):
+    before = list_slice(lines, 0, idx)
+    after = list_slice(lines, idx + 1, list_len(lines))
+    result = before + after
+    RETURN normalize_lines(result)
+END
+
+DEF left_part(text, count):
+    IF count <= 0:
+        RETURN ""
+    END
+    RETURN substr(text, 1, count)
+END
+
+DEF right_part(text, start_idx):
+    total = len(text)
+    IF start_idx >= total:
+        RETURN ""
+    END
+    RETURN substr(text, start_idx + 1, total - start_idx)
+END
+
+DEF insert_text(text, col, value):
+    RETURN left_part(text, col) + value + right_part(text, col)
+END
+
+DEF delete_backward_text(text, col):
+    IF col <= 0:
+        RETURN text
+    END
+    RETURN left_part(text, col - 1) + right_part(text, col)
+END
+
+DEF load_buffer(file_path):
+    IF file_path != "" AND FILE_EXISTS(file_path):
+        RETURN normalize_lines(READ_LINES(file_path))
+    END
+    RETURN [""]
+END
+
+DEF save_buffer(file_path, lines):
+    WRITE_LINES(file_path, lines)
+END
+
+DEF display_name(file_path):
+    IF file_path == "":
+        RETURN UNTITLED_NAME
+    END
+    RETURN file_path
+END
+
+DEF status_bar(file_path, dirty, row, col, status_msg):
+    dirty_flag = ""
+    IF dirty:
+        dirty_flag = " *"
+    END
+    pos = "Ln " + str(row + 1) + ", Col " + str(col + 1)
+    IF status_msg != "":
+        RETURN display_name(file_path) + dirty_flag + " | " + pos + " | " + status_msg
+    END
+    RETURN display_name(file_path) + dirty_flag + " | " + pos + " | Ctrl+O Save  Ctrl+X Exit"
+END
+
+DEF ensure_cursor(lines, row, col):
+    new_row = row
+    new_col = col
+
+    IF new_row < 0:
+        new_row = 0
+    END
+    IF new_row >= list_len(lines):
+        new_row = list_len(lines) - 1
+    END
+
+    line_len = len(line_at(lines, new_row))
+    IF new_col < 0:
+        new_col = 0
+    END
+    IF new_col > line_len:
+        new_col = line_len
+    END
+
+    RETURN [new_row, new_col]
+END
+
+DEF adjust_scroll(row, col, scroll_row, scroll_col, body_rows, text_width):
+    new_scroll_row = scroll_row
+    new_scroll_col = scroll_col
+
+    IF row < new_scroll_row:
+        new_scroll_row = row
+    END
+    IF row >= new_scroll_row + body_rows:
+        new_scroll_row = row - body_rows + 1
+    END
+
+    IF col < new_scroll_col:
+        new_scroll_col = col
+    END
+    IF col >= new_scroll_col + text_width:
+        new_scroll_col = col - text_width + 1
+    END
+
+    IF new_scroll_row < 0:
+        new_scroll_row = 0
+    END
+    IF new_scroll_col < 0:
+        new_scroll_col = 0
+    END
+
+    RETURN [new_scroll_row, new_scroll_col]
+END
+
+DEF draw_editor(lines, row, col, scroll_row, scroll_col, file_path, dirty, status_msg):
+    dims = screen_size()
+    rows = dims[1]
+    body_rows = rows - 1
+    cursor_row = row - scroll_row + 1
+    cursor_col = col - scroll_col + GUTTER + 1
+    IF cursor_row < 1:
+        cursor_row = 1
+    END
+    IF cursor_row > body_rows:
+        cursor_row = body_rows
+    END
+    IF cursor_col < GUTTER + 1:
+        cursor_col = GUTTER + 1
+    END
+    draw_buffer_view(lines, scroll_row, scroll_col, GUTTER, status_bar(file_path, dirty, row, col, status_msg), cursor_row, cursor_col)
+END
+
+DEF prompt_input(prompt_text):
+    show_cursor_now()
+    term_raw_disable()
+    move_to(screen_rows(), 1)
+    term_clear_line()
+    write_text(prompt_text)
+    flush_output()
+    result = INPUT("")
+    term_raw_enable()
+    hide_cursor_now()
+    RETURN result
+END
+
+DEF first_user_arg():
+    args = sys.args()
+    IF list_len(args) > 2:
+        RETURN args[2]
+    END
+    RETURN ""
+END
+
+IF NOT tty_available():
+    PRINT "pedit_next requires an interactive terminal"
+    sys.exit(1)
+END
+
+file_path = first_user_arg()
+lines = load_buffer(file_path)
+row = 0
+col = 0
+scroll_row = 0
+scroll_col = 0
+dirty = False
+status_msg = "Ctrl+O Save  Ctrl+X Exit"
+needs_redraw = True
+
+screen_begin()
+
+WHILE True:
+    IF needs_redraw:
+        dims = screen_size()
+        body_rows = dims[1] - 1
+        text_width = dims[0] - GUTTER
+        IF text_width < 1:
+            text_width = 1
+        END
+
+        cursor_state = ensure_cursor(lines, row, col)
+        row = cursor_state[0]
+        col = cursor_state[1]
+        scroll_state = adjust_scroll(row, col, scroll_row, scroll_col, body_rows, text_width)
+        scroll_row = scroll_state[0]
+        scroll_col = scroll_state[1]
+        draw_editor(lines, row, col, scroll_row, scroll_col, file_path, dirty, status_msg)
+        needs_redraw = False
+    END
+
+    key = wait_key(-1)
+    IF key == "":
+        CONTINUE
+    END
+
+    current_line = line_at(lines, row)
+
+    IF key == "Ctrl+C":
+        key = "Ctrl+X"
+    END
+
+    IF key == "Ctrl+O":
+        target_path = file_path
+        IF target_path == "":
+            target_path = trim(prompt_input("Save as: "))
+        END
+        IF target_path == "":
+            status_msg = "Save cancelled"
+        OTHERWISE:
+            save_buffer(target_path, lines)
+            file_path = target_path
+            dirty = False
+            status_msg = "Saved " + target_path
+        END
+        needs_redraw = True
+        CONTINUE
+    END
+
+    IF key == "Ctrl+X":
+        IF dirty:
+            confirm = upper(trim(prompt_input("Unsaved changes. Quit without saving? (y/N): ")))
+            IF confirm != "Y" AND confirm != "YES":
+                status_msg = "Quit cancelled"
+                needs_redraw = True
+                CONTINUE
+            END
+        END
+        BREAK
+    END
+
+    IF key == "Left":
+        IF col > 0:
+            col = col - 1
+        OTHERWISE:
+            IF row > 0:
+                row = row - 1
+                col = len(line_at(lines, row))
+            END
+        END
+        status_msg = ""
+        needs_redraw = True
+        CONTINUE
+    END
+
+    IF key == "Right":
+        IF col < len(current_line):
+            col = col + 1
+        OTHERWISE:
+            IF row + 1 < list_len(lines):
+                row = row + 1
+                col = 0
+            END
+        END
+        status_msg = ""
+        needs_redraw = True
+        CONTINUE
+    END
+
+    IF key == "Up":
+        IF row > 0:
+            row = row - 1
+        END
+        col = clamp_num(col, 0, len(line_at(lines, row)))
+        status_msg = ""
+        needs_redraw = True
+        CONTINUE
+    END
+
+    IF key == "Down":
+        IF row + 1 < list_len(lines):
+            row = row + 1
+        END
+        col = clamp_num(col, 0, len(line_at(lines, row)))
+        status_msg = ""
+        needs_redraw = True
+        CONTINUE
+    END
+
+    IF key == "Home" OR key == "Ctrl+A":
+        col = 0
+        status_msg = ""
+        needs_redraw = True
+        CONTINUE
+    END
+
+    IF key == "End" OR key == "Ctrl+E":
+        col = len(current_line)
+        status_msg = ""
+        needs_redraw = True
+        CONTINUE
+    END
+
+    IF key == "Enter":
+        left = left_part(current_line, col)
+        right = right_part(current_line, col)
+        lines = replace_line(lines, row, left)
+        lines = insert_line(lines, row + 1, right)
+        row = row + 1
+        col = 0
+        dirty = True
+        status_msg = ""
+        needs_redraw = True
+        CONTINUE
+    END
+
+    IF key == "Backspace":
+        IF col > 0:
+            lines = replace_line(lines, row, delete_backward_text(current_line, col))
+            col = col - 1
+            dirty = True
+        OTHERWISE:
+            IF row > 0:
+                prev = line_at(lines, row - 1)
+                lines = replace_line(lines, row - 1, prev + current_line)
+                lines = delete_line(lines, row)
+                row = row - 1
+                col = len(prev)
+                dirty = True
+            END
+        END
+        status_msg = ""
+        needs_redraw = True
+        CONTINUE
+    END
+
+    IF len(key) == 1:
+        lines = replace_line(lines, row, insert_text(current_line, col, key))
+        col = col + 1
+        dirty = True
+        status_msg = ""
+        needs_redraw = True
+        CONTINUE
+    END
+
+    status_msg = "Unhandled key: " + key
+    needs_redraw = True
+END
+
+screen_end()

@@ -1,0 +1,162 @@
+phase: "Bridge Phase Before Self-Hosting"
+
+goals:
+  - "Stabilize language semantics"
+  - "Complete compiler infrastructure layer"
+  - "Implement deterministic build system"
+  - "Finalize IR and codegen abstraction"
+  - "Implement full diagnostic framework"
+  - "Build a complete compiler test harness"
+  - "Create a bootstrap safety net for self-hosting"
+
+agent_rules:
+  - "Use minimal, reversible, deterministic patches"
+  - "Add or update tests for every change"
+  - "Maintain zero warnings in builds"
+  - "Document each change in a concise changelog entry"
+  - "Avoid large, cross-cutting edits without prior decomposition"
+  - "Preserve ABI and module system invariants"
+
+steps:
+
+  - id: finalize_language_semantics
+    title: "Finalize Language Semantics"
+    objective: "Lock down core semantics so they no longer shift during the self-hosting rewrite."
+    tasks:
+      - "Define and document function semantics (returns, closures, purity rules if any)."
+      - "Define and document type system behavior (inference, generics, coercions, numeric behavior)."
+      - "Define control flow semantics (loops, break/continue, early return, exceptions)."
+      - "Lock operator precedence and associativity in a spec file."
+      - "Define scoping rules (lexical, module-level, block-level)."
+      - "Define error model (panic, recover, result types, exceptions)."
+      - "Create a canonical LANGUAGE_SEMANTICS.md (or equivalent) and keep it in sync with implementation."
+    deliverables:
+      - "Language semantics spec file."
+      - "Tests covering edge cases for functions, types, control flow, and operators."
+    validation:
+      - "All semantics tests pass."
+      - "No compiler behavior contradicts the written semantics spec."
+
+  - id: compiler_infrastructure_layer
+    title: "Complete Compiler Infrastructure Layer"
+    objective: "Provide robust core utilities the compiler will rely on once written in Pasta."
+    tasks:
+      - "Implement or finalize a string builder type with predictable performance."
+      - "Implement a dynamic array type suitable for compiler workloads."
+      - "Implement a hash map with stable iteration order (or document ordering guarantees)."
+      - "Implement a file loader with consistent path resolution and error reporting."
+      - "Implement a diagnostic support library (message building, spans, labels)."
+      - "Implement a small formatting/printing subsystem used by diagnostics and logs."
+      - "Implement reusable tokenizer helpers for lexing (character classes, cursor, lookahead)."
+      - "Implement reusable AST node utilities (construction helpers, visitors, printers)."
+    deliverables:
+      - "Core infrastructure modules (strings, arrays, maps, IO, diagnostics, tokenizer helpers, AST helpers)."
+      - "Unit tests and micro-benchmarks for infrastructure components where relevant."
+    validation:
+      - "Compiler uses these infrastructure components instead of ad-hoc utilities."
+      - "All infrastructure tests pass and performance is acceptable for medium-sized inputs."
+
+  - id: deterministic_build_system
+    title: "Implement Deterministic Build System for Pasta"
+    objective: "Enable reproducible, multi-module builds suitable for a self-hosted compiler."
+    tasks:
+      - "Design a minimal build graph model (modules, dependencies, outputs)."
+      - "Implement dependency resolution using the Pasta module system (MOD/FROM/USE/END)."
+      - "Implement a build driver that compiles modules in dependency order."
+      - "Implement caching of compiled modules (simple timestamp or hash-based)."
+      - "Implement change detection to avoid unnecessary recompilation."
+      - "Emit structured build logs (what was built, why, and in what order)."
+      - "Support a basic incremental rebuild mode."
+    deliverables:
+      - "Build driver executable or command (e.g., `pasta build`)."
+      - "Configuration format for projects (e.g., pasta.toml or similar)."
+      - "Tests for dependency resolution, caching, and reproducibility."
+    validation:
+      - "Given the same inputs, builds are reproducible."
+      - "Multi-module projects build successfully with correct dependency ordering."
+
+  - id: finalize_ir_and_codegen
+    title: "Finalize IR and Codegen Abstraction"
+    objective: "Stabilize the IR and its interface so the self-hosted compiler can target it without churn."
+    tasks:
+      - "Define IR node types and their invariants in a spec file."
+      - "Define representation for control flow (basic blocks, CFG, SSA or non-SSA strategy)."
+      - "Define symbol table and scope resolution rules at the IR level."
+      - "Define module-level IR structure (global symbols, imports, exports)."
+      - "Define a stable codegen interface (IR → LLVM or IR → backend)."
+      - "Add hooks or extension points for future optimization passes."
+      - "Refactor existing compiler code to use the finalized IR abstraction."
+    deliverables:
+      - "IR specification document."
+      - "IR data structures and builder APIs."
+      - "Codegen module(s) that consume the IR in a stable, documented way."
+      - "IR-level tests (construction, printing, round-tripping where applicable)."
+    validation:
+      - "IR and codegen APIs are no longer changing between builds."
+      - "Existing programs compile and run correctly through the finalized IR pipeline."
+
+  - id: diagnostics_framework
+    title: "Implement Full Diagnostic Framework"
+    objective: "Provide a complete, reusable diagnostics system suitable for a self-hosted compiler."
+    tasks:
+      - "Define error codes and a naming scheme (e.g., PASTA0001)."
+      - "Implement source span representation (file, line, column, byte offsets)."
+      - "Implement multi-span diagnostics (primary + secondary spans)."
+      - "Implement notes, suggestions, and help messages."
+      - "Implement pretty-printing of diagnostics with source snippets."
+      - "Optionally implement colored output with a fallback for non-color terminals."
+      - "Integrate diagnostics into all compiler stages (lexing, parsing, type checking, codegen)."
+    deliverables:
+      - "Diagnostics library/module with a stable API."
+      - "Catalog of error codes and their meanings."
+      - "Tests for formatting, span handling, and multi-line diagnostics."
+    validation:
+      - "All compiler errors and warnings go through the diagnostics framework."
+      - "Diagnostics are stable and readable across different environments."
+
+  - id: compiler_test_harness
+    title: "Build Complete Compiler Test Harness"
+    objective: "Ensure the compiler’s behavior is well-covered before rewriting it in Pasta."
+    tasks:
+      - "Implement a test runner for compiler tests (CLI or script)."
+      - "Add golden-file tests for successful compilation (expected output, IR, or binary behavior)."
+      - "Add negative tests for expected errors and diagnostics."
+      - "Add IR snapshot tests where appropriate."
+      - "Add runtime tests for compiled programs (exit codes, stdout/stderr)."
+      - "Add module system tests (imports, exports, cycles, errors)."
+      - "Add ABI conformance tests (calling conventions, data layout)."
+      - "Add reproducibility tests (same input → same output)."
+    deliverables:
+      - "Test harness executable or script."
+      - "Organized test suite directory structure."
+      - "Documented conventions for adding new tests."
+    validation:
+      - "Test harness runs in CI or a repeatable script."
+      - "All tests pass before any self-hosting work begins."
+
+  - id: bootstrap_safety_net
+    title: "Create Bootstrap Safety Net for Self-Hosting"
+    objective: "Provide mechanisms to verify that the self-hosted compiler is correct and stable."
+    tasks:
+      - "Define a process for building the compiler with the existing (Rust) implementation."
+      - "Define a process for building the compiler with the future Pasta implementation."
+      - "Implement a comparison mode (e.g., compare IR, binaries, or hashes of outputs)."
+      - "Implement a script that runs: Rust-compiled compiler → build Pasta-compiled compiler → compare."
+      - "Keep the Rust implementation available as a fallback until confidence is high."
+      - "Document the full bootstrap procedure step-by-step."
+    deliverables:
+      - "Bootstrap script (e.g., `bootstrap_pasta.sh` or equivalent)."
+      - "Comparison tool or mode for verifying compiler outputs."
+      - "BOOTSTRAP.md documenting the process and expectations."
+    validation:
+      - "Bootstrap script completes successfully on a clean environment."
+      - "Rust-compiled and Pasta-compiled compilers produce identical or acceptably equivalent outputs."
+
+completion_criteria:
+  - "Language semantics are documented and stable."
+  - "Compiler infrastructure layer is in place and used by the compiler."
+  - "Deterministic build system can build multi-module projects."
+  - "IR and codegen abstraction are finalized and stable."
+  - "Diagnostics framework is complete and integrated."
+  - "Compiler test harness covers major behaviors and passes."
+  - "Bootstrap safety net is implemented and documented."

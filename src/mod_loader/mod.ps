@@ -1,0 +1,36 @@
+# src/mod_loader/mod.ps
+# Re-exports and wiring surface for the module loader subsystem.
+# Mirrors Rust `src/mod_loader/mod.rs` by documenting the public surface and
+# providing a stable export list for the Pasta linker to consume.
+
+# NOTE: Implementation lives in mod_api.ps, mod_load.ps and binary.ps.
+# This file intentionally avoids duplicating logic; the eventual linker will
+# wire the translated modules together so these names resolve to their
+# concrete implementations.
+
+DEF module_loader_exports():
+    # Public names re-exported by the module loader subsystem
+    RETURN([
+        "MatchKind",
+        "ModuleMeta",
+        "Module",
+        "ResolvedSymbol",
+        "LoaderConfig",
+        "ModuleLoaderApi",
+        "default_loader_with_config",
+
+        # Concrete loader implementations
+        "ModuleLoader",
+        "parse_config_from_file",
+
+        # Binary helpers
+        "compile_to_binary",
+        "load_from_binary",
+        "compile_file",
+        "load_binary_file",
+        "load_module",
+        "is_binary_current",
+        "BinaryError",
+        "BinaryResult",
+    ])
+END

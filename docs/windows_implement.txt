@@ -1,0 +1,185 @@
+### Goal
+Make the codebase build and run on **Windows** by keeping the existing POSIX (`dlopen`/`dlsym`/etc.) implementation for Unix and adding a Windows implementation that uses the Windows API (or a cross‑platform loader) — all selected by `cfg(unix)` / `cfg(windows)`.
+---
+
+### High-level approach (what Copilot should do)
+1. **Keep the current Unix implementation** behind `#[cfg(unix)]` so Linux/macOS behavior is unchanged.  
+2. **Add a Windows implementation** behind `#[cfg(windows)]` that uses `LoadLibraryW`, `GetProcAddress`, and `FreeLibrary` (via `winapi` or `windows-sys`) or use `libloading` as a thin cross-platform wrapper.  
+3. **Prefer `libloading`** if you want a single API that works on both platforms; otherwise implement platform-specific code with `cfg` guards.  
+4. **Make `x11` and other Unix-only deps conditional** in `Cargo.toml` so Windows builds don’t try to link to X11.  
+5. **Add unit tests / smoke tests** that exercise the dynamic loader on both platforms (stubs on Windows if necessary).  
+6. **Run the build and fix any remaining warnings/errors**.
+
+---
+
+### Exact edits for Copilot to apply
+
+#### 1 — Add dependency (choose one)
+**Option A: Use `libloading` (recommended, minimal platform branches)**  
+Add to `Cargo.toml`:
+```toml
+[dependencies]
+libloading = "0.8"
+```
+
+**Option B: Use Windows API directly**  
+Add to `Cargo.toml`:
+```toml
+[dependencies]
+windows-sys = { version = "0.48", features = ["Win32_Foundation", "Win32_System_LibraryLoader"] }
+```
+(Or `winapi` if you prefer that crate.)
+
+---
+
+#### 2 — Replace or wrap `src/runtime/native_module.rs`
+
+**Full patch Copilot can apply** (libloading approach; keeps Unix code but uses libloading on Windows too — minimal changes):
+
+```diff
+--- a/src/runtime/native_module.rs
++++ b/src/runtime/native_module.rs
+@@
+- use libc::{c_char, c_void, dlclose, dlerror, dlopen, dlsym, RTLD_LOCAL, RTLD_NOW};
++ use libc::{c_char, c_void};
++ #[cfg(unix)]
++ use libc::{dlclose, dlerror, dlopen, dlsym, RTLD_LOCAL, RTLD_NOW};
++ 
++ // Use libloading as the Windows implementation (and optionally on Unix too).
++ use libloading::{Library, Symbol};
++ use std::ffi::{CStr, CString};
++ use std::path::Path;
++ use std::ptr;
+ 
+- // ... existing code that calls dlopen/dlsym/dlclose ...
++ /// Cross-platform wrapper around a dynamically loaded native module.
++ pub struct NativeModule {
++     // Keep the raw pointer for Unix if you need it, otherwise store libloading::Library
++     lib: Option<Library>,
++     // Optionally keep platform-specific handle if needed
++     #[cfg(unix)]
++     raw: Option<*mut c_void>,
++ }
++ 
++ impl NativeModule {
++     /// Open a library at `path`. On Unix this uses dlopen; on Windows libloading uses LoadLibrary.
++     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
++         let path = path.as_ref();
++ 
++         // Prefer libloading for portability
++         let lib = unsafe { Library::new(path) }?;
++ 
++         // If you still need the raw handle on Unix, obtain it via libloading internals or keep dlopen path
++         #[cfg(unix)]
++         let raw = {
++             use std::os::raw::c_char;
++             let cpath = CString::new(path.as_os_str().as_bytes())?;
++             let handle = unsafe { dlopen(cpath.as_ptr() as *const c_char, RTLD_NOW | RTLD_LOCAL) };
++             if handle.is_null() {
++                 let err = unsafe {
++                     let e = dlerror();
++                     if e.is_null() { "unknown dlerror".into() } else { CStr::from_ptr(e).to_string_lossy().into_owned() }
++                 };
++                 return Err(format!("dlopen failed: {}", err).into());
++             }
++             Some(handle)
++         };
++ 
++         Ok(NativeModule {
++             lib: Some(lib),
++             #[cfg(unix)]
++             raw: if cfg!(unix) { raw } else { None },
++         })
++     }
++ 
++     /// Get a symbol from the library.
++     pub unsafe fn get<T>(&self, symbol: &str) -> Result<Symbol<T>, libloading::Error> {
++         let c_sym = CString::new(symbol)?;
++         // libloading handles platform differences internally
++         self.lib.as_ref().unwrap().get::<T>(c_sym.as_bytes_with_nul())
++     }
++ }
++ 
++ impl Drop for NativeModule {
++     fn drop(&mut self) {
++         // libloading::Library will free on drop automatically.
++         #[cfg(unix)]
++         if let Some(h) = self.raw.take() {
++             unsafe { dlclose(h) };
++         }
++     }
++ }
+```
+
+**Notes for Copilot**:
+- If the project relies on raw `dlopen` semantics (flags, RTLD_LOCAL/RTLD_NOW), keep the `#[cfg(unix)] dlopen` path as shown and use `libloading` for Windows only.
+- Ensure `use libloading::{Library, Symbol};` is added at top and `libloading` is in `Cargo.toml`.
+- Replace any direct calls to `dlopen`, `dlsym`, `dlclose` in the repo with calls to `NativeModule::open` and `NativeModule::get` (or add `#[cfg(unix)]` wrappers where necessary).
+
+---
+
+#### 3 — Make `x11` conditional in `Cargo.toml`
+If `x11` is only needed on Unix, change `Cargo.toml`:
+
+```toml
+[dependencies]
+# other deps...
+
+[target.'cfg(unix)'.dependencies]
+x11 = "2.21.0"
+```
+
+Remove `x11` from the top-level `[dependencies]` if present.
+
+---
+
+#### 4 — Update code that expects POSIX-only behavior
+- Search for direct uses of `dlopen`, `dlsym`, `dlclose`, `RTLD_*` and replace them with calls to the new `NativeModule` wrapper or guard them with `#[cfg(unix)]`.
+- For Windows-specific behavior that previously relied on POSIX semantics, implement equivalent logic using `NativeModule` + `libloading` or `windows-sys` `LoadLibraryW`/`GetProcAddress`.
+
+---
+
+### Tests, verification, and build steps for Copilot to run
+1. **Run unit tests and build on Windows**:
+```powershell
+cargo clean
+cargo build --release -v
+cargo test
+```
+2. **If using libloading**, run a small smoke test that opens a known system library (on Windows `kernel32.dll` or `user32.dll`) and resolves a symbol:
+```rust
+#[test]
+fn smoke_load_kernel32() {
+    let m = NativeModule::open("kernel32.dll").expect("open kernel32");
+    unsafe {
+        let _ = m.get::<unsafe extern "system" fn()>("GetModuleHandleW").expect("get symbol");
+    }
+}
+```
+3. **On Unix**, run the same tests to ensure `dlopen` path still works.
+
+---
+
+### Checklist for Copilot to follow while editing
+- [ ] Add `libloading` (or `windows-sys`) to `Cargo.toml`.  
+- [ ] Modify `src/runtime/native_module.rs` per the patch above.  
+- [ ] Replace direct `libc` POSIX imports with `#[cfg(unix)]` guarded imports.  
+- [ ] Make `x11` conditional in `Cargo.toml`.  
+- [ ] Run `cargo build --release` on Windows and fix any compile errors.  
+- [ ] Add a small smoke test that loads a system DLL and resolves a symbol.  
+- [ ] Run `cargo test` on both Windows and Unix (or WSL) to verify behavior.
+
+---
+
+### If Copilot needs to make choices
+- **Prefer `libloading`** unless you need fine-grained control of dlopen flags or Windows-specific loader flags. `libloading` reduces platform-specific code and is easier to maintain.  
+- **If you must use Windows API directly**, implement a `#[cfg(windows)]` module that calls `LoadLibraryW` / `GetProcAddress` / `FreeLibrary` via `windows-sys` and mirror the `NativeModule` API.
+
+---
+
+### Final notes for Copilot
+- Keep changes small and well‑scoped: one file at a time, run the build, fix errors, repeat.  
+- Preserve existing behavior on Unix; only add Windows alternatives.  
+- Add comments explaining why `cfg(unix)` / `cfg(windows)` branches exist so future contributors understand the cross-platform intent.
+
+If you want, I’ll produce a **complete ready-to-paste diff** for `native_module.rs` using either `libloading` or `windows-sys` (pick which), plus the exact `Cargo.toml` snippet to add. Which implementation should I generate the full diff for: **libloading** or **windows-sys (direct WinAPI)**?

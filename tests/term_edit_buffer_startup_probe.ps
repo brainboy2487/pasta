@@ -1,0 +1,8 @@
+IF NOT TERM_IS_TTY():
+    PRINT "no tty"
+    sys.exit(1)
+END
+
+result = TERM_EDIT_BUFFER(["a"], "startup probe", 0, 0, 1000)
+PRINT "len=" + str(list_len(result))
+PRINT "action=" + result[1]

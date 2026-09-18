@@ -1,0 +1,213 @@
+
+
+# **Pasta Parallelism System — Implementation Guide**
+
+## **1. Add New Language Constructs**
+Introduce two new top‑level syntax forms:
+
+### **1.1 THREAD Header**
+```
+THREAD <name>:
+    <block>
+```
+
+### **1.2 Optional PARALLEL Block**
+```
+PARALLEL:
+    THREAD <name>: <block>
+    THREAD <name>: <block>
+```
+
+Both forms declare parallel execution lanes.
+
+---
+
+## **2. Update the Grammar**
+Add new grammar rules:
+
+### **2.1 THREAD Header Rule**
+```
+ThreadHeader:
+    "THREAD" Identifier ":" Newline IndentedBlock
+```
+
+### **2.2 PARALLEL Block Rule**
+```
+ParallelBlock:
+    "PARALLEL" ":" Newline
+        (Indented "THREAD" Identifier ":" Newline IndentedBlock)+
+```
+
+### **2.3 Allow Assignment**
+```
+Assignment:
+    Identifier "=" ThreadHeader
+```
+
+---
+
+## **3. Add AST Nodes**
+Create new AST node types:
+
+### **3.1 ThreadHeaderNode**
+Fields:
+- name (string)
+- body (list of AST nodes)
+- assign_target (optional identifier)
+
+### **3.2 ParallelBlockNode**
+Fields:
+- threads (list of ThreadHeaderNode)
+
+---
+
+## **4. Modify the Parser**
+### **4.1 Detect THREAD keyword**
+- When encountering `THREAD`, create a ThreadHeaderNode.
+- Parse the indented block as its body.
+- If preceded by assignment, store assign_target.
+
+### **4.2 Detect PARALLEL keyword**
+- Create a ParallelBlockNode.
+- Parse each nested THREAD header into ThreadHeaderNode entries.
+
+---
+
+## **5. Interpreter Integration**
+Integrate THREAD headers into the existing concurrency system.
+
+### **5.1 Thread Creation**
+When executing a ThreadHeaderNode:
+- Allocate a new thread object.
+- Assign a numeric thread ID.
+- Bind the human‑friendly name.
+- Spawn a new execution context.
+- Run the block inside that context.
+
+### **5.2 Assignment Handling**
+If assign_target exists:
+- Store the thread ID in the variable table.
+
+### **5.3 ParallelBlock Execution**
+For each ThreadHeaderNode inside the block:
+- Spawn threads immediately.
+- Do not wait for completion unless explicitly requested.
+
+---
+
+## **6. Execution Model**
+### **6.1 Thread Lifecycle**
+Each thread:
+- Has its own instruction pointer.
+- Executes independently.
+- Shares global memory unless isolated mode is enabled.
+
+### **6.2 Thread Status**
+Expose:
+- running
+- finished
+- errored
+
+### **6.3 Thread Control**
+Support:
+```
+WAIT FOR <thread_name>
+END <thread_name>
+IF thread <name> is running:
+```
+
+---
+
+## **7. Runtime Additions**
+### **7.1 Thread Table**
+Add a global structure:
+```
+thread_table = {
+    name: {
+        id,
+        status,
+        context,
+        return_value
+    }
+}
+```
+
+### **7.2 Thread Scheduler**
+Implement:
+- round‑robin or cooperative scheduling
+- yield points at DO‑block boundaries
+- optional preemption hooks
+
+---
+
+## **8. Error Handling**
+### **8.1 Syntax Errors**
+- Missing thread name
+- Missing colon
+- Empty block
+
+### **8.2 Runtime Errors**
+- Duplicate thread names
+- Invalid WAIT target
+- Thread termination failures
+
+---
+
+## **9. Testing Plan**
+### **9.1 Basic Thread Creation**
+```
+THREAD test:
+    PRINT "Hello"
+```
+
+### **9.2 Parallel Execution**
+```
+THREAD A: PRINT "A"
+THREAD B: PRINT "B"
+```
+
+### **9.3 Assignment**
+```
+set t = THREAD worker:
+    RUN job.ps
+```
+
+### **9.4 PARALLEL Block**
+```
+PARALLEL:
+    THREAD g: RUN graphics.ps
+    THREAD p: RUN physics.ps
+```
+
+### **9.5 Thread Status**
+```
+IF thread g is running:
+    PRINT "Graphics OK"
+```
+
+---
+
+## **10. Integration With Existing DO‑Blocks**
+### **10.1 DO‑Block Inside Thread**
+Allow:
+```
+THREAD updater:
+    DO update FOR 100
+```
+
+### **10.2 DO‑Block Thread Spawning**
+ThreadHeader internally calls the same spawn mechanism used by DO‑blocks.
+
+---
+
+## **11. Final Deliverables**
+Your AI assistant should produce:
+
+- Updated grammar file  
+- Updated parser rules  
+- New AST node definitions  
+- Interpreter modifications  
+- Thread scheduler implementation  
+- Runtime thread table  
+- Error handling logic  
+- Test suite  

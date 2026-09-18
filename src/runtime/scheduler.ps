@@ -1,0 +1,75 @@
+# Pasta translation of src/runtime/scheduler.rs (simplified)
+# Scheduler: weighted round-robin over task entries
+
+DEF Scheduler_new():
+    RETURN({"executor": Executor_new(), "tasks": {}, "insertion_order": [], "priorities": {}, "weight_scale": 100.0})
+END
+
+DEF Scheduler_spawn(sched, name, func):
+    tid = Executor_define_thread(sched["executor"], name, 1.0)
+    entry = {"id": tid, "name": name, "task": func}
+    sched["insertion_order"] = sched["insertion_order"] + [tid]
+    sched["tasks"][str(tid)] = entry
+    RETURN(tid)
+END
+
+DEF Scheduler_remove(sched, id):
+    k = str(id)
+    IF has_key(sched["tasks"], k):
+        sched["tasks"] = dict_remove(sched["tasks"], k)
+        # remove from insertion_order
+        new_ins = []
+        FOR v IN sched["insertion_order"]:
+            IF v != id: new_ins = new_ins + [v] END
+        END
+        sched["insertion_order"] = new_ins
+        Executor_env_remove_thread(sched["executor"], id)
+        RETURN(True)
+    END
+    RETURN(False)
+END
+
+DEF Scheduler_compute_slices(sched):
+    # very simple: equal weights
+    out = []
+    FOR id IN sched["insertion_order"]:
+        IF has_key(sched["tasks"], str(id)):
+            out = out + [[id, 1]]
+        END
+    END
+    RETURN(out)
+END
+
+DEF Scheduler_run_rounds(sched, max_steps):
+    IF dict_len(sched["tasks"]) == 0 OR max_steps == 0: RETURN(None) END
+    slices = Scheduler_compute_slices(sched)
+    queue = []
+    FOR pair IN slices:
+        id = pair[0]
+        s = pair[1]
+        i = 0
+        WHILE i < s:
+            queue = queue + [id]
+            i = i + 1
+        END
+    END
+
+    steps = 0
+    WHILE steps < max_steps AND len(queue) > 0 AND dict_len(sched["tasks"]) > 0:
+        id = queue[0]
+        queue = queue[1:]
+        k = str(id)
+        IF NOT has_key(sched["tasks"], k): CONTINUE END
+        entry = sched["tasks"][k]
+        # call task; func is expected to be a Pasta callable that returns True when done
+        res = entry["task"](sched["executor"])
+        IF res == True:
+            # remove
+            Scheduler_remove(sched, id)
+        ELSE:
+            queue = queue + [id]
+        END
+        steps = steps + 1
+    END
+    RETURN(None)
+END

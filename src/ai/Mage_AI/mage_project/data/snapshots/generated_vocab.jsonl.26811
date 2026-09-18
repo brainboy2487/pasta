@@ -1,0 +1,141 @@
+{"id": "25322f7d4746e1b6", "key": "a", "type": "other", "responses": ["tiny"]}
+{"id": "774cc132437f23cc", "key": "world", "type": "other", "responses": ["this"]}
+{"id": "94dae8b7f243e3cf", "key": "is", "type": "other", "responses": ["a"]}
+{"id": "2ce85c5d94b7f5e9", "key": "corpus", "type": "other", "responses": ["hello"]}
+{"id": "9afc2b1afabca86d", "key": "training", "type": "other", "responses": ["corpus"]}
+{"id": "58e64639ab0cf990", "key": "this", "type": "other", "responses": ["is"]}
+{"id": "6c532bf998407c08", "key": "hello", "type": "other", "responses": ["world", "mage"]}
+{"id": "84b10c8d923c5e97", "key": "tiny", "type": "other", "responses": ["training"]}
+
+{"id": "base_001", "key": "hello", "type": "intent", "responses": ["Hello — how can I help you today?"]}
+{"id": "base_002", "key": "hi", "type": "intent", "responses": ["Hi there — what would you like to do?"]}
+{"id": "base_003", "key": "hey", "type": "intent", "responses": ["Hey — I’m listening."]}
+{"id": "base_004", "key": "good morning", "type": "intent", "responses": ["Good morning — how can I make your day easier?"]}
+{"id": "base_005", "key": "good afternoon", "type": "intent", "responses": ["Good afternoon — what can I do for you?"]}
+{"id": "base_006", "key": "good evening", "type": "intent", "responses": ["Good evening — need anything before the day ends?"]}
+{"id": "base_007", "key": "thanks", "type": "intent", "responses": ["You’re welcome — glad I could help."]}
+{"id": "base_008", "key": "thank you", "type": "intent", "responses": ["My pleasure — happy to help."]}
+{"id": "base_009", "key": "please", "type": "intent", "responses": ["Sure — what would you like me to do?"]}
+{"id": "base_010", "key": "sorry", "type": "intent", "responses": ["No problem — we can fix that together."]}
+{"id": "base_011", "key": "help", "type": "intent", "responses": ["I can help — tell me what you need."]}
+{"id": "base_012", "key": "support", "type": "intent", "responses": ["I’m here to support you — what’s the issue?"]}
+{"id": "base_013", "key": "problem", "type": "intent", "responses": ["I’m sorry you’re having trouble — describe the problem and I’ll assist."]}
+{"id": "base_014", "key": "issue", "type": "intent", "responses": ["Let’s troubleshoot this — what happened?"]}
+{"id": "base_015", "key": "question", "type": "intent", "responses": ["Ask away — I’ll do my best to answer."]}
+{"id": "base_016", "key": "how", "type": "intent", "responses": ["Could you give me a bit more detail so I can explain?"]}
+{"id": "base_017", "key": "what", "type": "intent", "responses": ["What specifically would you like to know?"]}
+{"id": "base_018", "key": "why", "type": "intent", "responses": ["I can explain the reasons — which part should I start with?"]}
+{"id": "base_019", "key": "when", "type": "intent", "responses": ["I can check the schedule — which date or time do you mean?"]}
+{"id": "base_020", "key": "where", "type": "intent", "responses": ["I can look that up — which location are you referring to?"]}
+{"id": "base_021", "key": "who", "type": "intent", "responses": ["I can find that — who or which person do you mean?"]}
+{"id": "base_022", "key": "status", "type": "intent", "responses": ["I’ll check the current status and report back."]}
+{"id": "base_023", "key": "progress", "type": "intent", "responses": ["Here’s the latest progress update I have."]}
+{"id": "base_024", "key": "update", "type": "intent", "responses": ["I’ll fetch the latest update now."]}
+{"id": "base_025", "key": "cancel", "type": "intent", "responses": ["Okay — I’ll cancel that for you. Confirm if you want me to proceed."]}
+{"id": "base_026", "key": "stop", "type": "intent", "responses": ["Stopping now — let me know if you want to resume."]}
+{"id": "base_027", "key": "pause", "type": "intent", "responses": ["Paused — tell me when to continue."]}
+{"id": "base_028", "key": "resume", "type": "intent", "responses": ["Resuming now — picking up where we left off."]}
+{"id": "base_029", "key": "restart", "type": "intent", "responses": ["Restarting the process — one moment."]}
+{"id": "base_030", "key": "reset", "type": "intent", "responses": ["I’ll reset that setting — confirm if you want to continue."]}
+{"id": "base_031", "key": "save", "type": "intent", "responses": ["I’ll save your changes now."]}
+{"id": "base_032", "key": "delete", "type": "intent", "responses": ["I’m ready to delete that — confirm and I’ll proceed."]}
+{"id": "base_033", "key": "remove", "type": "intent", "responses": ["I can remove it — please confirm which item."]}
+{"id": "base_034", "key": "add", "type": "intent", "responses": ["What would you like to add? Give me the details."]}
+{"id": "base_035", "key": "create", "type": "intent", "responses": ["I can create that for you — what should I name it?"]}
+{"id": "base_036", "key": "new", "type": "intent", "responses": ["Great — tell me what new item you want to make."]}
+{"id": "base_037", "key": "open", "type": "intent", "responses": ["Opening it now — which file or app?"]}
+{"id": "base_038", "key": "close", "type": "intent", "responses": ["Closing that now."]}
+{"id": "base_039", "key": "send", "type": "intent", "responses": ["I’ll send it — who should receive it?"]}
+{"id": "base_040", "key": "share", "type": "intent", "responses": ["I can share this — who should I share with?"]}
+{"id": "base_041", "key": "email", "type": "intent", "responses": ["I can draft an email — what should it say?"]}
+{"id": "base_042", "key": "message", "type": "intent", "responses": ["I’ll prepare a message — who is the recipient?"]}
+{"id": "base_043", "key": "call", "type": "intent", "responses": ["I can place a call — who should I call and when?"]}
+{"id": "base_044", "key": "schedule", "type": "intent", "responses": ["I’ll add that to your calendar — what date and time?"]}
+{"id": "base_045", "key": "remind", "type": "intent", "responses": ["I’ll set a reminder — when would you like it?"]}
+{"id": "base_046", "key": "alarm", "type": "intent", "responses": ["Alarm set — what time should it go off?"]}
+{"id": "base_047", "key": "timer", "type": "intent", "responses": ["Timer started — how long should it run?"]}
+{"id": "base_048", "key": "meeting", "type": "intent", "responses": ["I’ll schedule the meeting — who should attend?"]}
+{"id": "base_049", "key": "appointment", "type": "intent", "responses": ["I’ll book the appointment — preferred date and time?"]}
+{"id": "base_050", "key": "travel", "type": "intent", "responses": ["I can help with travel plans — where are you going?"]}
+{"id": "base_051", "key": "flight", "type": "intent", "responses": ["I’ll look up flights — what are your travel dates?"]}
+{"id": "base_052", "key": "hotel", "type": "intent", "responses": ["I’ll search hotels — what city and dates?"]}
+{"id": "base_053", "key": "directions", "type": "intent", "responses": ["I’ll get directions — where are you starting from?"]}
+{"id": "base_054", "key": "map", "type": "intent", "responses": ["Showing the map now — which area do you want?"]}
+{"id": "base_055", "key": "weather", "type": "intent", "responses": ["I’ll fetch the weather for your location."]}
+{"id": "base_056", "key": "forecast", "type": "intent", "responses": ["Here’s the forecast for the next few days."]}
+{"id": "base_057", "key": "news", "type": "intent", "responses": ["I’ll pull the latest headlines for you."]}
+{"id": "base_058", "key": "headline", "type": "intent", "responses": ["Here’s a summary of the top headline."]}
+{"id": "base_059", "key": "search", "type": "intent", "responses": ["What should I search for?"]}
+{"id": "base_060", "key": "find", "type": "intent", "responses": ["Tell me what you want me to find."]}
+{"id": "base_061", "key": "lookup", "type": "intent", "responses": ["I’ll look that up and return results."]}
+{"id": "base_062", "key": "translate", "type": "intent", "responses": ["Which language should I translate to?"]}
+{"id": "base_063", "key": "define", "type": "intent", "responses": ["I’ll provide a definition — which word?"]}
+{"id": "base_064", "key": "synonym", "type": "intent", "responses": ["I’ll list synonyms — which word do you want alternatives for?"]}
+{"id": "base_065", "key": "antonym", "type": "intent", "responses": ["I’ll list antonyms — which word do you mean?"]}
+{"id": "base_066", "key": "spell", "type": "intent", "responses": ["I’ll spell that word for you."]}
+{"id": "base_067", "key": "calculate", "type": "intent", "responses": ["What calculation do you need? Provide the numbers."]}
+{"id": "base_068", "key": "convert", "type": "intent", "responses": ["I can convert units — which units and value?"]}
+{"id": "base_069", "key": "math", "type": "intent", "responses": ["Tell me the math problem and I’ll solve it."]}
+{"id": "base_070", "key": "sum", "type": "intent", "responses": ["I’ll compute the sum — give me the numbers."]}
+{"id": "base_071", "key": "average", "type": "intent", "responses": ["I’ll calculate the average — provide the dataset."]}
+{"id": "base_072", "key": "percent", "type": "intent", "responses": ["I’ll compute the percentage — give me the values."]}
+{"id": "base_073", "key": "currency", "type": "intent", "responses": ["Which currencies should I convert between?"]}
+{"id": "base_074", "key": "price", "type": "intent", "responses": ["I’ll check the current price for that item."]}
+{"id": "base_075", "key": "buy", "type": "intent", "responses": ["I can help you buy that — do you want recommendations?"]}
+{"id": "base_076", "key": "sell", "type": "intent", "responses": ["I can list it for sale — what’s the item and price?"]}
+{"id": "base_077", "key": "order", "type": "intent", "responses": ["I’ll place the order — confirm the details."]}
+{"id": "base_078", "key": "track", "type": "intent", "responses": ["I’ll track the shipment and update you."]}
+{"id": "base_079", "key": "status order", "type": "intent", "responses": ["I’ll check the order status now."]}
+{"id": "base_080", "key": "invoice", "type": "intent", "responses": ["I’ll prepare an invoice — what should it include?"]}
+{"id": "base_081", "key": "receipt", "type": "intent", "responses": ["I’ll retrieve the receipt for that purchase."]}
+{"id": "base_082", "key": "budget", "type": "intent", "responses": ["I can help set a budget — what’s the timeframe?"]}
+{"id": "base_083", "key": "expense", "type": "intent", "responses": ["Log the expense — what amount and category?"]}
+{"id": "base_084", "key": "report", "type": "intent", "responses": ["I’ll generate a report — which metrics do you want?"]}
+{"id": "base_085", "key": "summary", "type": "intent", "responses": ["Here’s a concise summary of the information."]}
+{"id": "base_086", "key": "details", "type": "intent", "responses": ["I’ll show the full details now."]}
+{"id": "base_087", "key": "example", "type": "intent", "responses": ["Here’s an example you can use."]}
+{"id": "base_088", "key": "template", "type": "intent", "responses": ["I’ll provide a template — what type do you need?"]}
+{"id": "base_089", "key": "draft", "type": "intent", "responses": ["I’ll draft that document for you."]}
+{"id": "base_090", "key": "edit", "type": "intent", "responses": ["What changes would you like me to make?"]}
+{"id": "base_091", "key": "revise", "type": "intent", "responses": ["I’ll revise it according to your instructions."]}
+{"id": "base_092", "key": "format", "type": "intent", "responses": ["I’ll format the text — which style should I use?"]}
+{"id": "base_093", "key": "style", "type": "intent", "responses": ["Choose a style and I’ll apply it."]}
+{"id": "base_094", "key": "tone", "type": "intent", "responses": ["What tone do you prefer — formal, casual, or friendly?"]}
+{"id": "base_095", "key": "proofread", "type": "intent", "responses": ["I’ll proofread and suggest corrections."]}
+{"id": "base_096", "key": "grammar", "type": "intent", "responses": ["I’ll check grammar and offer fixes."]}
+{"id": "base_097", "key": "summary email", "type": "intent", "responses": ["I’ll draft a summary email — who is the recipient?"]}
+{"id": "base_098", "key": "follow up", "type": "intent", "responses": ["I’ll prepare a follow-up message."]}
+{"id": "base_099", "key": "feedback", "type": "intent", "responses": ["I’ll collect feedback and summarize it."]}
+{"id": "base_100", "key": "rating", "type": "intent", "responses": ["Please provide a rating and I’ll record it."]}
+{"id": "base_101", "key": "review", "type": "intent", "responses": ["I’ll write a review draft — what points should I include?"]}
+{"id": "base_102", "key": "recommend", "type": "intent", "responses": ["I can recommend options — what’s your priority?"]}
+{"id": "base_103", "key": "compare", "type": "intent", "responses": ["I’ll compare the choices side by side."]}
+{"id": "base_104", "key": "pros", "type": "intent", "responses": ["Here are the pros for that option."]}
+{"id": "base_105", "key": "cons", "type": "intent", "responses": ["Here are the cons for that option."]}
+{"id": "base_106", "key": "best", "type": "intent", "responses": ["I’ll identify the best option based on your criteria."]}
+{"id": "base_107", "key": "cheapest", "type": "intent", "responses": ["I’ll find the most cost-effective option."]}
+{"id": "base_108", "key": "fastest", "type": "intent", "responses": ["I’ll find the quickest option available."]}
+{"id": "base_109", "key": "secure", "type": "intent", "responses": ["I’ll prioritize secure choices."]}
+{"id": "base_110", "key": "private", "type": "intent", "responses": ["I’ll treat this as private and avoid sharing."]}
+{"id": "base_111", "key": "settings", "type": "intent", "responses": ["I’ll open your settings menu."]}
+{"id": "base_112", "key": "preferences", "type": "intent", "responses": ["I’ll update your preferences."]}
+{"id": "base_113", "key": "profile", "type": "intent", "responses": ["I’ll show your profile details."]}
+{"id": "base_114", "key": "account", "type": "intent", "responses": ["I’ll access your account information."]}
+{"id": "base_115", "key": "billing", "type": "intent", "responses": ["I’ll show billing and payment options."]}
+{"id": "base_116", "key": "subscription", "type": "intent", "responses": ["I’ll manage your subscription settings."]}
+{"id": "base_117", "key": "logout", "type": "intent", "responses": ["I’ll log you out when you confirm."]}
+{"id": "base_118", "key": "login", "type": "intent", "responses": ["I’ll help you sign in — do you need a password reset?"]}
+{"id": "base_119", "key": "password", "type": "intent", "responses": ["I can guide you through a password reset."]}
+{"id": "base_120", "key": "security", "type": "intent", "responses": ["I’ll review your security settings."]}
+{"id": "base_121", "key": "privacy", "type": "intent", "responses": ["I’ll show privacy options and controls."]}
+{"id": "base_122", "key": "terms", "type": "intent", "responses": ["I’ll display the terms and conditions."]}
+{"id": "base_123", "key": "help center", "type": "intent", "responses": ["I’ll open the help center resources."]}
+{"id": "base_124", "key": "contact", "type": "intent", "responses": ["I’ll provide contact options for support."]}
+{"id": "base_125", "key": "feedback submit", "type": "intent", "responses": ["I’ll submit your feedback now."]}
+{"id": "base_126", "key": "bug", "type": "intent", "responses": ["I’ll log a bug report with the details you provide."]}
+{"id": "base_127", "key": "feature request", "type": "intent", "responses": ["I’ll record your feature request for review."]}
+{"id": "base_128", "key": "idea", "type": "intent", "responses": ["I’ll save your idea and tag it for follow-up."]}
+{"id": "base_129", "key": "goodbye", "type": "intent", "responses": ["Goodbye — talk soon."]}
+{"id": "base_130", "key": "bye", "type": "intent", "responses": ["Bye — take care."]}
+{"id": "base_131", "key": "see you", "type": "intent", "responses": ["See you later — I’ll be here when you return."]}
+{"id": "base_132", "key": "end", "type": "intent", "responses": ["Ending the session now — you can reopen anytime."]}

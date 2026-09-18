@@ -1,0 +1,79 @@
+# Pasta v0.01a script tests — error handling, ATTEMPT, TYPEOF (20 checks)
+
+DEF out_text(label, value):
+    PRINT label + ":" + value
+END
+
+DEF out_num(label, value):
+    PRINT label + ":" + str(value)
+END
+
+lam = LAMBDA x: x END
+
+out_text("P06T01", TYPEOF(5))             # EXPECT: P06T01:number
+out_text("P06T02", TYPEOF("x"))           # EXPECT: P06T02:string
+out_text("P06T03", TYPEOF(true))          # EXPECT: P06T03:bool
+out_text("P06T04", TYPEOF([1]))           # EXPECT: P06T04:list
+out_text("P06T05", TYPEOF({"a": 1}))      # EXPECT: P06T05:dict
+out_text("P06T06", TYPEOF(lam))           # EXPECT: P06T06:lambda
+out_text("P06T07", TYPEOF(regex_match("abc", "[a-z]+"))) # EXPECT: P06T07:bool
+
+TRY:
+    x = 1 / 0
+    out_text("P06T08", "bad")
+OTHERWISE:
+    out_text("P06T08", "caught-div")      # EXPECT: P06T08:caught-div
+END
+
+TRY:
+    ASSERT false
+    out_text("P06T09", "bad")
+OTHERWISE:
+    out_text("P06T09", "caught-assert")   # EXPECT: P06T09:caught-assert
+END
+
+ATTEMPT:
+    ASSERT false
+    out_text("P06T10", "bad")
+OTHERWISE:
+    out_text("P06T10", "caught-attempt")  # EXPECT: P06T10:caught-attempt
+END
+
+TRY:
+    TRY:
+        ASSERT false
+    OTHERWISE:
+        out_text("P06T11", "inner")       # EXPECT: P06T11:inner
+    END
+    out_text("P06T12", "after-inner")     # EXPECT: P06T12:after-inner
+OTHERWISE:
+    out_text("P06T12", "bad")
+END
+
+TRY:
+    ASSERT true
+    out_text("P06T13", "ok")              # EXPECT: P06T13:ok
+OTHERWISE:
+    out_text("P06T13", "bad")
+END
+
+ASSERT true
+out_text("P06T14", "after-assert")        # EXPECT: P06T14:after-assert
+
+TRY:
+    PRINT missing_name
+OTHERWISE:
+    out_text("P06T15", "caught-undef")    # EXPECT: P06T15:caught-undef
+END
+
+TRY:
+    ASSERT true
+    out_text("P06T16", "survived-try")    # EXPECT: P06T16:survived-try
+OTHERWISE:
+    out_text("P06T16", "bad")
+END
+
+out_text("P06T17", TYPEOF(upper("a")))    # EXPECT: P06T17:string
+out_text("P06T18", TYPEOF(range(2)))      # EXPECT: P06T18:list
+out_text("P06T19", TYPEOF(1 < 2))         # EXPECT: P06T19:bool
+out_text("P06T20", TYPEOF(TYPEOF(1)))     # EXPECT: P06T20:string

@@ -1,0 +1,3 @@
+[Build and run log snapshot]
+
+See project `log_full.txt` original for the full build and runtime log entries captured during development. The file was consolidated into docs/ for archival and troubleshooting reference.

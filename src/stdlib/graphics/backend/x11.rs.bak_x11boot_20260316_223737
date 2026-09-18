@@ -1,0 +1,175 @@
+//! X11 backend using the `x11` crate.
+//! - Allocates XImage data on the heap (via libc::malloc) and copies canvas bytes into it.
+//! - Registers WM_DELETE_WINDOW and handles ClientMessage to set `open = false`.
+//! - Reuses an XImage buffer when canvas size matches to reduce allocations.
+//!
+//! Notes:
+//! - This implementation assumes a 32-bit visual (common on modern Linux).
+
+use crate::stdlib::graphics::canvas::Canvas;
+use super::BackendWindow;
+use std::ffi::CString;
+use std::ptr;
+use std::mem;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Once;
+use libc::{malloc, free, c_void};
+use x11::xlib;
+
+static X_INIT: Once = Once::new();
+
+fn ensure_x_init() {
+    X_INIT.call_once(|| unsafe {
+        let _ = xlib::XInitThreads();
+    });
+}
+
+pub struct X11Window {
+    display: *mut xlib::Display,
+    screen: i32,
+    window: xlib::Window,
+    gc: xlib::GC,
+    width: usize,
+    height: usize,
+    open: AtomicBool,
+    wm_delete_atom: xlib::Atom,
+    cached_ximage: *mut xlib::XImage,
+    cached_data: *mut c_void,
+}
+
+impl X11Window {
+    pub fn new(title: &str, width: usize, height: usize) -> Result<Self, String> {
+        ensure_x_init();
+        unsafe {
+            let d = xlib::XOpenDisplay(ptr::null());
+            if d.is_null() { return Err("XOpenDisplay failed".to_string()); }
+            let screen = xlib::XDefaultScreen(d);
+            let root = xlib::XRootWindow(d, screen);
+            let win = xlib::XCreateSimpleWindow(d, root, 0, 0, width as u32, height as u32, 1, 0, 0);
+            let c_title = CString::new(title).unwrap();
+            xlib::XStoreName(d, win, c_title.as_ptr());
+
+            let wm_delete = xlib::XInternAtom(d, CString::new("WM_DELETE_WINDOW").unwrap().as_ptr(), 0);
+            xlib::XSetWMProtocols(d, win, &wm_delete as *const xlib::Atom as *mut xlib::Atom, 1);
+
+            xlib::XMapWindow(d, win);
+            xlib::XFlush(d);
+            let gc = xlib::XCreateGC(d, win, 0, ptr::null_mut());
+            Ok(Self {
+                display: d,
+                screen,
+                window: win,
+                gc,
+                width,
+                height,
+                open: AtomicBool::new(true),
+                wm_delete_atom: wm_delete,
+                cached_ximage: ptr::null_mut(),
+                cached_data: ptr::null_mut(),
+            })
+        }
+    }
+
+    unsafe fn ensure_ximage(&mut self, w: i32, h: i32) -> Result<*mut xlib::XImage, String> {
+        if !self.cached_ximage.is_null() {
+            let img = &*self.cached_ximage;
+            if img.width == w && img.height == h {
+                return Ok(self.cached_ximage);
+            } else {
+                xlib::XDestroyImage(self.cached_ximage);
+                self.cached_ximage = ptr::null_mut();
+                self.cached_data = ptr::null_mut();
+            }
+        }
+
+        let bytes = (w as usize) * (h as usize) * 4;
+        let data = malloc(bytes) as *mut i8;
+        if data.is_null() { return Err("malloc failed for XImage data".to_string()); }
+
+        let depth = xlib::XDefaultDepth(self.display, self.screen);
+        let visual = xlib::XDefaultVisual(self.display, self.screen);
+        let img = xlib::XCreateImage(
+            self.display,
+            visual,
+            depth as u32,
+            xlib::ZPixmap,
+            0,
+            data,
+            w,
+            h,
+            32,
+            0,
+        );
+        if img.is_null() {
+            free(data as *mut c_void);
+            return Err("XCreateImage returned null".to_string());
+        }
+        self.cached_ximage = img;
+        self.cached_data = data as *mut c_void;
+        Ok(img)
+    }
+
+    unsafe fn copy_canvas_to_ximage(&mut self, canvas: &Canvas) -> Result<(), String> {
+        let w = canvas.width as i32;
+        let h = canvas.height as i32;
+        let img = self.ensure_ximage(w, h)?;
+        let data_ptr = (*img).data as *mut u8;
+        if data_ptr.is_null() { return Err("XImage data pointer null".to_string()); }
+
+        let src = canvas.pixels.as_ptr() as *const u8;
+        let n = (canvas.pixels.len() * 4) as isize;
+        ptr::copy_nonoverlapping(src, data_ptr, n as usize);
+        Ok(())
+    }
+
+    pub fn blit_canvas(&mut self, canvas: &Canvas) -> Result<(), String> {
+        unsafe {
+            if canvas.width != self.width || canvas.height != self.height {
+                self.width = canvas.width;
+                self.height = canvas.height;
+            }
+            self.copy_canvas_to_ximage(canvas)?;
+            let img = self.cached_ximage;
+            if img.is_null() { return Err("no XImage available".to_string()); }
+            xlib::XPutImage(self.display, self.window, self.gc, img, 0, 0, 0, 0, self.width as u32, self.height as u32);
+            xlib::XFlush(self.display);
+            Ok(())
+        }
+    }
+}
+
+impl BackendWindow for X11Window {
+    fn blit(&mut self, canvas: &Canvas) -> Result<(), String> {
+        self.blit_canvas(canvas)
+    }
+
+    fn is_open(&mut self) -> bool {
+        unsafe {
+            while xlib::XPending(self.display) > 0 {
+                let mut ev: xlib::XEvent = mem::zeroed();
+                xlib::XNextEvent(self.display, &mut ev);
+                if ev.get_type() == xlib::ClientMessage {
+                    let xclient = ev.client_message;
+                    let atom_val = xclient.data.l[0] as xlib::Atom;
+                    if atom_val == self.wm_delete_atom {
+                        self.open.store(false, Ordering::SeqCst);
+                    }
+                }
+            }
+            self.open.load(Ordering::SeqCst)
+        }
+    }
+
+    fn close(&mut self) {
+        unsafe {
+            if !self.cached_ximage.is_null() {
+                xlib::XDestroyImage(self.cached_ximage);
+                self.cached_ximage = ptr::null_mut();
+                self.cached_data = ptr::null_mut();
+            }
+            xlib::XDestroyWindow(self.display, self.window);
+            xlib::XCloseDisplay(self.display);
+        }
+        self.open.store(false, Ordering::SeqCst);
+    }
+}

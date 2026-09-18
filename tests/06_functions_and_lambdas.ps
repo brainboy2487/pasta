@@ -1,0 +1,23 @@
+# Global counter
+n = 0
+
+# Inner function increments n twice
+DEF inc_twice:
+    WHILE n < 2:
+        print n
+        n = n + 1
+END
+
+# Outer function calls inner function, then runs its own WHILE
+DEF outer:
+    DO inc_twice
+    WHILE n < 5:
+        print n
+        n = n + 1
+END
+
+# Wrap outer in a lambda
+f = DO outer
+
+# Execute the lambda
+DO f

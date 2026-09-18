@@ -1,0 +1,157 @@
+Overview
+
+This document updates the research, findings, and system design for MAGE after the 3D and 4D experiments and the full N‑D scaling sweep through D = 0..12. It consolidates measured performance, numerical behavior, architectural decisions, and a prioritized, actionable game plan to move from prototype to a hardened, production‑ready engine that trades predictable compute for memory.
+
+---
+
+Key Findings
+
+- TAP shortlist is the single biggest win. Selecting a tiny fraction of slices (observed shortlist ≈ 6) kept runtime low even as \(K\) grew exponentially with dimension.  
+- Measured per‑tier costs on target device: hot ≈ 0.66 ns/element, warm ≈ 7.1 ns/element, cold ≈ 38.7 ns/element. These are stable across D and drive the cost model.  
+- Lazy block generation scales: generating only requested \(B\times B\) blocks reduces work by orders of magnitude versus dense contraction when weight mass is concentrated.  
+- Warm low‑rank is a practical sweet spot: it gives large memory reduction at modest compute overhead if inner loops are optimized and memory layout is contiguous.  
+- Cold polynomial is expensive per element but acceptable when rarely invoked; separable or 1D polynomial forms reduce cost dramatically.  
+- Bottlenecks identified: warm inner loop memory layout, scalar 2D polynomial eval, and naive TAP selection algorithm for very large \(K\).  
+- Numerical stability: safe approximations for log, exp, and pow, plus fixed‑point table build/decode, produced stable normalized weights and no NaNs in tests.
+
+---
+
+Architecture and System Design
+
+High level
+- Core idea: represent the full \(n\times n\) slices across extra axes by a tiered generator system and compute the effective transition matrix
+  \[
+  P = \sum{\boldsymbol{\alpha}} W{\boldsymbol{\alpha}}\,T[:,:, \boldsymbol{\alpha}]
+  \]
+  using lazy block generation and a TAP budgeted shortlist to bound per‑step work.
+
+Tiers and tradeoffs
+
+| Tier | Storage per slice | Measured ns per element | Typical use case |
+|---|---:|---:|---|
+| Hot | full \(n\times n\) double; contiguous | 0.66 ns | High‑weight recent slices; minimal latency |
+| Warm | low‑rank \(U,V\) or separable factors; \(2 n r\) | 7.1 ns | Medium‑weight slices; 10–100× memory reduction |
+| Cold | analytic params or small tables | 38.7 ns | Low‑weight slices; 1000× reduction acceptable |
+
+Design rules
+- Tier assignment based on weight × residual × recency. Promote when weight × residual exceeds threshold.  
+- Lazy block generation: generate only \(B\times B\) blocks requested by TAP. Choose \(B\) to fit L1/L2 caches.  
+- Determinism: fixed RNG seed, deterministic block order, pairwise or fixed-order reductions.
+
+---
+
+Algorithms, Math, and Error Bounds
+
+Weighting and combination
+- Per‑axis weights \(w^{(a)}\) computed with kernels (exponential, power law, mixture). Combined slice mass:
+  \[
+  W{\boldsymbol{\alpha}} = \prod{a} w^{(a)}{\alphaa},\quad \sum{\boldsymbol{\alpha}} W{\boldsymbol{\alpha}} = 1.
+  \]
+
+Contraction cost
+- Dense cost: elements \(= n^2 K\). FLOPs \(\approx 2 n^2 K\). Bytes read \(\approx 8 n^2 K\).  
+- Lazy cost: elements generated \(= B^2 \times\) number of generated blocks. Use TAP to minimize generated blocks.
+
+Error bound for omission
+- If omitted slices have total mass \(W{\text{om}}\) and each slice row is normalized, then per‑row \(L1\) error satisfies:
+  \[
+  \sumj |P{ij} - \hat P{ij}| \le W{\text{om}}.
+  \]
+  Use this to set shortlist mass threshold and early commit confidence.
+
+Quantization and fixed point
+- Fixed‑point table uses integer Q with 24 fractional bits in tests; table build uses 64‑bit accumulation and guarantees nonzero entries.  
+- Binary‑aligned quantization to multiples of \(2^{-q}\) yields exactly representable rounded values in IEEE binary floating point; choose \(q\) from tolerance \(\varepsilon\) via
+  \[
+  q \ge -1 - \log_2(\varepsilon).
+  \]
+
+---
+
+Implementation Details and Best Practices
+
+Generator implementations
+- Hot: store row‑major contiguous doubles; block copy via memcpy.  
+- Warm: store U row‑major and pack V transposed so inner loop reads contiguous memory; inner loop unroll and vectorize. Precompute block‑level dot products when reused.  
+- Cold: prefer separable polynomials \(f(i)g(j)\) or 1D Chebyshev expansions; avoid scalar 2D Horner per element.
+
+TAP shortlist
+- Replace naive repeated‑max selection with a min‑heap partial selection or std::nth_element style partial sort to get O(K log S) behavior for shortlist size S.  
+- Heuristic score: \(\text{score} = \frac{W{\alpha} (1 + \text{recent})}{\text{tier\cost}}\). Tier costs tuned empirically.
+
+Blocking and cache
+- Choose \(B\) so \(8 B^2 \times\) working buffers fit L1/L2. Typical starting points: \(B \in \{32,64\}\). Sweep to find sweet spot.  
+- Use deterministic block ordering (row-major blocks) and pairwise accumulation to reduce rounding nondeterminism.
+
+Numeric robustness
+- Use clamped logapprox and expapprox with safe ranges. Floor tiny values to avoid denormals.  
+- Normalize and clip weights with eps floor before building fixed‑point tables.
+
+Profiling and instrumentation
+- Measure ns/element per tier, blocks generated, shortlist size, elapsedms, memest. Log CSV per run.  
+- Add counters for cache misses and bandwidth if platform supports PMU.
+
+Reproducibility and CI
+- Deterministic seeds, fixed reduction order, and a small test suite that verifies row sums, weight normalization, and fixed‑point roundtrip.  
+- Add sanitizer builds and a regression test that compares lazy result to dense baseline for small configs.
+
+---
+
+Game Plan and Roadmap
+
+Phase 0 Immediate fixes (days)
+1. Heap‑based TAP shortlist to remove O(K²) behavior.  
+2. Pack V and vectorize warm inner loop; loop unroll and enable compiler pragmas.  
+3. Separable cold generator and separable polynomial evaluator.  
+4. Block size sweep harness and automated microbench logging.
+
+Deliverable: optimized single‑file harness with heap TAP, packed warm, separable cold, and CSV output.
+
+Phase 1 Performance and accuracy tuning (2–4 weeks)
+1. Warm rank sweep and choose default r per application accuracy target.  
+2. Float path for warm/cold with double accumulation option; measure accuracy and throughput.  
+3. Block cache for frequently used blocks and LRU eviction.  
+4. Quantization pipeline: fixed‑point encode/decode for cold slices and optional compression.
+
+Deliverable: performance report with ns/elem, memory, and accuracy tradeoffs; tuned defaults.
+
+Phase 2 Robustness and integration (4–8 weeks)
+1. Parallel block processing with deterministic reduction and thread affinity.  
+2. Promotion/demotion policy based on weight × residual × recency and cost model.  
+3. TAP confidence early commit thresholds and per‑step budget enforcement.  
+4. API and FFI: expose C ABI and Python bindings for integration.
+
+Deliverable: libmage with tests, examples, and integration guide.
+
+Phase 3 Production hardening (8–16 weeks)
+1. SIMD intrinsics for warm and cold inner loops on target ISAs.  
+2. Embedded builds with integer kernels and aggressive quantization.  
+3. Monitoring and telemetry for live systems: latency, shortlist sizes, promotion events.  
+4. Documentation and reproducible benchmarks for multiple hardware targets.
+
+Deliverable: production release, benchmarks, and deployment playbook.
+
+---
+
+Test Matrix and Acceptance Criteria
+
+- Functional tests: row sums ≈ 1, weights normalized, fixed‑point roundtrip within quantization error.  
+- Accuracy tests: L1 and max error vs dense baseline for small configs; target L1 ≤ \(10^{-6}\) for critical apps.  
+- Performance tests: ns/element per tier, end‑to‑end latency under target budgets.  
+- Stress tests: run D up to 12 with memcap and ensure no OOM, predictable slowdown, and graceful failure modes.  
+- Regression: deterministic outputs across runs and platforms.
+
+---
+
+Operational Recommendations
+
+- Default runtime knobs: B=64, warm_rank=16 for n≥1024; TAP budget tuned to keep shortlist ≤ 16.  
+- Monitoring: log shortlist size, blocks generated, and weight × residual histogram.  
+- Safety: enforce memory cap and fallback to smaller shortlist or uniform weights on allocation failure.  
+- Documentation: include math appendix, error bounds, and per‑tier cost table in repo.
+
+> Tip: Use weight mass and approximation residual as the single unified metric for tier decisions. Promote when weight × residual > promote_threshold and demote when weight decays below a time‑decayed threshold.
+
+---
+
+I will generate the optimized harness patch that implements the heap‑based TAP shortlist, packed and vectorized warm inner loop, and separable cold generator so you can re-run the scaling and performance tests with immediate improvements.

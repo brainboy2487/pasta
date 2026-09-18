@@ -1,0 +1,145 @@
+# Pasta translation of src/runtime/pointer/gc.rs
+# GC integration for pointer system: tracking allocations, rooting, and strainer association
+
+DEF PointerGcTracker_new():
+    RETURN({"scope_allocations": [[]], "rooted": [], "gc_refs": {}})
+END
+
+DEF PointerGcTracker_enter_scope(t):
+    t["scope_allocations"] = t["scope_allocations"] + [[]]
+    RETURN(None)
+END
+
+DEF PointerGcTracker_exit_scope(t):
+    IF len(t["scope_allocations"]) > 1:
+        last_idx = len(t["scope_allocations"]) - 1
+        scope = t["scope_allocations"][last_idx]
+        # pop
+        t["scope_allocations"] = t["scope_allocations"][0:last_idx]
+        out = []
+        FOR id IN scope:
+            IF NOT list_contains(t["rooted"], id):
+                out = out + [id]
+            END
+        END
+        RETURN(out)
+    END
+    RETURN([])
+END
+
+DEF PointerGcTracker_scope_depth(t):
+    RETURN(len(t["scope_allocations"]))
+END
+
+DEF PointerGcTracker_track_allocation(t, id):
+    IF len(t["scope_allocations"]) == 0:
+        t["scope_allocations"] = [[]]
+    END
+    last = t["scope_allocations"][len(t["scope_allocations"]) - 1]
+    IF NOT list_contains(last, id):
+        last = last + [id]
+    END
+    t["scope_allocations"][len(t["scope_allocations"]) - 1] = last
+    RETURN(None)
+END
+
+DEF PointerGcTracker_root(t, id):
+    IF NOT list_contains(t["rooted"], id):
+        t["rooted"] = t["rooted"] + [id]
+    END
+    RETURN(None)
+END
+
+DEF PointerGcTracker_unroot(t, id):
+    new_roots = []
+    FOR r IN t["rooted"]:
+        IF r != id: new_roots = new_roots + [r] END
+    END
+    t["rooted"] = new_roots
+    RETURN(None)
+END
+
+DEF PointerGcTracker_is_rooted(t, id):
+    RETURN(list_contains(t["rooted"], id))
+END
+
+DEF PointerGcTracker_associate_gc_ref(t, ptr_id, gc_ref):
+    t["gc_refs"][str(ptr_id)] = gc_ref
+    RETURN(None)
+END
+
+DEF PointerGcTracker_get_gc_ref(t, ptr_id):
+    k = str(ptr_id)
+    IF has_key(t["gc_refs"], k): RETURN(t["gc_refs"][k]) END
+    RETURN(None)
+END
+
+DEF PointerGcTracker_remove_gc_ref(t, ptr_id):
+    k = str(ptr_id)
+    IF has_key(t["gc_refs"], k):
+        val = t["gc_refs"][k]
+        t["gc_refs"] = dict_remove(t["gc_refs"], k)
+        RETURN(val)
+    END
+    RETURN(None)
+END
+
+DEF PointerGcTracker_all_allocations(t):
+    out = []
+    FOR scope IN t["scope_allocations"]:
+        FOR id IN scope:
+            out = out + [id]
+        END
+    END
+    RETURN(out)
+END
+
+DEF PointerGcTracker_current_scope_count(t):
+    IF len(t["scope_allocations"]) == 0: RETURN(0) END
+    last = t["scope_allocations"][len(t["scope_allocations"]) - 1]
+    RETURN(len(last))
+END
+
+# Public helpers matching Rust API
+
+DEF gc_free_scope_temporaries(registry, tracker):
+    to_free = PointerGcTracker_exit_scope(tracker)
+    FOR id IN to_free:
+        PointerRegistry_kill(registry, id)
+        PointerGcTracker_remove_gc_ref(tracker, id)
+    END
+    RETURN(to_free)
+END
+
+DEF gc_sweep_dead_pointers(registry, tracker):
+    # tracker param kept for parity; not used here
+    RETURN(PointerRegistry_sweep_dead(registry))
+END
+
+DEF gc_notify_alloc(tracker, id, strainer):
+    PointerGcTracker_track_allocation(tracker, id)
+    IF strainer != None:
+        # allocate a small pointer wrapper value in strainer and associate
+        gc_ref = Strainer_allocate(strainer, {"Pointer": id})
+        PointerGcTracker_associate_gc_ref(tracker, id, gc_ref)
+    END
+    RETURN(None)
+END
+
+DEF gc_notify_free(tracker, id, strainer):
+    PointerGcTracker_unroot(tracker, id)
+    gc_ref = PointerGcTracker_remove_gc_ref(tracker, id)
+    IF gc_ref != None AND strainer != None:
+        Strainer_unregister_root(strainer, gc_ref)
+    END
+    RETURN(None)
+END
+
+DEF gc_root_pointer(tracker, id, strainer):
+    PointerGcTracker_root(tracker, id)
+    gc_ref = PointerGcTracker_get_gc_ref(tracker, id)
+    IF gc_ref != None AND strainer != None:
+        Strainer_register_root(strainer, gc_ref)
+    END
+    RETURN(None)
+END

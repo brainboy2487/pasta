@@ -1,0 +1,291 @@
+
+
+# Phase 11 — **Module System**  
+**Goal:** Make Pasta capable of organizing code at scale.
+
+### Deliverables
+- `import` / `export` syntax finalized  
+- Module resolution rules (relative, absolute, package-based)  
+- Compiler support for module graphs  
+- Circular dependency detection  
+- Namespaces + symbol visibility rules  
+
+### Why this phase matters  
+Everything after this — packages, stdlib, tooling — depends on a stable module system.
+
+---
+
+# Phase 12 — **Error & Result Model**  
+**Goal:** Define how Pasta handles failure.
+
+### Deliverables
+- Decide between exceptions, `Result<T,E>`, or hybrid  
+- Panic semantics  
+- Stack unwinding rules  
+- Error propagation syntax  
+- Standard error types  
+
+### Why this phase matters  
+You need this before a standard library or package ecosystem can exist.
+
+---
+
+# Phase 13 — **Memory Model**  
+**Goal:** Lock down how objects live and die.
+
+### Deliverables
+- Choose: ARC, tracing GC, manual, or hybrid  
+- Define ownership semantics  
+- Define mutability rules  
+- Runtime allocator integration  
+- Compiler hooks for memory ops  
+
+### Why this phase matters  
+This determines performance, safety, and FFI behavior.
+
+---
+
+# Phase 14 — **Traits / Interfaces**  
+**Goal:** Introduce polymorphism beyond inheritance.
+
+### Deliverables
+- Trait definition syntax  
+- Trait implementation syntax  
+- Dynamic dispatch rules  
+- Static dispatch rules  
+- Trait objects (if applicable)  
+
+### Why this phase matters  
+Traits unlock generics, collections, and expressive APIs.
+
+---
+
+# Phase 15 — **Generics**  
+**Goal:** Make Pasta capable of writing reusable, type-safe abstractions.
+
+### Deliverables
+- Generic functions  
+- Generic types  
+- Monomorphization or type erasure strategy  
+- Constraints (trait bounds)  
+- Compiler type-checking rules  
+
+### Why this phase matters  
+You cannot build a real standard library without generics.
+
+---
+
+# Phase 16 — **Standard Collections**  
+**Goal:** Build the backbone of the standard library.
+
+### Deliverables
+- `Vec<T>`  
+- `Map<K,V>`  
+- `Set<T>`  
+- Iterators + iterator protocol  
+- Slice types  
+
+### Why this phase matters  
+Collections are the first thing every user needs.
+
+---
+
+# Phase 17 — **Filesystem & IO**  
+**Goal:** Give Pasta the ability to interact with the real world.
+
+### Deliverables
+- File read/write API  
+- Directory traversal  
+- Streams  
+- Errors integrated with Phase 12  
+- Cross-platform Windows/Linux/Mac behavior  
+
+### Why this phase matters  
+This unlocks tooling, package manager, and real applications.
+
+---
+
+# Phase 18 — **Networking**  
+**Goal:** Enable servers, clients, and modern applications.
+
+### Deliverables
+- TCP sockets  
+- UDP sockets  
+- HTTP client (minimal)  
+- Async compatibility (Phase 20)  
+
+### Why this phase matters  
+Networking is essential for package manager, tooling, and real-world use.
+
+---
+
+# Phase 19 — **Package Manager**  
+**Goal:** Turn Pasta into a *real ecosystem*.
+
+### Deliverables
+- `pasta init`  
+- `pasta add <package>`  
+- `pasta build`  
+- Lockfile  
+- Version resolution  
+- Registry protocol  
+
+### Why this phase matters  
+This is the single biggest multiplier for Pasta’s growth.
+
+---
+
+# Phase 20 — **Concurrency Model**  
+**Goal:** Define how Pasta handles parallelism and async work.
+
+### Deliverables
+- Decide: async/await, threads, actors, green threads  
+- Scheduler design  
+- Futures or promises  
+- Concurrency primitives (mutex, channel)  
+- Integration with IO + networking  
+
+### Why this phase matters  
+Modern languages live or die by their concurrency story.
+
+---
+
+# Phase 21 — **FFI to C**  
+**Goal:** Let Pasta call existing libraries.
+
+### Deliverables
+- FFI syntax  
+- ABI rules  
+- Type mapping  
+- Safety rules  
+- Minimal examples (SDL, libc, etc.)  
+
+### Why this phase matters  
+FFI instantly gives Pasta access to thousands of libraries.
+
+---
+
+# Phase 22 — **Tooling: Formatter + Linter**  
+**Goal:** Make Pasta pleasant to use.
+
+### Deliverables
+- `pasta fmt`  
+- Style rules  
+- Linter warnings  
+- Compiler integration  
+
+### Why this phase matters  
+Tooling is the difference between “cool language” and “usable language.”
+
+---
+
+# Phase 23 — **Language Server (LSP)**  
+**Goal:** Give Pasta first-class editor support.
+
+### Deliverables
+- Autocomplete  
+- Hover info  
+- Go-to-definition  
+- Diagnostics  
+- Symbol search  
+
+### Why this phase matters  
+LSP dramatically improves developer experience.
+
+---
+
+# Phase 24 — **Testing Framework**  
+**Goal:** Make Pasta reliable and production-ready.
+
+### Deliverables
+- `pasta test` runner  
+- Assertions  
+- Fixtures  
+- Reporting  
+- Integration with package manager  
+
+### Why this phase matters  
+Testing is mandatory for serious development.
+
+---
+
+# Phase 25 — **Documentation Generator**  
+**Goal:** Build Pasta’s “Rustdoc.”
+
+### Deliverables
+- Doc comment syntax  
+- HTML generator  
+- Search index  
+- Integration with packages  
+
+### Why this phase matters  
+Documentation is how ecosystems grow.
+
+---
+
+# Phase 26 — **WASM Backend**  
+**Goal:** Let Pasta run in browsers and embedded environments.
+
+### Deliverables
+- WASM codegen  
+- WASI support  
+- JS interop layer  
+
+### Why this phase matters  
+WASM massively expands Pasta’s reach.
+
+---
+
+# Phase 27 — **Macros / Compile-Time Features**  
+**Goal:** Give Pasta metaprogramming superpowers.
+
+### Deliverables
+- Macro syntax  
+- Hygiene rules  
+- Compile-time evaluation  
+- AST manipulation APIs  
+
+### Why this phase matters  
+Macros unlock DSLs, codegen, and advanced libraries.
+
+---
+
+# Phase 28 — **Debugger**  
+**Goal:** Make Pasta fully professional-grade.
+
+### Deliverables
+- Breakpoints  
+- Step in/out  
+- Variable inspection  
+- Stack traces  
+- IDE integration  
+
+### Why this phase matters  
+A debugger is the final piece of a mature language.
+
+---
+
+# Phase 29 — **The Pasta Book**  
+**Goal:** Formalize the language and teach it.
+
+### Deliverables
+- Language reference  
+- Tutorials  
+- Cookbook  
+- Examples  
+- Best practices  
+
+### Why this phase matters  
+This is how you onboard new developers.
+
+---
+
+# Phase 30 — **Ecosystem Launch**  
+**Goal:** Release Pasta into the world.
+
+### Deliverables
+- Official examples  
+- Starter templates  
+- First-party libraries  
+- Community channels  
+- Version 1.0 roadmap  

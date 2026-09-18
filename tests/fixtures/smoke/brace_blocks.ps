@@ -1,0 +1,13 @@
+total = 0
+FOR n IN [1, 2, 3] {
+    IF n == 2 {
+        total = total + 10
+    } OTHERWISE {
+        total = total + n
+    }
+}
+TRY {
+    PRINT total
+} OTHERWISE {
+    PRINT "unreachable"
+} END

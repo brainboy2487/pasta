@@ -1,0 +1,30 @@
+1. State‑Aware Health Monitors (The “Nervous System”)
+
+These are lightweight processes that constantly check:
+
+    Service uptime
+
+    Latency and throughput
+
+    Memory/CPU anomalies
+
+    Model response entropy (detects when outputs become unstable)
+
+    File integrity and config drift
+
+    Queue backlogs or event‑bus stalls
+
+Why it works:
+It gives the AI a real‑time picture of its own health. When something deviates from the baseline, the system knows before failure occurs.
+
+Best tools:
+
+    systemd health checks
+
+    Watchdogs
+
+    Heartbeat daemons
+
+    Hash‑based integrity checks
+
+... (document continues)

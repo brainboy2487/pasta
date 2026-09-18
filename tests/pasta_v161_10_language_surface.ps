@@ -1,0 +1,85 @@
+# Pasta v0.01a script tests — language surface, semicolons, ATTEMPT, RETURN (20 checks)
+
+DEF out_num(label, value):
+    PRINT label + ":" + str(value)
+END
+
+DEF out_text(label, value):
+    PRINT label + ":" + value
+END
+
+DEF mul(a, b):
+    RETURN a * b
+END
+
+DEF choose(flag):
+    IF flag:
+        RETURN "yes"
+    END
+    RETURN "no"
+END
+
+inc = LAMBDA x: x + 1 END
+mix = LAMBDA a b: a + b END
+
+a = 1;
+b = 2;
+out_num("P10T01", a + b)                  # EXPECT: P10T01:3
+
+flag = "unset"
+IF a < b {
+    flag = "brace-if";
+}
+out_text("P10T02", flag)                 # EXPECT: P10T02:brace-if
+
+ATTEMPT:
+    ASSERT false
+OTHERWISE:
+    out_text("P10T03", "attempt-caught") # EXPECT: P10T03:attempt-caught
+END
+
+out_num("P10T04", mul(3, 4))             # EXPECT: P10T04:12
+out_num("P10T05", inc(8))                # EXPECT: P10T05:9
+out_num("P10T06", mix(5, 7))             # EXPECT: P10T06:12
+
+slice_part = list_slice([10, 20, 30, 40], 1, 3)
+out_num("P10T07", list_len(slice_part))  # EXPECT: P10T07:2
+out_num("P10T08", slice_part[0])         # EXPECT: P10T08:20
+out_num("P10T09", slice_part[1])         # EXPECT: P10T09:30
+
+sum_total = 0
+FOR n IN range(4) {
+    sum_total = sum_total + n
+}
+out_num("P10T10", sum_total)             # EXPECT: P10T10:10
+
+count = 0;
+WHILE count < 3 {
+    count = count + 1;
+}
+out_num("P10T11", count)                 # EXPECT: P10T11:3
+
+out_text("P10T12", TYPEOF(inc))           # EXPECT: P10T12:lambda
+out_text("P10T13", TYPEOF({"k": 1}))     # EXPECT: P10T13:dict
+out_text("P10T14", TYPEOF(range(3)))     # EXPECT: P10T14:list
+
+IF regex_match("abc123", "[a-z]+[0-9]+") {
+    out_text("P10T15", "regex-true")     # EXPECT: P10T15:regex-true
+}
+
+IF NOT regex_match("abc", "[0-9]+") {
+    out_text("P10T16", "regex-false")    # EXPECT: P10T16:regex-false
+}
+
+TRY {
+    ASSERT false
+} OTHERWISE {
+    out_text("P10T17", "brace-caught")   # EXPECT: P10T17:brace-caught
+} END
+
+UNLESS false:
+    out_text("P10T18", "unless-worked")  # EXPECT: P10T18:unless-worked
+END
+
+out_text("P10T19", choose(true))         # EXPECT: P10T19:yes
+out_text("P10T20", choose(false))        # EXPECT: P10T20:no

@@ -1,0 +1,188 @@
+
+**Goal:**  
+Translate the GNU nano source code into Pasta language in a *structural 1‑to‑1 manner*, preserving module layout, function boundaries, control flow, and data structures. The resulting Pasta code does **not** need to run yet; it must compile and serve as a scaffold for extending the Pasta runtime.
+
+---
+
+## **Pasta Language Rules (Strict)**
+
+Follow these rules for all generated Pasta code:
+
+- Use `name = expr` for assignment.  
+- Define functions with `DEF name(args): … END`.  
+- Use `RET.NOW(): value` or `RETURN value`.  
+- Use colon‑and‑indent blocks for functions.  
+- Use uppercase control keywords (`IF`, `FOR`, `TRY`, `PRINT`).  
+- Brace blocks are allowed for short `IF`, `FOR`, `WHILE`, `TRY` blocks.  
+- Lists: `[]`, dictionaries: `{"key": value}`, indexing: `value[index]`.  
+- Builtins use snake_case: `list_append`, `dict_get`, `canvas_get_pixel`, etc.  
+- No `GLOB.DEF`.  
+- No lowercase keywords.  
+- No Python syntax.  
+- One `END` per colon‑style block.
+
+---
+
+## **Translation Strategy (Strict)**
+
+Translate GNU nano C code into Pasta using these rules:
+
+### **1. Mirror the nano source tree**
+For each nano C file, create a Pasta file with the same name:
+
+- `nano.c` → `nano.ps`
+- `text.c` → `text.ps`
+- `files.c` → `files.ps`
+- `prompt.c` → `prompt.ps`
+- `winio.c` → `winio.ps`
+- etc.
+
+### **2. Translate each C function into a Pasta function**
+Preserve:
+
+- Function name  
+- Argument list  
+- Control flow  
+- Return semantics  
+
+Example:
+
+```pasta
+DEF do_cut_text(fs):
+    IF fs == None:
+        RET.NOW(): None
+    END
+    # ...
+END
+```
+
+### **3. Replace C structs with Pasta dictionaries**
+Example:
+
+```pasta
+DEF make_filestruct(data, next, prev):
+    RET.NOW(): {"data": data, "next": next, "prev": prev}
+END
+```
+
+### **4. Replace pointers with dictionary access**
+C:
+
+```c
+p->next->data
+```
+
+Pasta:
+
+```pasta
+dict_get(dict_get(p, "next"), "data")
+```
+
+### **5. Replace loops and conditionals**
+C:
+
+```c
+for (p = fs; p != NULL; p = p->next)
+```
+
+Pasta:
+
+```pasta
+p = fs
+WHILE p != None:
+    # ...
+    p = dict_get(p, "next")
+END
+```
+
+### **6. Replace macros with Pasta functions**
+C macro:
+
+```c
+#define IS_BLANK(c) ((c) == ' ' || (c) == '\t')
+```
+
+Pasta:
+
+```pasta
+DEF is_blank(c):
+    RET.NOW(): (c == " " OR c == "\t")
+END
+```
+
+### **7. Replace enums with integer constants**
+```pasta
+CUT_TO_END = 1
+CUT_TO_START = 2
+```
+
+### **8. Replace system calls with stub functions**
+For anything involving:
+
+- ncurses  
+- raw terminal mode  
+- signals  
+- file I/O  
+- UTF‑8 width  
+- cursor addressing  
+- screen redraws  
+
+Generate a stub:
+
+```pasta
+DEF read_key():
+    PRINT "read_key() not implemented"
+    RET.NOW(): None
+END
+```
+
+### **9. Preserve the call graph exactly**
+Even if a function cannot run, it must exist with the correct name and call its dependencies.
+
+### **10. Keep the code imperative and direct**
+No abstractions beyond what nano already uses.
+
+---
+
+## **Output Requirements**
+
+When generating Pasta code:
+
+- Maintain the same function order as the original C file.  
+- Include all comments from the C source as Pasta comments (`#`).  
+- Use dictionary‑based structs everywhere.  
+- Use stubs for unimplemented system‑level features.  
+- Ensure every function compiles under Pasta’s syntax rules.  
+- Do not attempt to make the program functional yet.  
+- Do not simplify or redesign nano — mirror it.  
+
+---
+
+## **Runtime Extension Tracking**
+
+Whenever the translation encounters a missing feature (e.g., raw keyboard input, terminal cursor movement), generate a stub and add an entry to a list:
+
+```
+# RUNTIME_NEEDED: terminal_raw_mode
+# RUNTIME_NEEDED: read_key
+# RUNTIME_NEEDED: utf8_width
+# RUNTIME_NEEDED: screen_redraw
+```
+
+This list becomes the roadmap for extending Pasta.
+
+---
+
+## **Agent Task**
+
+Begin translating nano **module by module**, producing:
+
+1. A Pasta file mirroring the C file  
+2. All functions translated  
+3. All structs converted to dictionaries  
+4. All system calls replaced with stubs  
+5. A list of `RUNTIME_NEEDED` items  
+6. Code that compiles under the Pasta skill rules  
+
+Start with the root file (`nano.c`) and proceed in dependency order.
+
